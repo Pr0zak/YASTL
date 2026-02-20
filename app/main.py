@@ -129,6 +129,16 @@ app.include_router(search_router)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+# Serve thumbnails as static files (avoids DB lookup per request)
+# check_dir=False because the directory is created in the lifespan handler.
+app.mount(
+    "/thumbnails",
+    StaticFiles(
+        directory=str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), check_dir=False
+    ),
+    name="thumbnails",
+)
+
 
 @app.get("/", include_in_schema=False)
 async def root():
