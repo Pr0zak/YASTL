@@ -125,15 +125,26 @@ def _project_vertices(
 
 
 def _collect_meshes(loaded: trimesh.Trimesh | trimesh.Scene) -> list[trimesh.Trimesh]:
-    """Collect all Trimesh objects from a loaded model or scene."""
+    """Collect all Trimesh objects from a loaded model or scene.
+
+    For Scene objects, applies scene graph transforms so multi-part models
+    (e.g. 3MF assemblies) are properly positioned in world space.
+    """
     meshes: list[trimesh.Trimesh] = []
 
     if isinstance(loaded, trimesh.Trimesh):
         meshes.append(loaded)
     elif isinstance(loaded, trimesh.Scene):
-        for geometry in loaded.geometry.values():
-            if isinstance(geometry, trimesh.Trimesh):
-                meshes.append(geometry)
+        try:
+            # dump() returns geometry in world coordinates with transforms applied
+            for geom in loaded.dump():
+                if isinstance(geom, trimesh.Trimesh):
+                    meshes.append(geom)
+        except Exception:
+            # Fallback: collect raw geometry without transforms
+            for geometry in loaded.geometry.values():
+                if isinstance(geometry, trimesh.Trimesh):
+                    meshes.append(geometry)
     return meshes
 
 
