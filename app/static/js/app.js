@@ -569,6 +569,9 @@ const app = createApp({
 
         /* ---- Thumbnail helpers ---- */
         function thumbUrl(model) {
+            if (model.thumbnail_path) {
+                return `/thumbnails/${model.thumbnail_path}`;
+            }
             return `/api/models/${model.id}/thumbnail`;
         }
 
