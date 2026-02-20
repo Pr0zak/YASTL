@@ -12,7 +12,7 @@ import {
     formatDimensions,
 } from './search.js';
 
-const { createApp, ref, reactive, computed, onMounted, watch, nextTick } = Vue;
+const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
 /* ==================================================================
    SVG icon strings (inlined to avoid external deps)
@@ -97,6 +97,10 @@ const app = createApp({
         const newLibName = ref('');
         const newLibPath = ref('');
         const addingLibrary = ref(false);
+
+        // Thumbnail settings
+        const thumbnailMode = ref('wireframe');
+        const regeneratingThumbnails = ref(false);
 
         // Update system
         const updateInfo = reactive({
@@ -249,6 +253,17 @@ const app = createApp({
                 fetchModels();
             }
         }, 300);
+
+        function onSearchInput(e) {
+            searchQuery.value = e.target.value;
+            debouncedSearch();
+        }
+
+        function clearSearch() {
+            searchQuery.value = '';
+            pagination.offset = 0;
+            fetchModels();
+        }
 
         async function fetchTags() {
             try {
@@ -411,9 +426,68 @@ const app = createApp({
             }
         }
 
+        /* ==============================================================
+           Thumbnail Settings
+           ============================================================== */
+
+        async function fetchSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                if (!res.ok) return;
+                const data = await res.json();
+                thumbnailMode.value = data.thumbnail_mode || 'wireframe';
+            } catch (err) {
+                console.error('fetchSettings error:', err);
+            }
+        }
+
+        async function setThumbnailMode(mode) {
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ thumbnail_mode: mode }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    thumbnailMode.value = data.thumbnail_mode || mode;
+                    showToast(`Thumbnail mode set to ${mode}`);
+                } else {
+                    const data = await res.json();
+                    showToast(data.detail || 'Failed to update setting', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to update setting', 'error');
+                console.error('setThumbnailMode error:', err);
+            }
+        }
+
+        async function regenerateThumbnails() {
+            if (!confirm('Regenerate all thumbnails?\n\nThis will re-render every model thumbnail using the current mode. This runs in the background.')) {
+                return;
+            }
+            regeneratingThumbnails.value = true;
+            try {
+                const res = await fetch('/api/settings/regenerate-thumbnails', { method: 'POST' });
+                if (res.ok) {
+                    showToast('Thumbnail regeneration started', 'info');
+                } else {
+                    const data = await res.json();
+                    showToast(data.detail || 'Failed to start regeneration', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to start thumbnail regeneration', 'error');
+                console.error('regenerateThumbnails error:', err);
+            } finally {
+                regeneratingThumbnails.value = false;
+            }
+        }
+
         function openSettings() {
             fetchLibraries();
+            fetchSettings();
             showSettings.value = true;
+            document.body.classList.add('modal-open');
             // Auto-check for updates if not checked yet
             if (!updateInfo.checked && !updateInfo.checking) {
                 checkForUpdates();
@@ -422,6 +496,9 @@ const app = createApp({
 
         function closeSettings() {
             showSettings.value = false;
+            if (!showDetail.value) {
+                document.body.classList.remove('modal-open');
+            }
         }
 
         /* ==============================================================
@@ -559,6 +636,7 @@ const app = createApp({
             isEditingName.value = false;
             isEditingDesc.value = false;
             showDetail.value = true;
+            document.body.classList.add('modal-open');
 
             await nextTick();
 
@@ -566,7 +644,7 @@ const app = createApp({
             viewerLoading.value = true;
             initViewer('viewer-container');
 
-            const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply'];
+            const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
             const fmt = (selectedModel.value.file_format || '').toLowerCase();
 
             if (supportedViewerFormats.includes(fmt)) {
@@ -595,6 +673,9 @@ const app = createApp({
             isEditingName.value = false;
             isEditingDesc.value = false;
             viewerLoading.value = false;
+            if (!showSettings.value) {
+                document.body.classList.remove('modal-open');
+            }
         }
 
         async function addTag() {
@@ -705,22 +786,31 @@ const app = createApp({
             }
         }
 
+        function closeSidebarIfMobile() {
+            if (window.innerWidth <= 768) {
+                sidebarOpen.value = false;
+            }
+        }
+
         function setFormatFilter(fmt) {
             filters.format = filters.format === fmt ? '' : fmt;
             pagination.offset = 0;
             refreshCurrentView();
+            closeSidebarIfMobile();
         }
 
         function setTagFilter(tagName) {
             filters.tag = filters.tag === tagName ? '' : tagName;
             pagination.offset = 0;
             refreshCurrentView();
+            closeSidebarIfMobile();
         }
 
         function setCategoryFilter(catName) {
             filters.category = filters.category === catName ? '' : catName;
             pagination.offset = 0;
             refreshCurrentView();
+            closeSidebarIfMobile();
         }
 
         function setLibraryFilter(libId) {
@@ -875,10 +965,8 @@ const app = createApp({
             document.addEventListener('click', onDocumentClick);
         });
 
-        // Watch search query for debounced search
-        watch(searchQuery, () => {
-            debouncedSearch();
-        });
+        // Search is triggered by onSearchInput handler instead of a watcher
+        // to avoid cursor-position issues caused by v-model re-render cycles.
 
         /* ---- Expose everything to the template ---- */
         return {
@@ -909,6 +997,8 @@ const app = createApp({
             newLibPath,
             addingLibrary,
             updateInfo,
+            thumbnailMode,
+            regeneratingThumbnails,
             showStatusMenu,
             systemStatus,
 
@@ -922,6 +1012,8 @@ const app = createApp({
             selectedLibrary,
 
             // Actions
+            onSearchInput,
+            clearSearch,
             fetchModels,
             triggerScan,
             viewModel,
@@ -947,6 +1039,8 @@ const app = createApp({
             closeSettings,
             addLibrary,
             deleteLibrary,
+            setThumbnailMode,
+            regenerateThumbnails,
             checkForUpdates,
             applyUpdate,
             toggleStatusMenu,
@@ -990,12 +1084,13 @@ const app = createApp({
         <div class="search-container">
             <span class="search-icon" v-html="ICONS.search"></span>
             <input type="text"
-                   v-model="searchQuery"
+                   :value="searchQuery"
+                   @input="onSearchInput"
                    placeholder="Search models by name or description..."
                    aria-label="Search models">
             <button v-if="searchQuery"
                     class="search-clear"
-                    @click="searchQuery = ''"
+                    @click="clearSearch"
                     title="Clear search">&times;</button>
         </div>
 
@@ -1591,6 +1686,44 @@ const app = createApp({
                             <span v-html="ICONS.plus"></span>
                             Add Library
                         </button>
+                    </div>
+                </div>
+
+                <!-- Thumbnails Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.image"></span>
+                        Thumbnails
+                    </div>
+                    <div class="settings-section-desc">
+                        Choose how model preview thumbnails are rendered. Solid mode shows filled faces with lighting; wireframe shows edges only.
+                    </div>
+
+                    <div class="thumbnail-mode-options">
+                        <label class="thumbnail-mode-option" :class="{ active: thumbnailMode === 'wireframe' }" @click="setThumbnailMode('wireframe')">
+                            <input type="radio" name="thumbnailMode" value="wireframe" :checked="thumbnailMode === 'wireframe'">
+                            <div class="thumbnail-mode-info">
+                                <div class="thumbnail-mode-label">Wireframe</div>
+                                <div class="thumbnail-mode-desc">Edges and outlines only</div>
+                            </div>
+                        </label>
+                        <label class="thumbnail-mode-option" :class="{ active: thumbnailMode === 'solid' }" @click="setThumbnailMode('solid')">
+                            <input type="radio" name="thumbnailMode" value="solid" :checked="thumbnailMode === 'solid'">
+                            <div class="thumbnail-mode-info">
+                                <div class="thumbnail-mode-label">Solid</div>
+                                <div class="thumbnail-mode-desc">Filled faces with lighting</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="thumbnail-regen-row">
+                        <button class="btn btn-secondary"
+                                @click="regenerateThumbnails"
+                                :disabled="regeneratingThumbnails">
+                            <span v-html="ICONS.refresh"></span>
+                            Regenerate All Thumbnails
+                        </button>
+                        <span class="text-muted text-sm">Re-render existing thumbnails with the current mode</span>
                     </div>
                 </div>
 

@@ -10,6 +10,7 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
 
 /* ---- Module-level state ---- */
 let scene = null;
@@ -211,6 +212,28 @@ export function loadModel(url, format) {
                         mesh.castShadow = true;
                         mesh.receiveShadow = true;
                         addModelToScene(mesh);
+                        resolve();
+                    },
+                    undefined,
+                    onError
+                );
+                break;
+
+            case '3mf':
+                new ThreeMFLoader().load(
+                    url,
+                    (group) => {
+                        group.traverse((child) => {
+                            if (child.isMesh) {
+                                if (!child.material || (!child.material.vertexColors && !child.material.map)) {
+                                    child.material = DEFAULT_MATERIAL.clone();
+                                }
+                                child.material.side = THREE.DoubleSide;
+                                child.castShadow = true;
+                                child.receiveShadow = true;
+                            }
+                        });
+                        addModelToScene(group);
                         resolve();
                     },
                     undefined,
