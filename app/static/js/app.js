@@ -430,6 +430,14 @@ const app = createApp({
                 } catch (err) {
                     console.error('Failed to load 3D model:', err);
                 }
+            } else if (fmt) {
+                // Unsupported native format — try server-side GLB conversion
+                const glbUrl = `/api/models/${selectedModel.value.id}/file/glb`;
+                try {
+                    await loadModel(glbUrl, 'glb');
+                } catch (err) {
+                    console.error('Failed to load converted GLB model:', err);
+                }
             }
             viewerLoading.value = false;
         }
