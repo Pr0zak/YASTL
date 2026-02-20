@@ -99,7 +99,7 @@ pct exec "$CT_ID" -- bash -c "
 
     apt-get update -qq
     apt-get install -y -qq --no-install-recommends \
-        python3 python3-pip python3-venv python3-dev \
+        python3-full python3-pip python3-dev \
         libgl1-mesa-glx libglib2.0-0 libgomp1 \
         git curl ca-certificates \
         build-essential pkg-config >/dev/null 2>&1
