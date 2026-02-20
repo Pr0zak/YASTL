@@ -10,10 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy application code and install
+# Copy application code and install (with STEP file support)
 COPY pyproject.toml .
 COPY app/ app/
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[step]"
 
 # Create data directories
 RUN mkdir -p /data/thumbnails

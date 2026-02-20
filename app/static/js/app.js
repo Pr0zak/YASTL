@@ -618,21 +618,28 @@ const app = createApp({
 
             const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
             const fmt = (selectedModel.value.file_format || '').toLowerCase();
+            const glbUrl = `/api/models/${selectedModel.value.id}/file/glb`;
+
+            let loaded = false;
 
             if (supportedViewerFormats.includes(fmt)) {
                 const fileUrl = `/api/models/${selectedModel.value.id}/file`;
                 try {
                     await loadModel(fileUrl, fmt);
+                    loaded = true;
                 } catch (err) {
-                    console.error('Failed to load 3D model:', err);
+                    console.warn('Native loader failed for', fmt, '— trying GLB fallback:', err);
                 }
-            } else if (fmt) {
-                // Unsupported native format — try server-side GLB conversion
-                const glbUrl = `/api/models/${selectedModel.value.id}/file/glb`;
+            }
+
+            // Fallback: server-side GLB conversion (covers STEP, STP, and
+            // any native-loader failures like problematic 3MF files)
+            if (!loaded && fmt) {
                 try {
                     await loadModel(glbUrl, 'glb');
+                    loaded = true;
                 } catch (err) {
-                    console.error('Failed to load converted GLB model:', err);
+                    console.error('GLB fallback also failed:', err);
                 }
             }
             viewerLoading.value = false;

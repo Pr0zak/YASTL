@@ -23,6 +23,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+step = [
+    "gmsh>=4.12.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24.0",

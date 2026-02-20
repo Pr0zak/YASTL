@@ -83,6 +83,15 @@ async def get_system_status(request: Request):
     else:
         thumbnail_status = {"status": "unavailable", "total_cached": 0}
 
+    # --- STEP support ---
+    from app.services.step_converter import _detect_backend
+
+    step_backend = _detect_backend()
+    step_status = {
+        "status": "ok" if step_backend else "unavailable",
+        "backend": step_backend,
+    }
+
     # --- Overall health ---
     statuses = [
         scanner_status["status"],
@@ -103,4 +112,5 @@ async def get_system_status(request: Request):
         "watcher": watcher_status,
         "database": database_status,
         "thumbnails": thumbnail_status,
+        "step_support": step_status,
     }

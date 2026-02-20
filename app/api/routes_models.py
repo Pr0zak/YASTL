@@ -450,7 +450,28 @@ async def serve_model_glb(request: Request, model_id: int):
 
     # Convert using trimesh in a thread pool to avoid blocking
     def _convert():
-        loaded = trimesh.load(file_path, force=None)
+        loaded = None
+
+        try:
+            loaded = trimesh.load(file_path, force=None)
+        except Exception as e:
+            logger.debug("trimesh.load failed for %s: %s", file_path, e)
+
+        # For STEP/STP files, fall back to the dedicated converter
+        if loaded is None or (
+            isinstance(loaded, trimesh.Scene) and len(loaded.geometry) == 0
+        ):
+            from app.services.step_converter import is_step_file, load_step
+
+            if is_step_file(file_path):
+                logger.debug("Trying STEP converter for %s", file_path)
+                mesh = load_step(file_path)
+                if mesh is not None:
+                    loaded = mesh
+
+        if loaded is None:
+            raise ValueError(f"Cannot load file for GLB conversion: {file_path}")
+
         if isinstance(loaded, trimesh.Trimesh):
             return loaded.export(file_type="glb")
         elif isinstance(loaded, trimesh.Scene):
