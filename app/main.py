@@ -16,9 +16,11 @@ from app.api.routes_scan import router as scan_router
 from app.api.routes_search import router as search_router
 from app.api.routes_status import router as status_router
 from app.api.routes_tags import router as tags_router
+from app.api.routes_update import router as update_router
 from app.config import settings
 from app.database import init_db
 from app.services.scanner import Scanner
+from app.services.updater import Updater
 from app.services.watcher import ModelFileWatcher
 
 logger = logging.getLogger("yastl")
@@ -45,9 +47,7 @@ async def _migrate_legacy_scan_path(db_path: str, scan_path: str) -> None:
                 ("Default Library", str(scan_path)),
             )
             await db.commit()
-            logger.info(
-                "Migrated legacy scan path as library: %s", scan_path
-            )
+            logger.info("Migrated legacy scan path as library: %s", scan_path)
 
 
 @asynccontextmanager
@@ -102,6 +102,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Could not start file watcher: %s", e)
 
+    # Initialize update service
+    app.state.updater = Updater(app_version="0.1.0")
+
     yield
 
     # Shutdown
@@ -125,6 +128,7 @@ app.include_router(tags_router)
 app.include_router(categories_router)
 app.include_router(scan_router)
 app.include_router(search_router)
+app.include_router(update_router)
 app.include_router(status_router)
 
 # Serve static files
@@ -135,9 +139,7 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # check_dir=False because the directory is created in the lifespan handler.
 app.mount(
     "/thumbnails",
-    StaticFiles(
-        directory=str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), check_dir=False
-    ),
+    StaticFiles(directory=str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), check_dir=False),
     name="thumbnails",
 )
 

@@ -1774,8 +1774,171 @@ img {
     color: var(--text-muted);
 }
 
+/* ==================================================================
+   Update System
+   ================================================================== */
+
+.update-status {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    margin-bottom: 12px;
+}
+
+.update-status-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.update-status-checking,
+.update-status-applying,
+.update-status-restarting {
+    flex-direction: row;
+    align-items: center;
+}
+
+.update-status-unavailable {
+    flex-direction: row;
+    align-items: center;
+    opacity: 0.7;
+}
+
+.update-status-current {
+    flex-direction: row;
+    align-items: center;
+    border-color: #2e7d32;
+    background: rgba(46, 125, 50, 0.08);
+}
+
+.update-status-available {
+    border-color: var(--accent);
+    background: rgba(15, 155, 142, 0.08);
+}
+
+.update-status-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+}
+
+.update-icon-current {
+    color: #4caf50;
+}
+
+.update-icon-available {
+    color: var(--accent);
+}
+
+.update-status-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.update-status-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.update-status-detail {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.update-status-detail code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.78rem;
+}
+
+.update-commits {
+    max-height: 200px;
+    overflow-y: auto;
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+}
+
+.update-commit {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.update-commit:last-child {
+    border-bottom: none;
+}
+
+.commit-sha {
+    flex-shrink: 0;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: rgba(15, 155, 142, 0.12);
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+
+.commit-message {
+    flex: 1;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.commit-meta {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.update-apply-btn {
+    align-self: flex-start;
+}
+
+.update-check-btn {
+    align-self: flex-start;
+}
+
+.update-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(231, 76, 60, 0.1);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    border-radius: var(--radius-sm);
+    color: var(--danger);
+    font-size: 0.82rem;
+    margin-bottom: 12px;
+}
+
 @media (max-width: 640px) {
     .settings-panel {
         max-width: 100%;
+    }
+
+    .update-commit {
+        flex-wrap: wrap;
+    }
+
+    .commit-meta {
+        width: 100%;
+        margin-top: 2px;
     }
 }

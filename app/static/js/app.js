@@ -96,6 +96,24 @@ const app = createApp({
         const newLibPath = ref('');
         const addingLibrary = ref(false);
 
+        // Update system
+        const updateInfo = reactive({
+            checked: false,
+            checking: false,
+            update_available: false,
+            current_version: '',
+            current_sha: '',
+            remote_sha: '',
+            commits_behind: 0,
+            commits: [],
+            is_git_repo: false,
+            remote_url: '',
+            branch: '',
+            error: null,
+            applying: false,
+            restarting: false,
+        });
+
         // System status indicator
         const showStatusMenu = ref(false);
         const systemStatus = reactive({
@@ -366,10 +384,108 @@ const app = createApp({
         function openSettings() {
             fetchLibraries();
             showSettings.value = true;
+            // Auto-check for updates if not checked yet
+            if (!updateInfo.checked && !updateInfo.checking) {
+                checkForUpdates();
+            }
         }
 
         function closeSettings() {
             showSettings.value = false;
+        }
+
+        /* ==============================================================
+           Update System
+           ============================================================== */
+
+        async function checkForUpdates() {
+            updateInfo.checking = true;
+            updateInfo.error = null;
+            try {
+                const res = await fetch('/api/update/check');
+                if (!res.ok) {
+                    const data = await res.json();
+                    updateInfo.error = data.detail || 'Failed to check for updates';
+                    return;
+                }
+                const data = await res.json();
+                updateInfo.checked = true;
+                updateInfo.update_available = data.update_available;
+                updateInfo.current_version = data.current_version;
+                updateInfo.current_sha = data.current_sha;
+                updateInfo.remote_sha = data.remote_sha;
+                updateInfo.commits_behind = data.commits_behind;
+                updateInfo.commits = data.commits || [];
+                updateInfo.is_git_repo = data.is_git_repo;
+                updateInfo.remote_url = data.remote_url;
+                updateInfo.branch = data.branch;
+                if (data.error) {
+                    updateInfo.error = data.error;
+                }
+            } catch (err) {
+                updateInfo.error = 'Failed to check for updates';
+                console.error('checkForUpdates error:', err);
+            } finally {
+                updateInfo.checking = false;
+            }
+        }
+
+        async function applyUpdate() {
+            if (!confirm('Apply update and restart YASTL?\n\nThe application will be briefly unavailable while it restarts.')) {
+                return;
+            }
+            updateInfo.applying = true;
+            updateInfo.error = null;
+            try {
+                const res = await fetch('/api/update/apply', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    updateInfo.applying = false;
+                    updateInfo.restarting = true;
+                    showToast('Update applied. Restarting...', 'info');
+                    // Poll until the server comes back
+                    waitForRestart();
+                } else {
+                    updateInfo.error = data.detail || 'Update failed';
+                    showToast(data.detail || 'Update failed', 'error');
+                }
+            } catch (err) {
+                // Connection may drop during restart - that's expected
+                updateInfo.applying = false;
+                updateInfo.restarting = true;
+                showToast('Update applied. Restarting...', 'info');
+                waitForRestart();
+            }
+        }
+
+        function waitForRestart() {
+            let attempts = 0;
+            const maxAttempts = 30;
+            const interval = setInterval(async () => {
+                attempts++;
+                try {
+                    const res = await fetch('/health');
+                    if (res.ok) {
+                        clearInterval(interval);
+                        updateInfo.restarting = false;
+                        updateInfo.update_available = false;
+                        updateInfo.commits_behind = 0;
+                        updateInfo.commits = [];
+                        updateInfo.checked = false;
+                        showToast('YASTL has been updated and restarted');
+                        // Refresh page to load any frontend changes
+                        setTimeout(() => window.location.reload(), 1000);
+                    }
+                } catch {
+                    // Server still down, keep polling
+                }
+                if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    updateInfo.restarting = false;
+                    updateInfo.error = 'Service did not come back after restart. Check server logs.';
+                    showToast('Restart may have failed. Check server logs.', 'error');
+                }
+            }, 2000);
         }
 
         /* ==============================================================
@@ -733,6 +849,7 @@ const app = createApp({
             newLibName,
             newLibPath,
             addingLibrary,
+            updateInfo,
             showStatusMenu,
             systemStatus,
 
@@ -767,6 +884,8 @@ const app = createApp({
             closeSettings,
             addLibrary,
             deleteLibrary,
+            checkForUpdates,
+            applyUpdate,
             toggleStatusMenu,
             closeStatusMenu,
             statusLabel,
@@ -1397,6 +1516,129 @@ const app = createApp({
                             Add Library
                         </button>
                     </div>
+                </div>
+
+                <!-- Update Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.refresh"></span>
+                        Updates
+                    </div>
+                    <div class="settings-section-desc">
+                        Check for and apply updates from the remote repository. The service will restart automatically after updating.
+                    </div>
+
+                    <!-- Not a git repo -->
+                    <div v-if="updateInfo.checked && !updateInfo.is_git_repo" class="update-status update-status-unavailable">
+                        <div class="update-status-icon">
+                            <span v-html="ICONS.warning"></span>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Updates unavailable</div>
+                            <div class="update-status-detail">
+                                Not running from a git repository. Updates require a git-based installation.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Restarting -->
+                    <div v-else-if="updateInfo.restarting" class="update-status update-status-restarting">
+                        <div class="update-status-icon">
+                            <div class="spinner spinner-sm"></div>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Restarting...</div>
+                            <div class="update-status-detail">
+                                YASTL is restarting with the latest changes. This page will reload automatically.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Applying update -->
+                    <div v-else-if="updateInfo.applying" class="update-status update-status-applying">
+                        <div class="update-status-icon">
+                            <div class="spinner spinner-sm"></div>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Applying update...</div>
+                            <div class="update-status-detail">
+                                Pulling changes and reinstalling dependencies.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Checking -->
+                    <div v-else-if="updateInfo.checking" class="update-status update-status-checking">
+                        <div class="update-status-icon">
+                            <div class="spinner spinner-sm"></div>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Checking for updates...</div>
+                        </div>
+                    </div>
+
+                    <!-- Update available -->
+                    <div v-else-if="updateInfo.update_available" class="update-status update-status-available">
+                        <div class="update-status-header">
+                            <div class="update-status-icon update-icon-available">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="12" y2="16"/><line x1="16" y1="12" x2="12" y2="16"/></svg>
+                            </div>
+                            <div class="update-status-text">
+                                <div class="update-status-title">Update available</div>
+                                <div class="update-status-detail">
+                                    {{ updateInfo.commits_behind }} new commit{{ updateInfo.commits_behind !== 1 ? 's' : '' }}
+                                    on <code>{{ updateInfo.branch }}</code>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Commit list -->
+                        <div v-if="updateInfo.commits.length" class="update-commits">
+                            <div v-for="commit in updateInfo.commits" :key="commit.sha" class="update-commit">
+                                <code class="commit-sha">{{ commit.sha }}</code>
+                                <span class="commit-message">{{ commit.message }}</span>
+                                <span class="commit-meta">{{ commit.author }} &middot; {{ commit.date }}</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary update-apply-btn"
+                                @click="applyUpdate"
+                                :disabled="updateInfo.applying">
+                            <span v-html="ICONS.download"></span>
+                            Update &amp; Restart
+                        </button>
+                    </div>
+
+                    <!-- Up to date -->
+                    <div v-else-if="updateInfo.checked && !updateInfo.error" class="update-status update-status-current">
+                        <div class="update-status-icon update-icon-current">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Up to date</div>
+                            <div class="update-status-detail">
+                                v{{ updateInfo.current_version }}
+                                <span v-if="updateInfo.current_sha" class="text-muted">
+                                    &middot; {{ updateInfo.current_sha.substring(0, 8) }}
+                                </span>
+                                <span v-if="updateInfo.branch" class="text-muted">
+                                    &middot; {{ updateInfo.branch }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error -->
+                    <div v-if="updateInfo.error" class="update-error">
+                        <span v-html="ICONS.warning"></span>
+                        {{ updateInfo.error }}
+                    </div>
+
+                    <!-- Check button -->
+                    <button class="btn btn-secondary update-check-btn"
+                            @click="checkForUpdates"
+                            :disabled="updateInfo.checking || updateInfo.applying || updateInfo.restarting">
+                        <span v-html="ICONS.refresh"></span>
+                        Check for Updates
+                    </button>
                 </div>
             </div>
         </div>
