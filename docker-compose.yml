@@ -1,0 +1,19 @@
+services:
+  yastl:
+    build: .
+    container_name: yastl
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent data (database + thumbnails)
+      - yastl-data:/data
+      # Mount your 3D model directory (read-only is fine)
+      - /nfs/DATA/3dPrinting:/models:ro
+    environment:
+      - YASTL_MODEL_LIBRARY_DB=/data/library.db
+      - YASTL_MODEL_LIBRARY_SCAN_PATH=/models
+      - YASTL_MODEL_LIBRARY_THUMBNAIL_PATH=/data/thumbnails
+    restart: unless-stopped
+
+volumes:
+  yastl-data:
