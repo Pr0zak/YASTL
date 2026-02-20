@@ -231,6 +231,59 @@ class TestFindDuplicates:
 
 
 @pytest.mark.asyncio
+class TestDownloadModel:
+    async def test_download_existing_model(self, client, create_stl):
+        """GET /api/models/{id}/download should return the file as attachment."""
+        db_path = client._db_path
+        scan_dir = client._scan_dir
+
+        # Create a real STL file on disk
+        stl_path = scan_dir / "cube.stl"
+        create_stl(stl_path)
+
+        model_id = await insert_test_model(
+            db_path, name="cube", file_path=str(stl_path), file_format="stl"
+        )
+
+        resp = await client.get(f"/api/models/{model_id}/download")
+        assert resp.status_code == 200
+        assert "attachment" in resp.headers.get("content-disposition", "")
+        assert "cube.stl" in resp.headers.get("content-disposition", "")
+
+    async def test_download_preserves_extension(self, client, create_stl):
+        """Download filename should include the correct file extension."""
+        db_path = client._db_path
+        scan_dir = client._scan_dir
+
+        stl_path = scan_dir / "my_model.stl"
+        create_stl(stl_path)
+
+        # Model name without extension — download should add it
+        model_id = await insert_test_model(
+            db_path, name="my_model", file_path=str(stl_path), file_format="stl"
+        )
+
+        resp = await client.get(f"/api/models/{model_id}/download")
+        assert resp.status_code == 200
+        assert "my_model.stl" in resp.headers.get("content-disposition", "")
+
+    async def test_download_nonexistent_model(self, client):
+        """GET /api/models/999/download should return 404."""
+        resp = await client.get("/api/models/999/download")
+        assert resp.status_code == 404
+
+    async def test_download_missing_file_on_disk(self, client):
+        """Download should return 404 when file_path doesn't exist on disk."""
+        db_path = client._db_path
+        model_id = await insert_test_model(
+            db_path, name="gone", file_path="/tmp/nonexistent_file.stl"
+        )
+
+        resp = await client.get(f"/api/models/{model_id}/download")
+        assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 class TestModelTags:
     async def test_add_tags(self, client):
         """POST /api/models/{id}/tags should add tags to a model."""

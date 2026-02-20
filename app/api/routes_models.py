@@ -405,6 +405,53 @@ async def serve_model_file(request: Request, model_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Download model file
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{model_id}/download")
+async def download_model_file(request: Request, model_id: int):
+    """Download the original 3D model file as an attachment."""
+    db_path = _get_db_path(request)
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT file_path, name, file_format FROM models WHERE id = ?",
+            (model_id,),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    model = dict(row)
+    file_path = model["file_path"]
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Model file not found on disk")
+
+    # Build a download filename from the model name + original extension
+    ext = os.path.splitext(file_path)[1].lower()
+    model_name = model["name"]
+    # Ensure the filename has the correct extension
+    if not model_name.lower().endswith(ext):
+        download_name = f"{model_name}{ext}"
+    else:
+        download_name = model_name
+
+    media_type = MIME_TYPES.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=download_name,
+        content_disposition_type="attachment",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Serve GLB conversion for browser preview
 # ---------------------------------------------------------------------------
 

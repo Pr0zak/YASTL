@@ -1610,10 +1610,10 @@ const app = createApp({
                     <!-- Actions -->
                     <div class="detail-actions">
                         <a class="btn btn-secondary" style="flex:1"
-                           :href="'/api/models/' + selectedModel.id + '/file'"
+                           :href="'/api/models/' + selectedModel.id + '/download'"
                            download>
                             <span v-html="ICONS.download"></span>
-                            Download
+                            Download {{ selectedModel.file_format ? selectedModel.file_format.toUpperCase() : '' }}
                         </a>
                         <button class="btn btn-danger" style="flex:1" @click="deleteModel(selectedModel)">
                             <span v-html="ICONS.trash"></span>
