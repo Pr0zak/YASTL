@@ -118,7 +118,7 @@ img {
 .app-body {
     display: flex;
     flex: 1;
-    margin-top: 56px; /* navbar height */
+    margin-top: 92px; /* navbar (56px) + breadcrumb bar (36px) */
 }
 
 /* ---- Navbar ---- */
@@ -240,6 +240,109 @@ img {
     margin-left: auto;
 }
 
+/* ---- Breadcrumb Bar ---- */
+.breadcrumb-bar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    z-index: 999;
+    height: 36px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 0;
+    font-size: 0.8rem;
+}
+
+.breadcrumb-nav {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-shrink: 0;
+}
+
+.breadcrumb-trail {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.breadcrumb-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition), background var(--transition);
+    white-space: nowrap;
+    user-select: none;
+    text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.breadcrumb-link.active {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.breadcrumb-link.breadcrumb-disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.breadcrumb-link.breadcrumb-disabled:hover {
+    background: none;
+    color: var(--text-secondary);
+}
+
+.breadcrumb-icon {
+    display: inline-flex;
+    align-items: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.breadcrumb-sep {
+    color: var(--text-muted);
+    padding: 0 2px;
+    font-size: 0.85rem;
+    user-select: none;
+}
+
+.breadcrumb-crumb {
+    display: inline-flex;
+    align-items: center;
+}
+
+.breadcrumb-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 3px;
+    width: 14px;
+    height: 14px;
+    font-size: 13px;
+    line-height: 1;
+    border-radius: 50%;
+    opacity: 0.6;
+    transition: opacity var(--transition), color var(--transition);
+}
+
+.breadcrumb-remove:hover {
+    opacity: 1;
+    color: var(--danger);
+}
+
 /* ---- Sidebar ---- */
 .sidebar {
     width: 260px;
@@ -248,9 +351,9 @@ img {
     border-right: 1px solid var(--border);
     padding: 16px 0;
     overflow-y: auto;
-    height: calc(100vh - 56px);
+    height: calc(100vh - 92px);
     position: sticky;
-    top: 56px;
+    top: 92px;
     flex-shrink: 0;
     transition: transform 0.3s ease, opacity 0.3s ease;
 }
@@ -1393,7 +1496,7 @@ img {
     .sidebar {
         position: fixed;
         left: 0;
-        top: 56px;
+        top: 92px;
         bottom: 0;
         z-index: 500;
         transform: translateX(-100%);
@@ -1410,7 +1513,7 @@ img {
         display: block;
         position: fixed;
         inset: 0;
-        top: 56px;
+        top: 92px;
         z-index: 499;
         background: rgba(0, 0, 0, 0.5);
     }
@@ -1430,6 +1533,17 @@ img {
 
     .navbar-brand h1 {
         display: none;
+    }
+
+    .breadcrumb-bar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 0 12px;
+    }
+
+    .breadcrumb-link {
+        padding: 4px 6px;
+        font-size: 0.75rem;
     }
 
     .detail-panel {

@@ -38,6 +38,10 @@ const ICONS = {
     database: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
     eye: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
     image: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+    star: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+    home: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+    tag: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`,
+    layers: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
 };
 
 /* ==================================================================
@@ -74,6 +78,9 @@ const app = createApp({
             tag: '',
             category: '',
         });
+
+        // Breadcrumb navigation
+        const currentView = ref('all');
 
         const pagination = reactive({
             limit: 50,
@@ -144,6 +151,20 @@ const app = createApp({
 
         const hasActiveFilters = computed(() => {
             return !!(filters.format || filters.tag || filters.category);
+        });
+
+        const breadcrumbTrail = computed(() => {
+            const trail = [];
+            if (filters.format) {
+                trail.push({ type: 'format', label: filters.format.toUpperCase() });
+            }
+            if (filters.tag) {
+                trail.push({ type: 'tag', label: filters.tag });
+            }
+            if (filters.category) {
+                trail.push({ type: 'category', label: filters.category });
+            }
+            return trail;
         });
 
         /* ==============================================================
@@ -685,12 +706,14 @@ const app = createApp({
 
         function setTagFilter(tagName) {
             filters.tag = filters.tag === tagName ? '' : tagName;
+            if (filters.tag) currentView.value = 'tags';
             pagination.offset = 0;
             refreshCurrentView();
         }
 
         function setCategoryFilter(catName) {
             filters.category = filters.category === catName ? '' : catName;
+            if (filters.category) currentView.value = 'categories';
             pagination.offset = 0;
             refreshCurrentView();
         }
@@ -699,6 +722,31 @@ const app = createApp({
             filters.format = '';
             filters.tag = '';
             filters.category = '';
+            pagination.offset = 0;
+            refreshCurrentView();
+        }
+
+        function setView(view) {
+            currentView.value = view;
+            if (view === 'all') {
+                clearFilters();
+            } else if (view === 'favorites') {
+                // Favorites is a placeholder for now
+                showToast('Favorites coming soon', 'info');
+                currentView.value = currentView.value; // stay on current
+            }
+            // For libraries, categories, tags — just switch the view mode
+            // The sidebar and filters remain functional
+        }
+
+        function clearBreadcrumb(crumb) {
+            if (crumb.type === 'format') {
+                filters.format = '';
+            } else if (crumb.type === 'tag') {
+                filters.tag = '';
+            } else if (crumb.type === 'category') {
+                filters.category = '';
+            }
             pagination.offset = 0;
             refreshCurrentView();
         }
@@ -856,6 +904,7 @@ const app = createApp({
             scanStatus,
             showSettings,
             libraries,
+            currentView,
             newLibName,
             newLibPath,
             addingLibrary,
@@ -869,6 +918,7 @@ const app = createApp({
             shownCount,
             hasActiveFilters,
             hasLibraries,
+            breadcrumbTrail,
 
             // Actions
             fetchModels,
@@ -885,6 +935,8 @@ const app = createApp({
             setTagFilter,
             setCategoryFilter,
             clearFilters,
+            setView,
+            clearBreadcrumb,
             toggleCategory,
             saveName,
             saveDesc,
@@ -1028,14 +1080,60 @@ const app = createApp({
             </div>
 
             <button class="btn-icon" @click="openSettings" title="Settings" v-html="ICONS.settings"></button>
-            <button class="btn btn-primary"
-                    @click="triggerScan"
-                    :disabled="scanStatus.scanning || !hasLibraries">
-                <span v-html="ICONS.scan"></span>
-                <span>Scan Library</span>
-            </button>
         </div>
     </nav>
+
+    <!-- ============================================================
+         Breadcrumb Navigation
+         ============================================================ -->
+    <div class="breadcrumb-bar">
+        <div class="breadcrumb-nav">
+            <a class="breadcrumb-link"
+               :class="{ active: currentView === 'all' && !hasActiveFilters }"
+               @click="setView('all')">
+                <span class="breadcrumb-icon" v-html="ICONS.home"></span>
+                All Models
+            </a>
+            <span class="breadcrumb-sep">/</span>
+            <a class="breadcrumb-link"
+               :class="{ active: currentView === 'libraries' }"
+               @click="setView('libraries')">
+                <span class="breadcrumb-icon" v-html="ICONS.folder"></span>
+                Libraries
+            </a>
+            <span class="breadcrumb-sep">/</span>
+            <a class="breadcrumb-link"
+               :class="{ active: currentView === 'categories' || !!filters.category }"
+               @click="setView('categories')">
+                <span class="breadcrumb-icon" v-html="ICONS.layers"></span>
+                Categories
+            </a>
+            <span class="breadcrumb-sep">/</span>
+            <a class="breadcrumb-link"
+               :class="{ active: currentView === 'tags' || !!filters.tag }"
+               @click="setView('tags')">
+                <span class="breadcrumb-icon" v-html="ICONS.tag"></span>
+                Tags
+            </a>
+            <span class="breadcrumb-sep">/</span>
+            <a class="breadcrumb-link breadcrumb-disabled"
+               :class="{ active: currentView === 'favorites' }"
+               @click="setView('favorites')">
+                <span class="breadcrumb-icon" v-html="ICONS.star"></span>
+                Favorites
+            </a>
+        </div>
+        <!-- Active filter trail -->
+        <div v-if="breadcrumbTrail.length" class="breadcrumb-trail">
+            <span class="breadcrumb-sep">&rsaquo;</span>
+            <span v-for="(crumb, idx) in breadcrumbTrail" :key="idx" class="breadcrumb-crumb">
+                <a class="breadcrumb-link active" @click="clearBreadcrumb(crumb)">
+                    {{ crumb.label }}
+                    <span class="breadcrumb-remove">&times;</span>
+                </a>
+            </span>
+        </div>
+    </div>
 
     <!-- ============================================================
          Body: Sidebar + Main
