@@ -1484,6 +1484,13 @@ const app = createApp({
                                autofocus>
                     </template>
                 </div>
+                <a class="btn btn-primary btn-sm detail-download-btn"
+                   :href="'/api/models/' + selectedModel.id + '/download'"
+                   download
+                   title="Download model file">
+                    <span v-html="ICONS.download"></span>
+                    Download
+                </a>
                 <button class="close-btn" @click="closeDetail" title="Close">&times;</button>
             </div>
 

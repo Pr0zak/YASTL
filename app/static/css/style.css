@@ -954,6 +954,17 @@ img {
     margin-right: 12px;
 }
 
+.detail-header .detail-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-right: 8px;
+    font-size: 0.82rem;
+    padding: 6px 14px;
+    text-decoration: none;
+}
+
 .detail-header .close-btn {
     width: 32px;
     height: 32px;
