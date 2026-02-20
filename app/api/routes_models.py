@@ -1,9 +1,17 @@
 """API routes for 3D model CRUD operations and file serving."""
 
+import asyncio
+import logging
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 import aiosqlite
 import os
+import trimesh
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -214,11 +222,13 @@ async def find_duplicates(request: Request):
                 (file_hash,),
             )
             model_rows = await cursor.fetchall()
-            groups.append({
-                "file_hash": file_hash,
-                "count": hash_dict["count"],
-                "models": [dict(r) for r in model_rows],
-            })
+            groups.append(
+                {
+                    "file_hash": file_hash,
+                    "count": hash_dict["count"],
+                    "models": [dict(r) for r in model_rows],
+                }
+            )
 
         return {"duplicate_groups": groups, "total_groups": len(groups)}
 
@@ -254,7 +264,8 @@ async def update_model(request: Request, model_id: int):
 
     if name is None and description is None:
         raise HTTPException(
-            status_code=400, detail="At least one of 'name' or 'description' is required"
+            status_code=400,
+            detail="At least one of 'name' or 'description' is required",
         )
 
     async with aiosqlite.connect(db_path) as db:
@@ -335,6 +346,16 @@ async def delete_model(request: Request, model_id: int):
         except OSError:
             pass  # Non-critical: log but don't fail
 
+    # Remove cached GLB preview if it exists
+    glb_cache_path = os.path.join(
+        str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache", f"{model_id}.glb"
+    )
+    if os.path.exists(glb_cache_path):
+        try:
+            os.remove(glb_cache_path)
+        except OSError:
+            pass
+
     return {"detail": f"Model {model_id} deleted"}
 
 
@@ -375,6 +396,89 @@ async def serve_model_file(request: Request, model_id: int):
         path=file_path,
         media_type=media_type,
         filename=filename,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Serve GLB conversion for browser preview
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{model_id}/file/glb")
+async def serve_model_glb(request: Request, model_id: int):
+    """Convert and serve a model as GLB for browser 3D preview.
+
+    Enables preview of formats not natively supported by Three.js
+    (e.g. 3MF, DAE, FBX) by converting them to GLB via trimesh.
+    Results are cached alongside thumbnails.
+    """
+    db_path = _get_db_path(request)
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT file_path, name FROM models WHERE id = ?", (model_id,)
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    model = dict(row)
+    file_path = model["file_path"]
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Model file not found on disk")
+
+    # Check cache
+    cache_dir = os.path.join(
+        str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache"
+    )
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"{model_id}.glb")
+
+    if os.path.exists(cache_path):
+        src_mtime = os.path.getmtime(file_path)
+        cache_mtime = os.path.getmtime(cache_path)
+        if src_mtime <= cache_mtime:
+            return FileResponse(
+                path=cache_path,
+                media_type="model/gltf-binary",
+                filename=f"{os.path.splitext(model['name'])[0]}.glb",
+            )
+
+    # Convert using trimesh in a thread pool to avoid blocking
+    def _convert():
+        loaded = trimesh.load(file_path, force=None)
+        if isinstance(loaded, trimesh.Trimesh):
+            return loaded.export(file_type="glb")
+        elif isinstance(loaded, trimesh.Scene):
+            return loaded.export(file_type="glb")
+        else:
+            raise ValueError(
+                f"Cannot convert to GLB: unsupported type {type(loaded).__name__}"
+            )
+
+    try:
+        glb_data = await asyncio.to_thread(_convert)
+    except Exception as e:
+        logger.warning(
+            "GLB conversion failed for model %d (%s): %s", model_id, file_path, e
+        )
+        raise HTTPException(
+            status_code=422,
+            detail="Could not convert model to GLB for preview",
+        )
+
+    # Write to cache
+    with open(cache_path, "wb") as f:
+        f.write(glb_data)
+
+    return FileResponse(
+        path=cache_path,
+        media_type="model/gltf-binary",
+        filename=f"{os.path.splitext(model['name'])[0]}.glb",
     )
 
 
@@ -445,9 +549,7 @@ async def add_tags_to_model(request: Request, model_id: int):
                 continue
 
             # Create tag if it doesn't exist
-            cursor = await db.execute(
-                "SELECT id FROM tags WHERE name = ?", (tag_name,)
-            )
+            cursor = await db.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
             tag_row = await cursor.fetchone()
 
             if tag_row is None:
@@ -560,9 +662,7 @@ async def add_category_to_model(request: Request, model_id: int):
 
 
 @router.delete("/{model_id}/categories/{category_id}")
-async def remove_category_from_model(
-    request: Request, model_id: int, category_id: int
-):
+async def remove_category_from_model(request: Request, model_id: int, category_id: int):
     """Remove a category from a model."""
     db_path = _get_db_path(request)
 

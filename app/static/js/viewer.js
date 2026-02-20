@@ -335,8 +335,27 @@ function addModelToScene(object) {
 
     // Compute bounding box
     const box = new THREE.Box3().setFromObject(object);
+
+    // Guard against empty or degenerate geometry
+    if (box.isEmpty()) {
+        console.warn('YASTL viewer: model has empty bounding box');
+        scene.add(object);
+        currentModel = object;
+        resetCamera();
+        return;
+    }
+
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
+
+    // Guard against NaN/Infinity from malformed geometry
+    if (!isFinite(center.x) || !isFinite(center.y) || !isFinite(center.z)) {
+        console.warn('YASTL viewer: model has invalid bounds (NaN/Infinity)');
+        scene.add(object);
+        currentModel = object;
+        resetCamera();
+        return;
+    }
 
     // Center the model on the origin
     object.position.sub(center);
