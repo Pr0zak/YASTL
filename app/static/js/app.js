@@ -96,6 +96,10 @@ const app = createApp({
         const newLibPath = ref('');
         const addingLibrary = ref(false);
 
+        // Thumbnail settings
+        const thumbnailMode = ref('wireframe');
+        const regeneratingThumbnails = ref(false);
+
         // Update system
         const updateInfo = reactive({
             checked: false,
@@ -383,8 +387,66 @@ const app = createApp({
             }
         }
 
+        /* ==============================================================
+           Thumbnail Settings
+           ============================================================== */
+
+        async function fetchSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                if (!res.ok) return;
+                const data = await res.json();
+                thumbnailMode.value = data.thumbnail_mode || 'wireframe';
+            } catch (err) {
+                console.error('fetchSettings error:', err);
+            }
+        }
+
+        async function setThumbnailMode(mode) {
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ thumbnail_mode: mode }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    thumbnailMode.value = data.thumbnail_mode || mode;
+                    showToast(`Thumbnail mode set to ${mode}`);
+                } else {
+                    const data = await res.json();
+                    showToast(data.detail || 'Failed to update setting', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to update setting', 'error');
+                console.error('setThumbnailMode error:', err);
+            }
+        }
+
+        async function regenerateThumbnails() {
+            if (!confirm('Regenerate all thumbnails?\n\nThis will re-render every model thumbnail using the current mode. This runs in the background.')) {
+                return;
+            }
+            regeneratingThumbnails.value = true;
+            try {
+                const res = await fetch('/api/settings/regenerate-thumbnails', { method: 'POST' });
+                if (res.ok) {
+                    showToast('Thumbnail regeneration started', 'info');
+                } else {
+                    const data = await res.json();
+                    showToast(data.detail || 'Failed to start regeneration', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to start thumbnail regeneration', 'error');
+                console.error('regenerateThumbnails error:', err);
+            } finally {
+                regeneratingThumbnails.value = false;
+            }
+        }
+
         function openSettings() {
             fetchLibraries();
+            fetchSettings();
             showSettings.value = true;
             // Auto-check for updates if not checked yet
             if (!updateInfo.checked && !updateInfo.checking) {
@@ -860,6 +922,8 @@ const app = createApp({
             newLibPath,
             addingLibrary,
             updateInfo,
+            thumbnailMode,
+            regeneratingThumbnails,
             showStatusMenu,
             systemStatus,
 
@@ -894,6 +958,8 @@ const app = createApp({
             closeSettings,
             addLibrary,
             deleteLibrary,
+            setThumbnailMode,
+            regenerateThumbnails,
             checkForUpdates,
             applyUpdate,
             toggleStatusMenu,
@@ -1525,6 +1591,44 @@ const app = createApp({
                             <span v-html="ICONS.plus"></span>
                             Add Library
                         </button>
+                    </div>
+                </div>
+
+                <!-- Thumbnails Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.image"></span>
+                        Thumbnails
+                    </div>
+                    <div class="settings-section-desc">
+                        Choose how model preview thumbnails are rendered. Solid mode shows filled faces with lighting; wireframe shows edges only.
+                    </div>
+
+                    <div class="thumbnail-mode-options">
+                        <label class="thumbnail-mode-option" :class="{ active: thumbnailMode === 'wireframe' }" @click="setThumbnailMode('wireframe')">
+                            <input type="radio" name="thumbnailMode" value="wireframe" :checked="thumbnailMode === 'wireframe'">
+                            <div class="thumbnail-mode-info">
+                                <div class="thumbnail-mode-label">Wireframe</div>
+                                <div class="thumbnail-mode-desc">Edges and outlines only</div>
+                            </div>
+                        </label>
+                        <label class="thumbnail-mode-option" :class="{ active: thumbnailMode === 'solid' }" @click="setThumbnailMode('solid')">
+                            <input type="radio" name="thumbnailMode" value="solid" :checked="thumbnailMode === 'solid'">
+                            <div class="thumbnail-mode-info">
+                                <div class="thumbnail-mode-label">Solid</div>
+                                <div class="thumbnail-mode-desc">Filled faces with lighting</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="thumbnail-regen-row">
+                        <button class="btn btn-secondary"
+                                @click="regenerateThumbnails"
+                                :disabled="regeneratingThumbnails">
+                            <span v-html="ICONS.refresh"></span>
+                            Regenerate All Thumbnails
+                        </button>
+                        <span class="text-muted text-sm">Re-render existing thumbnails with the current mode</span>
                     </div>
                 </div>
 

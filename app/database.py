@@ -66,6 +66,11 @@ CREATE TABLE IF NOT EXISTS model_tags (
     PRIMARY KEY (model_id, tag_id)
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_models_file_path ON models(file_path);
 CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);
@@ -162,6 +167,37 @@ async def rebuild_fts() -> None:
             FROM models m
         """)
         await db.commit()
+
+
+async def get_setting(key: str, default: str | None = None) -> str | None:
+    """Retrieve a setting value by key, returning *default* if not set."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        )
+        row = await cursor.fetchone()
+        if row is not None:
+            return row["value"]
+        return default
+
+
+async def set_setting(key: str, value: str) -> None:
+    """Insert or update a setting value."""
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        await db.commit()
+
+
+async def get_all_settings() -> dict[str, str]:
+    """Return all stored settings as a dict."""
+    async with get_db() as db:
+        cursor = await db.execute("SELECT key, value FROM settings")
+        rows = await cursor.fetchall()
+        return {row["key"]: row["value"] for row in rows}
 
 
 async def update_fts_for_model(db: aiosqlite.Connection, model_id: int) -> None:

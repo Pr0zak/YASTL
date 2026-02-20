@@ -14,7 +14,7 @@ from pathlib import Path
 import aiosqlite
 
 from app.services import hasher, processor, thumbnail
-from app.database import update_fts_for_model
+from app.database import get_setting, update_fts_for_model
 
 logger = logging.getLogger(__name__)
 
@@ -272,12 +272,14 @@ class Scanner:
         model_id = cursor.lastrowid
 
         # Generate thumbnail (CPU-bound -- run in executor)
+        thumb_mode = await get_setting("thumbnail_mode", "wireframe")
         thumb_filename: str | None = await loop.run_in_executor(
             None,
             thumbnail.generate_thumbnail,
             file_path_str,
             self.thumbnail_path,
             model_id,
+            thumb_mode,
         )
 
         # Update the model row with the thumbnail path
