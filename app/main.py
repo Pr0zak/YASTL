@@ -4,11 +4,13 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+import aiosqlite
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.api.routes_categories import router as categories_router
+from app.api.routes_libraries import router as libraries_router
 from app.api.routes_models import router as models_router
 from app.api.routes_scan import router as scan_router
 from app.api.routes_search import router as search_router
@@ -25,12 +27,33 @@ logging.basicConfig(
 )
 
 
+async def _migrate_legacy_scan_path(db_path: str, scan_path: str) -> None:
+    """Import the legacy YASTL_MODEL_LIBRARY_SCAN_PATH env var as a library.
+
+    For backwards compatibility, if the env var is set we create a library
+    entry for it on first start (only if no library with that path exists).
+    """
+    async with aiosqlite.connect(str(db_path)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id FROM libraries WHERE path = ?", (str(scan_path),)
+        )
+        if await cursor.fetchone() is None:
+            await db.execute(
+                "INSERT INTO libraries (name, path) VALUES (?, ?)",
+                ("Default Library", str(scan_path)),
+            )
+            await db.commit()
+            logger.info(
+                "Migrated legacy scan path as library: %s", scan_path
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     logger.info("Starting YASTL - Yet Another STL")
     logger.info("Database: %s", settings.MODEL_LIBRARY_DB)
-    logger.info("Scan path: %s", settings.MODEL_LIBRARY_SCAN_PATH)
     logger.info("Thumbnail path: %s", settings.MODEL_LIBRARY_THUMBNAIL_PATH)
 
     # Ensure directories exist
@@ -41,9 +64,15 @@ async def lifespan(app: FastAPI):
     await init_db(settings.MODEL_LIBRARY_DB)
     app.state.db_path = settings.MODEL_LIBRARY_DB
 
-    # Initialize scanner
+    # Backwards compat: import legacy env-var scan path as a library
+    if settings.MODEL_LIBRARY_SCAN_PATH is not None:
+        await _migrate_legacy_scan_path(
+            settings.MODEL_LIBRARY_DB,
+            settings.MODEL_LIBRARY_SCAN_PATH,
+        )
+
+    # Initialize scanner (reads libraries from DB)
     app.state.scanner = Scanner(
-        scan_path=settings.MODEL_LIBRARY_SCAN_PATH,
         db_path=settings.MODEL_LIBRARY_DB,
         thumbnail_path=settings.MODEL_LIBRARY_THUMBNAIL_PATH,
         supported_extensions=settings.SUPPORTED_EXTENSIONS,
@@ -51,7 +80,6 @@ async def lifespan(app: FastAPI):
 
     # Initialize and start file watcher
     watcher = ModelFileWatcher(
-        scan_path=settings.MODEL_LIBRARY_SCAN_PATH,
         db_path=settings.MODEL_LIBRARY_DB,
         thumbnail_path=settings.MODEL_LIBRARY_THUMBNAIL_PATH,
         supported_extensions=settings.SUPPORTED_EXTENSIONS,
@@ -60,7 +88,16 @@ async def lifespan(app: FastAPI):
 
     try:
         watcher.start()
-        logger.info("File watcher started for: %s", settings.MODEL_LIBRARY_SCAN_PATH)
+        # Watch all existing library paths
+        async with aiosqlite.connect(str(settings.MODEL_LIBRARY_DB)) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT path FROM libraries")
+            rows = await cursor.fetchall()
+            for row in rows:
+                lib_path = dict(row)["path"]
+                if os.path.isdir(lib_path):
+                    watcher.watch_path(lib_path)
+                    logger.info("File watcher watching: %s", lib_path)
     except Exception as e:
         logger.warning("Could not start file watcher: %s", e)
 
@@ -81,6 +118,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(libraries_router)
 app.include_router(models_router)
 app.include_router(tags_router)
 app.include_router(categories_router)

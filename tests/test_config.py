@@ -9,7 +9,7 @@ class TestSettings:
         from app.config import Settings
         s = Settings()
         assert isinstance(s.MODEL_LIBRARY_DB, Path)
-        assert isinstance(s.MODEL_LIBRARY_SCAN_PATH, Path)
+        assert s.MODEL_LIBRARY_SCAN_PATH is None
         assert isinstance(s.MODEL_LIBRARY_THUMBNAIL_PATH, Path)
         assert s.HOST == "0.0.0.0"
         assert s.PORT == 8000

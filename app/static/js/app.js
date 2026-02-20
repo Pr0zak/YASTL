@@ -31,6 +31,9 @@ const ICONS = {
     menu: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
     chevron: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`,
     scan: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+    settings: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    folder: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`,
+    plus: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
 };
 
 /* ==================================================================
@@ -82,7 +85,15 @@ const app = createApp({
 
         let scanPollTimer = null;
 
+        // Settings / Library management
+        const showSettings = ref(false);
+        const libraries = ref([]);
+        const newLibName = ref('');
+        const newLibPath = ref('');
+        const addingLibrary = ref(false);
+
         /* ---- Computed ---- */
+        const hasLibraries = computed(() => libraries.value.length > 0);
         const scanProgress = computed(() => {
             if (!scanStatus.total_files) return 0;
             return Math.round(
@@ -221,6 +232,79 @@ const app = createApp({
             } catch (err) {
                 console.error('fetchScanStatus error:', err);
             }
+        }
+
+        /* ==============================================================
+           Library Management
+           ============================================================== */
+
+        async function fetchLibraries() {
+            try {
+                const res = await fetch('/api/libraries');
+                if (!res.ok) return;
+                const data = await res.json();
+                libraries.value = data.libraries || [];
+            } catch (err) {
+                console.error('fetchLibraries error:', err);
+            }
+        }
+
+        async function addLibrary() {
+            const name = newLibName.value.trim();
+            const path = newLibPath.value.trim();
+            if (!name || !path) {
+                showToast('Name and path are required', 'error');
+                return;
+            }
+            addingLibrary.value = true;
+            try {
+                const res = await fetch('/api/libraries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, path }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    libraries.value.push(data);
+                    newLibName.value = '';
+                    newLibPath.value = '';
+                    showToast(`Library "${name}" added`);
+                } else {
+                    showToast(data.detail || 'Failed to add library', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to add library', 'error');
+                console.error('addLibrary error:', err);
+            } finally {
+                addingLibrary.value = false;
+            }
+        }
+
+        async function deleteLibrary(lib) {
+            if (!confirm(`Remove library "${lib.name}"?\n\nModels already scanned from this library will remain in the database.`)) {
+                return;
+            }
+            try {
+                const res = await fetch(`/api/libraries/${lib.id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    libraries.value = libraries.value.filter((l) => l.id !== lib.id);
+                    showToast(`Library "${lib.name}" removed`);
+                } else {
+                    const data = await res.json();
+                    showToast(data.detail || 'Failed to remove library', 'error');
+                }
+            } catch (err) {
+                showToast('Failed to remove library', 'error');
+            }
+        }
+
+        function openSettings() {
+            fetchLibraries();
+            showSettings.value = true;
+        }
+
+        function closeSettings() {
+            showSettings.value = false;
         }
 
         /* ==============================================================
@@ -512,15 +596,20 @@ const app = createApp({
             return f;
         }
 
-        /* ---- Keyboard handler for detail modal ---- */
+        /* ---- Keyboard handler for modals ---- */
         function onKeydown(e) {
-            if (e.key === 'Escape' && showDetail.value) {
-                closeDetail();
+            if (e.key === 'Escape') {
+                if (showSettings.value) {
+                    closeSettings();
+                } else if (showDetail.value) {
+                    closeDetail();
+                }
             }
         }
 
         /* ---- Lifecycle ---- */
         onMounted(() => {
+            fetchLibraries();
             fetchModels();
             fetchTags();
             fetchCategories();
@@ -556,12 +645,18 @@ const app = createApp({
             filters,
             pagination,
             scanStatus,
+            showSettings,
+            libraries,
+            newLibName,
+            newLibPath,
+            addingLibrary,
 
             // Computed
             scanProgress,
             hasMore,
             shownCount,
             hasActiveFilters,
+            hasLibraries,
 
             // Actions
             fetchModels,
@@ -583,6 +678,10 @@ const app = createApp({
             saveDesc,
             startEditName,
             startEditDesc,
+            openSettings,
+            closeSettings,
+            addLibrary,
+            deleteLibrary,
 
             // Helpers
             thumbUrl,
@@ -643,9 +742,10 @@ const app = createApp({
                         title="List view"
                         v-html="ICONS.list"></button>
             </div>
+            <button class="btn-icon" @click="openSettings" title="Settings" v-html="ICONS.settings"></button>
             <button class="btn btn-primary"
                     @click="triggerScan"
-                    :disabled="scanStatus.scanning">
+                    :disabled="scanStatus.scanning || !hasLibraries">
                 <span v-html="ICONS.scan"></span>
                 <span>Scan Library</span>
             </button>
@@ -801,10 +901,19 @@ const app = createApp({
                 <div class="empty-message" v-else-if="hasActiveFilters">
                     No models match the current filters. Try clearing some filters.
                 </div>
-                <div class="empty-message" v-else>
-                    Your library is empty. Click "Scan Library" to discover and import 3D models from your directory.
+                <div class="empty-message" v-else-if="!hasLibraries">
+                    Get started by adding a library. Point YASTL at a local directory containing your 3D model files.
                 </div>
-                <button v-if="!searchQuery && !hasActiveFilters"
+                <div class="empty-message" v-else>
+                    Your library is empty. Click "Scan Library" to discover and import 3D models from your directories.
+                </div>
+                <button v-if="!searchQuery && !hasActiveFilters && !hasLibraries"
+                        class="btn btn-primary"
+                        @click="openSettings">
+                    <span v-html="ICONS.plus"></span>
+                    Add Library
+                </button>
+                <button v-else-if="!searchQuery && !hasActiveFilters && hasLibraries"
                         class="btn btn-primary"
                         @click="triggerScan"
                         :disabled="scanStatus.scanning">
@@ -1063,6 +1172,73 @@ const app = createApp({
                         <button class="btn btn-danger" style="flex:1" @click="deleteModel(selectedModel)">
                             <span v-html="ICONS.trash"></span>
                             Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Settings Modal
+         ============================================================ -->
+    <div v-if="showSettings" class="detail-overlay" @click.self="closeSettings">
+        <div class="settings-panel">
+            <!-- Header -->
+            <div class="detail-header">
+                <div class="detail-title">Settings</div>
+                <button class="close-btn" @click="closeSettings" title="Close">&times;</button>
+            </div>
+
+            <div class="settings-content">
+                <!-- Libraries Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.folder"></span>
+                        Libraries
+                    </div>
+                    <div class="settings-section-desc">
+                        Add local directories containing your 3D model files. YASTL will scan these paths to discover and index models.
+                    </div>
+
+                    <!-- Existing Libraries -->
+                    <div v-if="libraries.length > 0" class="library-list">
+                        <div v-for="lib in libraries" :key="lib.id" class="library-item">
+                            <div class="library-info">
+                                <div class="library-name">{{ lib.name }}</div>
+                                <div class="library-path">{{ lib.path }}</div>
+                            </div>
+                            <button class="btn-icon btn-icon-danger" @click="deleteLibrary(lib)" title="Remove library">
+                                <span v-html="ICONS.trash"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div v-else class="text-muted text-sm" style="padding:12px 0">
+                        No libraries configured yet. Add one below to get started.
+                    </div>
+
+                    <!-- Add Library Form -->
+                    <div class="add-library-form">
+                        <div class="form-row">
+                            <label class="form-label">Library Name</label>
+                            <input type="text"
+                                   v-model="newLibName"
+                                   placeholder="e.g. My 3D Models"
+                                   class="form-input">
+                        </div>
+                        <div class="form-row">
+                            <label class="form-label">Local Path</label>
+                            <input type="text"
+                                   v-model="newLibPath"
+                                   placeholder="e.g. /home/user/models"
+                                   class="form-input"
+                                   @keydown.enter="addLibrary">
+                        </div>
+                        <button class="btn btn-primary"
+                                @click="addLibrary"
+                                :disabled="addingLibrary || !newLibName.trim() || !newLibPath.trim()">
+                            <span v-html="ICONS.plus"></span>
+                            Add Library
                         </button>
                     </div>
                 </div>

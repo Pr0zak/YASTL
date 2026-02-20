@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 class Scanner:
-    """Scans a directory tree for 3D model files and indexes them in the database.
+    """Scans library directories for 3D model files and indexes them in the database.
+
+    Libraries are loaded from the ``libraries`` table in the database.  Each
+    scan walks every registered library path, discovers supported files, and
+    inserts new records into the ``models`` table.
 
     Attributes:
         is_scanning: Whether a scan is currently in progress.
@@ -30,12 +34,10 @@ class Scanner:
 
     def __init__(
         self,
-        scan_path: str,
         db_path: str,
         thumbnail_path: str,
         supported_extensions: set[str],
     ) -> None:
-        self.scan_path = Path(scan_path)
         self.db_path = db_path
         self.thumbnail_path = thumbnail_path
         self.supported_extensions: set[str] = {
@@ -55,7 +57,7 @@ class Scanner:
     # ------------------------------------------------------------------
 
     async def scan(self) -> dict:
-        """Walk the scan_path directory tree and index all supported files.
+        """Scan all registered libraries and index supported files.
 
         Uses an asyncio lock to prevent concurrent scans. If a scan is
         already running the method returns immediately with zeroed stats.
@@ -85,6 +87,17 @@ class Scanner:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    async def _get_libraries(self) -> list[dict]:
+        """Load all libraries from the database."""
+        db = await aiosqlite.connect(self.db_path)
+        db.row_factory = aiosqlite.Row
+        try:
+            cursor = await db.execute("SELECT * FROM libraries ORDER BY name")
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            await db.close()
+
     async def _run_scan(self) -> dict:
         """Core scanning logic executed under the lock."""
         self.is_scanning = True
@@ -98,17 +111,36 @@ class Scanner:
             "errors": 0,
         }
 
-        logger.info("Starting scan of %s", self.scan_path)
+        libraries = await self._get_libraries()
+        if not libraries:
+            logger.warning("No libraries configured -- nothing to scan.")
+            self.is_scanning = False
+            return stats
 
-        # 1. Discover files on disk (potentially slow -- run in executor)
+        logger.info("Starting scan of %d libraries", len(libraries))
+
+        # 1. Discover files across all libraries
         loop = asyncio.get_running_loop()
-        all_files: list[Path] = await loop.run_in_executor(
-            None, self._discover_files
-        )
+        all_items: list[tuple[Path, int, Path]] = []  # (file_path, library_id, scan_root)
 
-        self.total_files = len(all_files)
+        for lib in libraries:
+            scan_root = Path(lib["path"])
+            library_id = lib["id"]
+            if not scan_root.is_dir():
+                logger.warning(
+                    "Library '%s' path does not exist: %s", lib["name"], scan_root
+                )
+                continue
+
+            files: list[Path] = await loop.run_in_executor(
+                None, self._discover_files, scan_root
+            )
+            for f in files:
+                all_items.append((f, library_id, scan_root))
+
+        self.total_files = len(all_items)
         stats["total_files"] = self.total_files
-        logger.info("Found %d supported files.", self.total_files)
+        logger.info("Found %d supported files across all libraries.", self.total_files)
 
         # 2. Process each file inside a single database connection
         db = await aiosqlite.connect(self.db_path)
@@ -117,9 +149,11 @@ class Scanner:
         await db.execute("PRAGMA foreign_keys=ON")
 
         try:
-            for file_path in all_files:
+            for file_path, library_id, scan_root in all_items:
                 try:
-                    added = await self._process_file(db, file_path, loop)
+                    added = await self._process_file(
+                        db, file_path, loop, library_id, scan_root
+                    )
                     if added:
                         stats["new_files"] += 1
                     else:
@@ -148,10 +182,10 @@ class Scanner:
     # File discovery
     # ------------------------------------------------------------------
 
-    def _discover_files(self) -> list[Path]:
+    def _discover_files(self, scan_path: Path) -> list[Path]:
         """Synchronously walk the scan_path and return all matching file paths."""
         matches: list[Path] = []
-        for dirpath, _dirnames, filenames in os.walk(self.scan_path):
+        for dirpath, _dirnames, filenames in os.walk(scan_path):
             for fname in filenames:
                 if Path(fname).suffix.lower() in self.supported_extensions:
                     matches.append(Path(dirpath) / fname)
@@ -166,6 +200,8 @@ class Scanner:
         db: aiosqlite.Connection,
         file_path: Path,
         loop: asyncio.AbstractEventLoop,
+        library_id: int,
+        scan_root: Path,
     ) -> bool:
         """Process a single file.
 
@@ -214,8 +250,8 @@ class Scanner:
                 name, description, file_path, file_format, file_size,
                 file_hash, vertex_count, face_count,
                 dimensions_x, dimensions_y, dimensions_z,
-                thumbnail_path
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                thumbnail_path, library_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -230,6 +266,7 @@ class Scanner:
                 metadata.get("dimensions_y"),
                 metadata.get("dimensions_z"),
                 None,  # thumbnail set after generation
+                library_id,
             ),
         )
         model_id = cursor.lastrowid
@@ -251,7 +288,7 @@ class Scanner:
             )
 
         # Auto-create categories from directory structure
-        await self._create_categories_from_path(db, file_path, model_id)
+        await self._create_categories_from_path(db, file_path, model_id, scan_root)
 
         # Update FTS index for this model
         await update_fts_for_model(db, model_id)
@@ -268,6 +305,7 @@ class Scanner:
         db: aiosqlite.Connection,
         file_path: Path,
         model_id: int,
+        scan_root: Path,
     ) -> None:
         """Derive categories from the relative directory path.
 
@@ -276,7 +314,7 @@ class Scanner:
         are created and associated with the model.
         """
         try:
-            rel = file_path.parent.relative_to(self.scan_path)
+            rel = file_path.parent.relative_to(scan_root)
         except ValueError:
             return
 

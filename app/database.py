@@ -16,6 +16,13 @@ def set_db_path(path: str | Path) -> None:
 # ---------------------------------------------------------------------------
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS libraries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS models (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -30,6 +37,7 @@ CREATE TABLE IF NOT EXISTS models (
     dimensions_z REAL,
     thumbnail_path TEXT,
     file_hash TEXT,
+    library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -61,7 +69,13 @@ CREATE TABLE IF NOT EXISTS model_tags (
 CREATE INDEX IF NOT EXISTS idx_models_file_path ON models(file_path);
 CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);
+CREATE INDEX IF NOT EXISTS idx_models_library_id ON models(library_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+"""
+
+MIGRATION_SQL = """
+-- Add library_id column to models if it doesn't exist (migration for existing DBs)
+ALTER TABLE models ADD COLUMN library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL;
 """
 
 FTS_SCHEMA_SQL = """
@@ -110,7 +124,8 @@ async def init_db(db_path: str | Path | None = None) -> None:
     """Create all tables and the FTS5 virtual table.
 
     Ensures the parent directory for the database file exists and enables
-    WAL mode for better concurrent read performance.
+    WAL mode for better concurrent read performance.  Also runs lightweight
+    migrations for existing databases (e.g. adding the ``library_id`` column).
     """
     if db_path is not None:
         set_db_path(db_path)
@@ -119,6 +134,16 @@ async def init_db(db_path: str | Path | None = None) -> None:
     async with get_db() as db:
         await db.executescript(SCHEMA_SQL)
         await db.executescript(FTS_SCHEMA_SQL)
+
+        # Run migrations for existing databases
+        cursor = await db.execute("PRAGMA table_info(models)")
+        columns = [row["name"] for row in await cursor.fetchall()]
+        if "library_id" not in columns:
+            try:
+                await db.executescript(MIGRATION_SQL)
+            except Exception:
+                pass  # Column already exists or table just created with it
+
         await db.commit()
 
 

@@ -1,9 +1,11 @@
 """Real-time file watcher service using watchdog.
 
-Monitors a directory tree for filesystem events (created, modified, deleted,
+Monitors directory trees for filesystem events (created, modified, deleted,
 moved) on supported 3D model files and keeps the database in sync. The
 watchdog ``Observer`` runs in a background thread; database mutations are
 bridged back to the asyncio event loop.
+
+Supports watching multiple library directories simultaneously.
 """
 
 import asyncio
@@ -123,20 +125,19 @@ class _DebouncedHandler(FileSystemEventHandler):
 
 
 class ModelFileWatcher:
-    """Watches a directory tree for changes to supported 3D model files.
+    """Watches library directories for changes to supported 3D model files.
 
-    Start / stop the watcher with :meth:`start` / :meth:`stop`.
-    All database mutations are performed asynchronously via *aiosqlite*.
+    Supports watching multiple library paths. New paths can be added at
+    runtime via :meth:`watch_path`, and all watches are stopped with
+    :meth:`stop`.
     """
 
     def __init__(
         self,
-        scan_path: str,
         db_path: str,
         thumbnail_path: str,
         supported_extensions: set[str],
     ) -> None:
-        self.scan_path = scan_path
         self.db_path = db_path
         self.thumbnail_path = thumbnail_path
         self.supported_extensions: set[str] = {
@@ -146,18 +147,14 @@ class ModelFileWatcher:
         self._observer: Observer | None = None
         self._handler: _DebouncedHandler | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._watched_paths: set[str] = set()
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def start(self) -> None:
-        """Start watching the scan directory for filesystem events.
-
-        Must be called from a running asyncio event loop (the loop is
-        captured so that database operations can be scheduled on it from
-        the watchdog thread).
-        """
+        """Initialise the observer. Call :meth:`watch_path` to add directories."""
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -173,13 +170,30 @@ class ModelFileWatcher:
         )
 
         self._observer = Observer()
-        self._observer.schedule(
-            self._handler, path=self.scan_path, recursive=True
-        )
         self._observer.daemon = True
         self._observer.start()
 
-        logger.info("File watcher started on %s", self.scan_path)
+        logger.info("File watcher observer started.")
+
+    def watch_path(self, path: str) -> None:
+        """Add a directory to the set of watched paths."""
+        if self._observer is None or self._handler is None:
+            logger.warning("Watcher not started; call start() first.")
+            return
+
+        path_str = str(path)
+        if path_str in self._watched_paths:
+            return
+
+        if not os.path.isdir(path_str):
+            logger.warning("Cannot watch non-existent directory: %s", path_str)
+            return
+
+        self._observer.schedule(
+            self._handler, path=path_str, recursive=True
+        )
+        self._watched_paths.add(path_str)
+        logger.info("File watcher watching: %s", path_str)
 
     def stop(self) -> None:
         """Stop the filesystem watcher and clean up threads."""
@@ -192,6 +206,7 @@ class ModelFileWatcher:
             self._observer.join(timeout=10)
             self._observer = None
 
+        self._watched_paths.clear()
         logger.info("File watcher stopped.")
 
     # ------------------------------------------------------------------
@@ -199,12 +214,8 @@ class ModelFileWatcher:
     # ------------------------------------------------------------------
 
     def _dispatch_event(self, event: FileSystemEvent) -> None:
-        """Route a debounced event to the appropriate handler.
-
-        Bridges from the watchdog thread into the asyncio event loop for
-        database operations.
-        """
-        event_type = event.event_type  # created | modified | deleted | moved
+        """Route a debounced event to the appropriate handler."""
+        event_type = event.event_type
 
         logger.debug(
             "Watcher event: %s  src=%s%s",
@@ -221,7 +232,6 @@ class ModelFileWatcher:
         if self._loop is not None and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(coro, self._loop)
         else:
-            # Fallback: run in a new event loop (less ideal but functional)
             asyncio.run(coro)
 
     # ------------------------------------------------------------------
@@ -255,6 +265,16 @@ class ModelFileWatcher:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
         return db
+
+    def _find_library_root(self, file_path: str) -> str | None:
+        """Find which watched library root contains the given file path."""
+        for root in self._watched_paths:
+            try:
+                Path(file_path).relative_to(root)
+                return root
+            except ValueError:
+                continue
+        return None
 
     # ---- created -------------------------------------------------------
 
@@ -291,6 +311,17 @@ class ModelFileWatcher:
             )
             file_size = metadata.get("file_size") or os.path.getsize(src_path)
 
+            # Resolve library_id from watched paths
+            library_id = None
+            library_root = self._find_library_root(src_path)
+            if library_root:
+                cursor = await db.execute(
+                    "SELECT id FROM libraries WHERE path = ?", (library_root,)
+                )
+                lib_row = await cursor.fetchone()
+                if lib_row:
+                    library_id = dict(lib_row)["id"]
+
             # Insert model
             cursor = await db.execute(
                 """
@@ -298,8 +329,8 @@ class ModelFileWatcher:
                     name, description, file_path, file_format, file_size,
                     file_hash, vertex_count, face_count,
                     dimensions_x, dimensions_y, dimensions_z,
-                    thumbnail_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    thumbnail_path, library_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -314,6 +345,7 @@ class ModelFileWatcher:
                     metadata.get("dimensions_y"),
                     metadata.get("dimensions_z"),
                     None,
+                    library_id,
                 ),
             )
             model_id = cursor.lastrowid
@@ -333,7 +365,10 @@ class ModelFileWatcher:
                 )
 
             # Auto-create categories from directory structure
-            await self._create_categories_from_path(db, src_path, model_id)
+            if library_root:
+                await self._create_categories_from_path(
+                    db, src_path, model_id, library_root
+                )
 
             # Update FTS
             await update_fts_for_model(db, model_id)
@@ -533,13 +568,14 @@ class ModelFileWatcher:
         db: aiosqlite.Connection,
         file_path_str: str,
         model_id: int,
+        scan_root: str,
     ) -> None:
         """Derive categories from the relative directory path."""
         file_path = Path(file_path_str)
-        scan_root = Path(self.scan_path)
+        root = Path(scan_root)
 
         try:
-            rel = file_path.parent.relative_to(scan_root)
+            rel = file_path.parent.relative_to(root)
         except ValueError:
             return
 

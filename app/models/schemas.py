@@ -84,6 +84,25 @@ class CategoryResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Library schemas
+# ---------------------------------------------------------------------------
+
+
+class LibraryCreate(BaseModel):
+    """Schema for creating a new library."""
+    name: str
+    path: str
+
+
+class LibraryResponse(BaseModel):
+    """Library representation returned by the API."""
+    id: int
+    name: str
+    path: str
+    created_at: str
+
+
+# ---------------------------------------------------------------------------
 # Search schemas
 # ---------------------------------------------------------------------------
 
