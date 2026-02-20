@@ -175,6 +175,16 @@ class ModelFileWatcher:
 
         logger.info("File watcher observer started.")
 
+    @property
+    def is_running(self) -> bool:
+        """Whether the observer thread is alive and watching."""
+        return self._observer is not None and self._observer.is_alive()
+
+    @property
+    def watched_paths(self) -> set[str]:
+        """The set of directories currently being watched."""
+        return set(self._watched_paths)
+
     def watch_path(self, path: str) -> None:
         """Add a directory to the set of watched paths."""
         if self._observer is None or self._handler is None:
