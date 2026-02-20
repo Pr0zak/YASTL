@@ -26,6 +26,15 @@ WIREFRAME_LINE_COLOR = (0, 180, 220)
 WIREFRAME_EDGE_COLOR = (0, 120, 160)
 WIREFRAME_PADDING = 20
 
+# Solid rendering settings
+SOLID_BG_COLOR = (45, 45, 48)
+SOLID_BASE_COLOR = np.array([0, 150, 200], dtype=np.float64)
+SOLID_AMBIENT = 0.25
+SOLID_DIFFUSE = 0.75
+SOLID_LIGHT_DIR = np.array([0.3, 0.8, 0.5])  # normalised at use-time
+SOLID_EDGE_COLOR = (30, 30, 33)
+SOLID_PADDING = 20
+
 
 def _try_trimesh_render(scene: trimesh.Scene, output_path: str) -> bool:
     """
@@ -213,25 +222,161 @@ def _render_wireframe(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     return True
 
 
+def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
+    """
+    Render a solid (filled-face) preview of the mesh(es) using Pillow.
+
+    Uses a painter's-algorithm approach: faces are sorted back-to-front by
+    their average Z depth (after rotation) and drawn as filled polygons with
+    simple directional lighting.  Returns True on success.
+    """
+    if not meshes:
+        logger.warning("No meshes to render for solid thumbnail")
+        return False
+
+    # Collect all vertices and faces with vertex offset
+    all_vertices: list[np.ndarray] = []
+    all_faces: list[np.ndarray] = []
+    offset = 0
+
+    for mesh in meshes:
+        all_vertices.append(mesh.vertices)
+        if hasattr(mesh, "faces") and len(mesh.faces) > 0:
+            all_faces.append(mesh.faces + offset)
+        offset += len(mesh.vertices)
+
+    if not all_vertices or not all_faces:
+        logger.warning("No faces to render for solid thumbnail")
+        return False
+
+    vertices_3d = np.vstack(all_vertices)
+    faces = np.vstack(all_faces)
+
+    if len(vertices_3d) == 0 or len(faces) == 0:
+        return False
+
+    # Center the model at origin
+    centroid = vertices_3d.mean(axis=0)
+    vertices_3d = vertices_3d - centroid
+
+    # Rotation angles (same as wireframe for consistency)
+    pitch = math.radians(30)
+    yaw = math.radians(45)
+
+    cos_p, sin_p = math.cos(pitch), math.sin(pitch)
+    cos_y, sin_y = math.cos(yaw), math.sin(yaw)
+
+    rot_yaw = np.array([
+        [cos_y, 0, sin_y],
+        [0, 1, 0],
+        [-sin_y, 0, cos_y],
+    ])
+    rot_pitch = np.array([
+        [1, 0, 0],
+        [0, cos_p, -sin_p],
+        [0, sin_p, cos_p],
+    ])
+    rot = rot_pitch @ rot_yaw
+    rotated = (rot @ vertices_3d.T).T
+
+    # Project to 2D (same as _project_vertices but we also need Z for sorting)
+    projected_x = rotated[:, 0]
+    projected_y = rotated[:, 1]
+    projected_z = rotated[:, 2]
+
+    padding = SOLID_PADDING
+    usable_w = THUMBNAIL_WIDTH - 2 * padding
+    usable_h = THUMBNAIL_HEIGHT - 2 * padding
+
+    x_min, x_max = projected_x.min(), projected_x.max()
+    y_min, y_max = projected_y.min(), projected_y.max()
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+
+    if x_range < 1e-9 and y_range < 1e-9:
+        return False
+
+    scale = min(
+        usable_w / x_range if x_range > 1e-9 else float("inf"),
+        usable_h / y_range if y_range > 1e-9 else float("inf"),
+    )
+
+    screen_x = (projected_x - x_min) * scale + padding + (usable_w - x_range * scale) / 2
+    screen_y = (y_max - projected_y) * scale + padding + (usable_h - y_range * scale) / 2
+
+    # Compute per-face average Z depth for painter's algorithm
+    face_z = projected_z[faces].mean(axis=1)
+
+    # Sort faces back-to-front (lowest Z first = furthest from camera)
+    sort_order = np.argsort(face_z)
+
+    # Compute face normals in rotated space for lighting
+    v0 = rotated[faces[:, 0]]
+    v1 = rotated[faces[:, 1]]
+    v2 = rotated[faces[:, 2]]
+    edge1 = v1 - v0
+    edge2 = v2 - v0
+    normals = np.cross(edge1, edge2)
+    norms = np.linalg.norm(normals, axis=1, keepdims=True)
+    norms[norms < 1e-12] = 1.0
+    normals = normals / norms
+
+    # Normalise light direction
+    light_dir = SOLID_LIGHT_DIR / np.linalg.norm(SOLID_LIGHT_DIR)
+
+    # Compute per-face diffuse intensity
+    dot = np.abs(np.dot(normals, light_dir))  # abs for double-sided lighting
+    intensity = np.clip(SOLID_AMBIENT + SOLID_DIFFUSE * dot, 0.0, 1.0)
+
+    # Limit face count for performance
+    max_faces = 80000
+    if len(sort_order) > max_faces:
+        # Keep a uniform subsample but maintain sort order
+        step = len(sort_order) / max_faces
+        indices = np.round(np.arange(0, len(sort_order), step)).astype(int)[:max_faces]
+        sort_order = sort_order[indices]
+
+    # Create image and draw
+    img = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), SOLID_BG_COLOR)
+    draw = ImageDraw.Draw(img)
+
+    for fi in sort_order:
+        i0, i1, i2 = faces[fi]
+        polygon = [
+            (float(screen_x[i0]), float(screen_y[i0])),
+            (float(screen_x[i1]), float(screen_y[i1])),
+            (float(screen_x[i2]), float(screen_y[i2])),
+        ]
+        c = (SOLID_BASE_COLOR * intensity[fi]).astype(int)
+        fill_color = (int(c[0]), int(c[1]), int(c[2]))
+        draw.polygon(polygon, fill=fill_color, outline=SOLID_EDGE_COLOR)
+
+    img.save(output_path, "PNG")
+    logger.debug("Rendered solid thumbnail: %s", output_path)
+    return True
+
+
 def generate_thumbnail(
     file_path: str,
     output_dir: str,
     model_id: int,
+    render_mode: str = "wireframe",
 ) -> str | None:
     """
     Generate a 256x256 PNG thumbnail for a 3D model file.
 
     Attempts to render using trimesh's built-in rendering first. If that fails
-    (common in headless environments without pyrender), falls back to a Pillow-based
-    wireframe rendering.
+    (common in headless environments without pyrender), falls back to a
+    Pillow-based rendering using the specified *render_mode*.
 
     Args:
         file_path: Absolute path to the 3D model file.
         output_dir: Directory where thumbnails should be saved.
         model_id: Unique ID for the model, used as the output filename.
+        render_mode: ``"wireframe"`` (default) or ``"solid"``.
 
     Returns:
-        Relative path to the generated thumbnail (e.g. "thumbnails/42.png"),
+        Relative path to the generated thumbnail (e.g. "42.png"),
         or None if thumbnail generation fails entirely.
     """
     output_dir_path = Path(output_dir)
@@ -271,16 +416,27 @@ def generate_thumbnail(
         return None
 
     # Strategy 1: Try trimesh's built-in rendering (needs pyrender/pyglet)
-    if _try_trimesh_render(scene, str(output_path)):
+    # Only attempt for wireframe mode — the built-in renderer produces its own
+    # shaded output which is effectively "solid", but we want consistent
+    # user-controlled rendering when solid mode is explicitly chosen.
+    if render_mode == "wireframe" and _try_trimesh_render(scene, str(output_path)):
         return output_filename
 
-    # Strategy 2: Fall back to Pillow wireframe rendering
-    logger.debug("Falling back to wireframe rendering for: %s", file_path)
+    # Strategy 2: Pillow-based rendering (wireframe or solid)
+    logger.debug(
+        "Rendering %s thumbnail for: %s", render_mode, file_path
+    )
     meshes = _collect_meshes(loaded)
 
     if not meshes:
         logger.warning("No renderable meshes found in: %s", file_path)
         return None
+
+    if render_mode == "solid":
+        if _render_solid(meshes, str(output_path)):
+            return output_filename
+        # Fall back to wireframe if solid fails (e.g. no faces)
+        logger.debug("Solid render failed, falling back to wireframe: %s", file_path)
 
     if _render_wireframe(meshes, str(output_path)):
         return output_filename

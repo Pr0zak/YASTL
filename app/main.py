@@ -14,6 +14,7 @@ from app.api.routes_libraries import router as libraries_router
 from app.api.routes_models import router as models_router
 from app.api.routes_scan import router as scan_router
 from app.api.routes_search import router as search_router
+from app.api.routes_settings import router as settings_router
 from app.api.routes_status import router as status_router
 from app.api.routes_tags import router as tags_router
 from app.api.routes_update import router as update_router
@@ -128,6 +129,7 @@ app.include_router(tags_router)
 app.include_router(categories_router)
 app.include_router(scan_router)
 app.include_router(search_router)
+app.include_router(settings_router)
 app.include_router(update_router)
 app.include_router(status_router)
 

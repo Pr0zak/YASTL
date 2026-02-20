@@ -19,7 +19,7 @@ import aiosqlite
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from app.database import update_fts_for_model
+from app.database import get_setting, update_fts_for_model
 from app.services import hasher, processor, thumbnail
 
 logger = logging.getLogger(__name__)
@@ -380,12 +380,14 @@ class ModelFileWatcher:
             model_id = cursor.lastrowid
 
             # Generate thumbnail
+            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
             thumb_filename: str | None = await loop.run_in_executor(
                 None,
                 thumbnail.generate_thumbnail,
                 src_path,
                 self.thumbnail_path,
                 model_id,
+                thumb_mode,
             )
             if thumb_filename is not None:
                 await db.execute(
@@ -466,12 +468,14 @@ class ModelFileWatcher:
             )
 
             # Regenerate thumbnail
+            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
             thumb_filename: str | None = await loop.run_in_executor(
                 None,
                 thumbnail.generate_thumbnail,
                 src_path,
                 self.thumbnail_path,
                 model_id,
+                thumb_mode,
             )
             if thumb_filename is not None:
                 await db.execute(

@@ -1775,6 +1775,93 @@ img {
 }
 
 /* ==================================================================
+   Thumbnail Mode Settings
+   ================================================================== */
+
+.thumbnail-mode-options {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.thumbnail-mode-option {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.thumbnail-mode-option:hover {
+    border-color: var(--border-light);
+    background: var(--bg-hover);
+}
+
+.thumbnail-mode-option.active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+
+.thumbnail-mode-option input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border-light);
+    border-radius: 50%;
+    background: var(--bg-input);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: all var(--transition);
+}
+
+.thumbnail-mode-option.active input[type="radio"] {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+
+.thumbnail-mode-option.active input[type="radio"]::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+.thumbnail-mode-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.thumbnail-mode-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.thumbnail-mode-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.thumbnail-regen-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* ==================================================================
    Update System
    ================================================================== */
 
