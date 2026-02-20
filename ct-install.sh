@@ -133,7 +133,20 @@ preflight() {
     # Check for git
     if ! command -v git &>/dev/null; then
         warn "git not found on host - installing..."
-        apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1
+        # Disable Proxmox enterprise repos if present (require paid subscription)
+        if [[ -f /etc/apt/sources.list.d/pve-enterprise.list ]]; then
+            rm -f /etc/apt/sources.list.d/pve-enterprise.list
+            warn "Disabled pve-enterprise repo (requires subscription)"
+        fi
+        if [[ -f /etc/apt/sources.list.d/ceph.list ]]; then
+            rm -f /etc/apt/sources.list.d/ceph.list
+            warn "Disabled ceph enterprise repo (requires subscription)"
+        fi
+        apt-get update -qq && apt-get install -y -qq git
+        if ! command -v git &>/dev/null; then
+            error "Failed to install git on host"
+            exit 1
+        fi
         success "git installed"
     fi
 
