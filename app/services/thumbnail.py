@@ -404,8 +404,26 @@ def generate_thumbnail(
     try:
         loaded = trimesh.load(file_path, force=None)
     except Exception as e:
-        logger.warning("Could not load 3D file for thumbnail: %s: %s", file_path, e)
-        return None
+        # For STEP/STP files, try the dedicated converter
+        from app.services.step_converter import is_step_file, load_step
+
+        if is_step_file(file_path):
+            logger.debug(
+                "trimesh could not load STEP file %s, trying step converter", file_path
+            )
+            mesh = load_step(file_path)
+            if mesh is not None:
+                loaded = mesh
+            else:
+                logger.warning(
+                    "Could not load STEP file for thumbnail: %s: %s", file_path, e
+                )
+                return None
+        else:
+            logger.warning(
+                "Could not load 3D file for thumbnail: %s: %s", file_path, e
+            )
+            return None
 
     # Ensure we have a Scene for trimesh rendering attempt
     if isinstance(loaded, trimesh.Trimesh):

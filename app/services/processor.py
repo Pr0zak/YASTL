@@ -179,10 +179,34 @@ def extract_metadata(file_path: str) -> dict:
         if ext in FALLBACK_ONLY:
             logger.debug(
                 "trimesh could not parse STEP/STP file %s (expected): %s. "
-                "Returning basic file info only.",
+                "Trying dedicated STEP converter.",
                 file_path,
                 e,
             )
+            # Try the dedicated STEP converter
+            try:
+                from app.services.step_converter import load_step
+
+                mesh = load_step(file_path)
+                if mesh is not None and isinstance(mesh, trimesh.Trimesh):
+                    mesh_meta = _extract_mesh_metadata(mesh)
+                    metadata.update(mesh_meta)
+                    logger.debug(
+                        "STEP converter extracted metadata for %s: %d verts, %d faces",
+                        path.name,
+                        mesh_meta["vertex_count"],
+                        mesh_meta["face_count"],
+                    )
+                else:
+                    logger.debug(
+                        "STEP converter unavailable or failed for %s. "
+                        "Returning basic file info only.",
+                        file_path,
+                    )
+            except Exception as conv_err:
+                logger.debug(
+                    "STEP converter failed for %s: %s", file_path, conv_err
+                )
         else:
             logger.warning(
                 "Failed to extract mesh data from %s: %s. Returning partial metadata.",
