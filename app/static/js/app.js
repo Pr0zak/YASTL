@@ -12,7 +12,7 @@ import {
     formatDimensions,
 } from './search.js';
 
-const { createApp, ref, reactive, computed, onMounted, watch, nextTick } = Vue;
+const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
 /* ==================================================================
    SVG icon strings (inlined to avoid external deps)
@@ -225,6 +225,17 @@ const app = createApp({
                 fetchModels();
             }
         }, 300);
+
+        function onSearchInput(e) {
+            searchQuery.value = e.target.value;
+            debouncedSearch();
+        }
+
+        function clearSearch() {
+            searchQuery.value = '';
+            pagination.offset = 0;
+            fetchModels();
+        }
 
         async function fetchTags() {
             try {
@@ -905,10 +916,8 @@ const app = createApp({
             document.addEventListener('click', onDocumentClick);
         });
 
-        // Watch search query for debounced search
-        watch(searchQuery, () => {
-            debouncedSearch();
-        });
+        // Search is triggered by onSearchInput handler instead of a watcher
+        // to avoid cursor-position issues caused by v-model re-render cycles.
 
         /* ---- Expose everything to the template ---- */
         return {
@@ -952,6 +961,8 @@ const app = createApp({
             hasLibraries,
 
             // Actions
+            onSearchInput,
+            clearSearch,
             fetchModels,
             triggerScan,
             viewModel,
@@ -1020,12 +1031,13 @@ const app = createApp({
         <div class="search-container">
             <span class="search-icon" v-html="ICONS.search"></span>
             <input type="text"
-                   v-model="searchQuery"
+                   :value="searchQuery"
+                   @input="onSearchInput"
                    placeholder="Search models by name or description..."
                    aria-label="Search models">
             <button v-if="searchQuery"
                     class="search-clear"
-                    @click="searchQuery = ''"
+                    @click="clearSearch"
                     title="Clear search">&times;</button>
         </div>
 
