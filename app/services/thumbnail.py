@@ -8,7 +8,6 @@ simple wireframe rendering with Pillow when trimesh's built-in rendering
 
 import logging
 import math
-import os
 from pathlib import Path
 
 import numpy as np

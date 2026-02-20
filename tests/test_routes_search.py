@@ -1,0 +1,162 @@
+"""Tests for app.api.routes_search API endpoints."""
+
+import pytest
+import aiosqlite
+
+from tests.conftest import insert_test_model
+
+
+@pytest.mark.asyncio
+class TestSearchModels:
+    async def test_empty_query_returns_all(self, client):
+        """GET /api/search with empty query should return all models."""
+        db_path = client._db_path
+        await insert_test_model(db_path, name="cube", file_path="/tmp/cube.stl")
+        await insert_test_model(db_path, name="sphere", file_path="/tmp/sphere.stl")
+
+        resp = await client.get("/api/search?q=")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+
+    async def test_fts_search(self, client):
+        """GET /api/search?q=dragon should find matching models."""
+        db_path = client._db_path
+        await insert_test_model(
+            db_path, name="dragon", file_path="/tmp/dragon.stl",
+            description="a fire breathing dragon"
+        )
+        await insert_test_model(
+            db_path, name="cube", file_path="/tmp/cube.stl",
+            description="simple cube"
+        )
+
+        resp = await client.get("/api/search?q=dragon")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["models"][0]["name"] == "dragon"
+        assert data["query"] == "dragon"
+
+    async def test_search_by_description(self, client):
+        """FTS should match on description too."""
+        db_path = client._db_path
+        await insert_test_model(
+            db_path, name="model1", file_path="/tmp/m1.stl",
+            description="beautiful unicorn"
+        )
+        await insert_test_model(
+            db_path, name="model2", file_path="/tmp/m2.stl",
+            description="plain box"
+        )
+
+        resp = await client.get("/api/search?q=unicorn")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["models"][0]["name"] == "model1"
+
+    async def test_search_no_results(self, client):
+        """FTS search with no matches should return empty list."""
+        db_path = client._db_path
+        await insert_test_model(db_path, name="cube", file_path="/tmp/cube.stl")
+
+        resp = await client.get("/api/search?q=nonexistent")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+        assert data["models"] == []
+
+    async def test_search_with_format_filter(self, client):
+        """Search should filter by file format."""
+        db_path = client._db_path
+        await insert_test_model(
+            db_path, name="dragon_stl", file_path="/tmp/dragon.stl",
+            file_format="stl", description="dragon model"
+        )
+        await insert_test_model(
+            db_path, name="dragon_obj", file_path="/tmp/dragon.obj",
+            file_format="obj", description="dragon model"
+        )
+
+        resp = await client.get("/api/search?q=dragon&format=stl")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["models"][0]["name"] == "dragon_stl"
+
+    async def test_search_with_tag_filter(self, client):
+        """Search should filter by tags."""
+        db_path = client._db_path
+        model_id = await insert_test_model(
+            db_path, name="tagged_dragon", file_path="/tmp/tagged.stl",
+            description="tagged dragon"
+        )
+        await insert_test_model(
+            db_path, name="untagged_dragon", file_path="/tmp/untagged.stl",
+            description="untagged dragon"
+        )
+
+        # Add tag to first model
+        async with aiosqlite.connect(db_path) as conn:
+            cursor = await conn.execute("INSERT INTO tags (name) VALUES ('fantasy')")
+            tag_id = cursor.lastrowid
+            await conn.execute(
+                "INSERT INTO model_tags (model_id, tag_id) VALUES (?, ?)",
+                (model_id, tag_id),
+            )
+            await conn.commit()
+
+        resp = await client.get("/api/search?q=dragon&tags=fantasy")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["models"][0]["name"] == "tagged_dragon"
+
+    async def test_search_pagination(self, client):
+        """Search should respect limit and offset."""
+        db_path = client._db_path
+        for i in range(5):
+            await insert_test_model(
+                db_path, name=f"item_{i}", file_path=f"/tmp/item_{i}.stl",
+                description="searchable item"
+            )
+
+        resp = await client.get("/api/search?q=item&limit=2&offset=0")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 5
+        assert len(data["models"]) == 2
+
+    async def test_search_enriches_tags_and_categories(self, client):
+        """Search results should include tags and categories."""
+        db_path = client._db_path
+        model_id = await insert_test_model(
+            db_path, name="enriched", file_path="/tmp/enriched.stl",
+            description="enriched model"
+        )
+
+        async with aiosqlite.connect(db_path) as conn:
+            cursor = await conn.execute("INSERT INTO tags (name) VALUES ('red')")
+            tag_id = cursor.lastrowid
+            await conn.execute(
+                "INSERT INTO model_tags (model_id, tag_id) VALUES (?, ?)",
+                (model_id, tag_id),
+            )
+            cursor = await conn.execute(
+                "INSERT INTO categories (name) VALUES ('Toys')"
+            )
+            cat_id = cursor.lastrowid
+            await conn.execute(
+                "INSERT INTO model_categories (model_id, category_id) VALUES (?, ?)",
+                (model_id, cat_id),
+            )
+            await conn.commit()
+
+        resp = await client.get("/api/search?q=enriched")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["models"]) == 1
+        model = data["models"][0]
+        assert "red" in model["tags"]
+        assert "Toys" in model["categories"]

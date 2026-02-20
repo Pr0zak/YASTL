@@ -1,6 +1,6 @@
 """API routes for full-text search across 3D models."""
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 import aiosqlite
 
 router = APIRouter(prefix="/api/search", tags=["search"])
