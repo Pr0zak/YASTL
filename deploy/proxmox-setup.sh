@@ -92,6 +92,11 @@ sleep 5  # Wait for container to boot
 
 pct exec "$CT_ID" -- bash -c "
     export DEBIAN_FRONTEND=noninteractive
+
+    # Disable Proxmox enterprise repos (require paid subscription)
+    rm -f /etc/apt/sources.list.d/pve-enterprise.list
+    rm -f /etc/apt/sources.list.d/ceph.list
+
     apt-get update -qq
     apt-get install -y -qq --no-install-recommends \
         python3 python3-pip python3-venv python3-dev \
