@@ -112,7 +112,8 @@ echo "[3/5] Installing YASTL application..."
 pct exec "$CT_ID" -- bash -c "
     mkdir -p /opt/yastl
     mkdir -p ${YASTL_DATA_DIR}/thumbnails
-    python3 -m venv /opt/yastl/venv
+    python3 -m venv --without-pip /opt/yastl/venv
+    curl -sS https://bootstrap.pypa.io/get-pip.py | /opt/yastl/venv/bin/python3
 "
 
 if [[ "$YASTL_INSTALL_MODE" == "git" ]]; then

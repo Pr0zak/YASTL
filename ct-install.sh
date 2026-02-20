@@ -387,8 +387,9 @@ install_yastl() {
         # Create data directories
         mkdir -p '${YASTL_DATA_DIR}/thumbnails'
 
-        # Set up Python virtual environment
-        python3 -m venv /opt/yastl/venv
+        # Set up Python virtual environment (--without-pip avoids ensurepip issues)
+        python3 -m venv --without-pip /opt/yastl/venv
+        curl -sS https://bootstrap.pypa.io/get-pip.py | /opt/yastl/venv/bin/python3
 
         # Install YASTL and dependencies
         cd /opt/yastl/src
