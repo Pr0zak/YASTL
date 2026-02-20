@@ -363,10 +363,15 @@ install_deps() {
 
         apt-get update -qq
         apt-get install -y -qq --no-install-recommends \
-            python3-full python3-pip python3-dev \
+            python3 python3-pip python3-dev \
             libgl1-mesa-glx libglib2.0-0 libgomp1 \
             git curl ca-certificates \
             build-essential pkg-config >/dev/null 2>&1
+
+        # Install version-matched venv package (e.g. python3.13-venv on Trixie)
+        PY_VER=\$(python3 -c 'import sys; print(f\"{sys.version_info[0]}.{sys.version_info[1]}\")')
+        apt-get install -y -qq \"python\${PY_VER}-venv\" >/dev/null 2>&1
+
         apt-get clean
         rm -rf /var/lib/apt/lists/*
     "
@@ -387,9 +392,8 @@ install_yastl() {
         # Create data directories
         mkdir -p '${YASTL_DATA_DIR}/thumbnails'
 
-        # Set up Python virtual environment (--without-pip avoids ensurepip issues)
-        python3 -m venv --without-pip /opt/yastl/venv
-        curl -sS https://bootstrap.pypa.io/get-pip.py | /opt/yastl/venv/bin/python3
+        # Set up Python virtual environment
+        python3 -m venv /opt/yastl/venv
 
         # Install YASTL and dependencies
         cd /opt/yastl/src
