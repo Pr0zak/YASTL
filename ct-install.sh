@@ -13,8 +13,6 @@
 #   ./ct-install.sh
 #
 # Non-interactive mode (all options via environment variables):
-#   export NFS_SERVER=192.168.1.100
-#   export NFS_SHARE=/volume1/3dPrinting
 #   export CT_ID=200
 #   export YASTL_NONINTERACTIVE=1
 #   bash ct-install.sh
@@ -36,10 +34,6 @@ CT_CORES="${CT_CORES:-2}"
 CT_TEMPLATE="${CT_TEMPLATE:-}"
 CT_STORAGE="${CT_STORAGE:-local-lvm}"
 CT_BRIDGE="${CT_BRIDGE:-vmbr0}"
-
-NFS_SERVER="${NFS_SERVER:-}"
-NFS_SHARE="${NFS_SHARE:-}"
-NFS_MOUNT_POINT="/mnt/3dprinting"
 
 YASTL_PORT="${YASTL_PORT:-8000}"
 YASTL_DATA_DIR="/opt/yastl/data"
@@ -213,7 +207,7 @@ detect_ct_id() {
 
     # Find the next available ID starting from 200
     local id=200
-    while pct status "$id" &>/dev/null 2>&1; do
+    while pct status "$id" &>/dev/null; do
         ((id++))
     done
     CT_ID="$id"
@@ -258,21 +252,7 @@ wizard() {
     detect_bridge
 
     if [[ "$YASTL_NONINTERACTIVE" == "1" ]]; then
-        if [[ -z "$NFS_SERVER" || -z "$NFS_SHARE" ]]; then
-            error "Non-interactive mode requires NFS_SERVER and NFS_SHARE."
-            exit 1
-        fi
         return
-    fi
-
-    echo -e "\n  ${BOLD}NFS Configuration${NC} ${DIM}(where your 3D models live)${NC}"
-    echo -e "  ${DIM}────────────────────────────────────────${NC}"
-    prompt_value NFS_SERVER "NFS server IP/hostname" "$NFS_SERVER"
-    prompt_value NFS_SHARE  "NFS export path"        "$NFS_SHARE"
-
-    if [[ -z "$NFS_SERVER" || -z "$NFS_SHARE" ]]; then
-        error "NFS server and share are required."
-        exit 1
     fi
 
     echo -e "\n  ${BOLD}Container Settings${NC}"
@@ -300,7 +280,6 @@ confirm() {
     echo -e "  Storage:         $CT_STORAGE"
     echo -e "  Network:         $CT_BRIDGE (DHCP)"
     echo -e "  Template:        $CT_TEMPLATE"
-    echo -e "  NFS:             ${NFS_SERVER}:${NFS_SHARE}"
     echo -e "  Web port:        $YASTL_PORT"
     echo ""
 
@@ -320,7 +299,7 @@ confirm() {
 # Check if CT ID is already in use
 # ============================================================
 check_ct_exists() {
-    if pct status "$CT_ID" &>/dev/null 2>&1; then
+    if pct status "$CT_ID" &>/dev/null; then
         error "Container ID $CT_ID already exists."
         echo "  Choose a different ID or remove the existing container:"
         echo "    pct stop $CT_ID && pct destroy $CT_ID"
@@ -350,38 +329,6 @@ create_container() {
 }
 
 # ============================================================
-# Configure NFS mount (bind-mount via host)
-# ============================================================
-setup_nfs() {
-    step "Configuring NFS mount"
-
-    local host_mount="/mnt/yastl-nfs-${CT_ID}"
-    mkdir -p "$host_mount"
-
-    # Add to host fstab if not already present
-    local fstab_entry="${NFS_SERVER}:${NFS_SHARE} ${host_mount} nfs rw,soft,intr 0 0"
-    if ! grep -qF "$host_mount" /etc/fstab 2>/dev/null; then
-        echo "$fstab_entry" >> /etc/fstab
-        info "Added NFS mount to host /etc/fstab"
-    fi
-
-    # Mount on host
-    if ! mountpoint -q "$host_mount" 2>/dev/null; then
-        mount "$host_mount" || {
-            error "Failed to mount NFS share. Check that ${NFS_SERVER}:${NFS_SHARE} is reachable."
-            echo "  You can fix the mount later and re-run, or mount manually:"
-            echo "    mount ${NFS_SERVER}:${NFS_SHARE} ${host_mount}"
-            exit 1
-        }
-    fi
-
-    # Bind-mount into container (read-only)
-    pct set "$CT_ID" -mp0 "${host_mount},mp=${NFS_MOUNT_POINT},ro=1"
-
-    success "NFS share mounted at ${NFS_MOUNT_POINT} inside container (read-only)"
-}
-
-# ============================================================
 # Wait for container networking
 # ============================================================
 wait_for_network() {
@@ -390,7 +337,7 @@ wait_for_network() {
 
     info "Waiting for container networking..."
     while [[ $waited -lt $max_wait ]]; do
-        if pct exec "$CT_ID" -- ping -c1 -W1 8.8.8.8 &>/dev/null 2>&1; then
+        if pct exec "$CT_ID" -- ping -c1 -W1 8.8.8.8 &>/dev/null; then
             success "Container has network connectivity"
             return
         fi
@@ -409,6 +356,11 @@ install_deps() {
 
     pct exec "$CT_ID" -- bash -c "
         export DEBIAN_FRONTEND=noninteractive
+
+        # Disable Proxmox enterprise repos (require paid subscription)
+        rm -f /etc/apt/sources.list.d/pve-enterprise.list
+        rm -f /etc/apt/sources.list.d/ceph.list
+
         apt-get update -qq
         apt-get install -y -qq --no-install-recommends \
             python3 python3-pip python3-venv python3-dev \
@@ -463,7 +415,6 @@ Type=simple
 User=root
 WorkingDirectory=/opt/yastl/src
 Environment=YASTL_MODEL_LIBRARY_DB=${YASTL_DATA_DIR}/library.db
-Environment=YASTL_MODEL_LIBRARY_SCAN_PATH=${NFS_MOUNT_POINT}
 Environment=YASTL_MODEL_LIBRARY_THUMBNAIL_PATH=${YASTL_DATA_DIR}/thumbnails
 Environment=YASTL_PORT=${YASTL_PORT}
 ExecStart=/opt/yastl/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port ${YASTL_PORT}
@@ -567,17 +518,11 @@ summary() {
     echo -e "    Restart:   ${DIM}pct exec $CT_ID -- systemctl restart yastl${NC}"
     echo ""
     echo -e "  ${BOLD}Paths (inside container)${NC}"
-    echo -e "    Models:      ${NFS_MOUNT_POINT} (NFS, read-only)"
     echo -e "    Database:    ${YASTL_DATA_DIR}/library.db"
     echo -e "    Thumbnails:  ${YASTL_DATA_DIR}/thumbnails/"
     echo -e "    App source:  /opt/yastl/src/"
     echo ""
-    echo -e "  ${DIM}Trigger a library scan from the web UI or run:${NC}"
-    if [[ -n "${CT_IP:-}" ]]; then
-        echo -e "    ${DIM}curl -X POST http://${CT_IP}:${YASTL_PORT}/api/scan${NC}"
-    else
-        echo -e "    ${DIM}curl -X POST http://<IP>:${YASTL_PORT}/api/scan${NC}"
-    fi
+    echo -e "  ${DIM}Configure model library paths in the web UI Settings page.${NC}"
     echo ""
 }
 
@@ -594,7 +539,7 @@ cleanup_on_error() {
         echo "    pct stop $CT_ID 2>/dev/null; pct destroy $CT_ID"
         echo ""
         echo "  To retry:"
-        echo "    CT_ID=$CT_ID NFS_SERVER=$NFS_SERVER NFS_SHARE=$NFS_SHARE bash ct-install.sh"
+        echo "    CT_ID=$CT_ID bash ct-install.sh"
     fi
 }
 
@@ -612,7 +557,6 @@ main() {
 
     check_ct_exists
     create_container
-    setup_nfs
 
     # Start the container
     step "Starting container"
