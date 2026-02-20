@@ -9,11 +9,8 @@
 # Prerequisites:
 #   - Proxmox VE host with LXC support
 #   - A Debian/Ubuntu LXC template downloaded
-#   - NFS share accessible from the Proxmox host
 #
 # Usage:
-#   export NFS_SERVER=192.168.1.100
-#   export NFS_SHARE=/volume1/3dPrinting
 #   chmod +x proxmox-setup.sh
 #   ./proxmox-setup.sh
 #
@@ -35,11 +32,6 @@ CT_TEMPLATE="${CT_TEMPLATE:-local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst
 CT_STORAGE="${CT_STORAGE:-local-lvm}"
 CT_BRIDGE="${CT_BRIDGE:-vmbr0}"
 
-# NFS mount configuration
-NFS_SERVER="${NFS_SERVER:-}"           # e.g., 192.168.1.100
-NFS_SHARE="${NFS_SHARE:-}"            # e.g., /volume1/3dPrinting
-NFS_MOUNT_POINT="/mnt/3dprinting"
-
 # YASTL settings
 YASTL_PORT="${YASTL_PORT:-8000}"
 YASTL_DATA_DIR="/opt/yastl/data"
@@ -55,17 +47,6 @@ echo "========================================"
 echo "  YASTL - Proxmox LXC Setup"
 echo "========================================"
 
-# Validate NFS config
-if [[ -z "$NFS_SERVER" || -z "$NFS_SHARE" ]]; then
-    echo ""
-    echo "NFS configuration required. Set environment variables:"
-    echo "  export NFS_SERVER=192.168.1.100"
-    echo "  export NFS_SHARE=/volume1/3dPrinting"
-    echo ""
-    echo "Or edit the Configuration section in this script."
-    exit 1
-fi
-
 # Detect install mode based on whether we're in a repo checkout
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
 if [[ "$YASTL_INSTALL_MODE" == "local" ]] && [[ ! -f "${SCRIPT_DIR}/pyproject.toml" ]]; then
@@ -80,9 +61,6 @@ echo "  Hostname:     $CT_HOSTNAME"
 echo "  Memory:       ${CT_MEMORY}MB"
 echo "  Disk:         ${CT_DISK}GB"
 echo "  Cores:        $CT_CORES"
-echo "  NFS Server:   $NFS_SERVER"
-echo "  NFS Share:    $NFS_SHARE"
-echo "  Mount Point:  $NFS_MOUNT_POINT"
 echo "  Install Mode: $YASTL_INSTALL_MODE"
 echo ""
 
@@ -94,7 +72,7 @@ fi
 
 # Step 1: Create the LXC container
 echo ""
-echo "[1/6] Creating LXC container $CT_ID..."
+echo "[1/5] Creating LXC container $CT_ID..."
 pct create "$CT_ID" "$CT_TEMPLATE" \
     --hostname "$CT_HOSTNAME" \
     --memory "$CT_MEMORY" \
@@ -107,27 +85,8 @@ pct create "$CT_ID" "$CT_TEMPLATE" \
     --onboot 1 \
     --start 0
 
-# Step 2: Configure NFS mount in container
-echo "[2/6] Configuring NFS mount..."
-
-# For unprivileged containers, we bind-mount from the host
-HOST_NFS_MOUNT="/mnt/yastl-nfs-${CT_ID}"
-mkdir -p "$HOST_NFS_MOUNT"
-
-# Add to /etc/fstab on host if not already present
-FSTAB_ENTRY="${NFS_SERVER}:${NFS_SHARE} ${HOST_NFS_MOUNT} nfs rw,soft,intr 0 0"
-if ! grep -qF "$HOST_NFS_MOUNT" /etc/fstab; then
-    echo "$FSTAB_ENTRY" >> /etc/fstab
-    echo "  Added NFS mount to /etc/fstab"
-fi
-mount -a 2>/dev/null || mount "$HOST_NFS_MOUNT" || true
-
-# Bind mount NFS into the container (read-only)
-pct set "$CT_ID" -mp0 "${HOST_NFS_MOUNT},mp=${NFS_MOUNT_POINT},ro=1"
-echo "  NFS share will be available at ${NFS_MOUNT_POINT} inside the container"
-
-# Step 3: Start container and install dependencies
-echo "[3/6] Starting container and installing dependencies..."
+# Step 2: Start container and install dependencies
+echo "[2/5] Starting container and installing dependencies..."
 pct start "$CT_ID"
 sleep 5  # Wait for container to boot
 
@@ -143,8 +102,8 @@ pct exec "$CT_ID" -- bash -c "
     rm -rf /var/lib/apt/lists/*
 "
 
-# Step 4: Install YASTL
-echo "[4/6] Installing YASTL application..."
+# Step 3: Install YASTL
+echo "[3/5] Installing YASTL application..."
 pct exec "$CT_ID" -- bash -c "
     mkdir -p /opt/yastl
     mkdir -p ${YASTL_DATA_DIR}/thumbnails
@@ -169,8 +128,8 @@ else
     WORK_DIR="/opt/yastl"
 fi
 
-# Step 5: Create systemd service
-echo "[5/6] Creating systemd service..."
+# Step 4: Create systemd service
+echo "[4/5] Creating systemd service..."
 pct exec "$CT_ID" -- bash -c "cat > /etc/systemd/system/yastl.service << UNIT
 [Unit]
 Description=YASTL - Yet Another STL 3D Model Library
@@ -182,7 +141,6 @@ Type=simple
 User=root
 WorkingDirectory=${WORK_DIR}
 Environment=YASTL_MODEL_LIBRARY_DB=${YASTL_DATA_DIR}/library.db
-Environment=YASTL_MODEL_LIBRARY_SCAN_PATH=${NFS_MOUNT_POINT}
 Environment=YASTL_MODEL_LIBRARY_THUMBNAIL_PATH=${YASTL_DATA_DIR}/thumbnails
 Environment=YASTL_PORT=${YASTL_PORT}
 ExecStart=/opt/yastl/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port ${YASTL_PORT}
@@ -215,8 +173,8 @@ UPDATEEOF
 chmod +x /usr/local/bin/yastl-update"
 fi
 
-# Step 6: Get container IP and show summary
-echo "[6/6] Verifying installation..."
+# Step 5: Get container IP and show summary
+echo "[5/5] Verifying installation..."
 sleep 3
 
 CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}') || CT_IP=""
@@ -230,7 +188,6 @@ echo "  Container ID:  $CT_ID"
 echo "  Container IP:  ${CT_IP:-<pending DHCP>}"
 echo "  Web UI:        http://${CT_IP:-<IP>}:${YASTL_PORT}"
 echo ""
-echo "  NFS Mount:     ${NFS_MOUNT_POINT} (read-only)"
 echo "  Database:      ${YASTL_DATA_DIR}/library.db"
 echo "  Thumbnails:    ${YASTL_DATA_DIR}/thumbnails/"
 echo ""
@@ -240,8 +197,5 @@ if [[ "$YASTL_INSTALL_MODE" == "git" ]]; then
     echo "  Update:        pct exec $CT_ID -- yastl-update"
 fi
 echo ""
-echo "  To trigger initial scan, visit:"
-echo "    http://${CT_IP:-<IP>}:${YASTL_PORT}"
-echo "  and click 'Scan Library' or run:"
-echo "    curl -X POST http://${CT_IP:-<IP>}:${YASTL_PORT}/api/scan"
+echo "  Configure model library paths in the web UI Settings page."
 echo ""

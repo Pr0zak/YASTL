@@ -9,12 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy and install dependencies
+# Copy application code and install
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-
-# Copy application code
 COPY app/ app/
+RUN pip install --no-cache-dir .
 
 # Create data directories
 RUN mkdir -p /data/thumbnails
@@ -24,7 +22,6 @@ VOLUME ["/data", "/models"]
 
 # Environment defaults
 ENV YASTL_MODEL_LIBRARY_DB=/data/library.db
-ENV YASTL_MODEL_LIBRARY_SCAN_PATH=/models
 ENV YASTL_MODEL_LIBRARY_THUMBNAIL_PATH=/data/thumbnails
 
 EXPOSE 8000
