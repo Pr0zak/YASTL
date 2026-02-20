@@ -32,7 +32,6 @@ SOLID_BASE_COLOR = np.array([0, 150, 200], dtype=np.float64)
 SOLID_AMBIENT = 0.25
 SOLID_DIFFUSE = 0.75
 SOLID_LIGHT_DIR = np.array([0.3, 0.8, 0.5])  # normalised at use-time
-SOLID_EDGE_COLOR = (30, 30, 33)
 SOLID_PADDING = 20
 
 
@@ -349,7 +348,7 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
         ]
         c = (SOLID_BASE_COLOR * intensity[fi]).astype(int)
         fill_color = (int(c[0]), int(c[1]), int(c[2]))
-        draw.polygon(polygon, fill=fill_color, outline=SOLID_EDGE_COLOR)
+        draw.polygon(polygon, fill=fill_color)
 
     img.save(output_path, "PNG")
     logger.debug("Rendered solid thumbnail: %s", output_path)
