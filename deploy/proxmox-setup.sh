@@ -100,9 +100,13 @@ pct exec "$CT_ID" -- bash -c "
     apt-get update -qq
     apt-get install -y -qq --no-install-recommends \
         python3-full python3-pip python3-dev \
-        libgl1-mesa-glx libglib2.0-0 libgomp1 \
+        libgomp1 \
         git curl ca-certificates \
-        build-essential pkg-config >/dev/null 2>&1
+        build-essential pkg-config
+
+    # GL libraries (package names differ between Debian versions)
+    apt-get install -y -qq libgl1-mesa-glx libglib2.0-0 2>/dev/null || \
+        apt-get install -y -qq libgl1 libglib2.0-0t64 2>/dev/null || true
 
     # Install version-matched venv package (e.g. python3.13-venv on Trixie)
     PY_VER=\$(python3 -c 'import sys; print(f\"{sys.version_info[0]}.{sys.version_info[1]}\")')
