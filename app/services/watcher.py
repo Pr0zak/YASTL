@@ -148,6 +148,8 @@ class ModelFileWatcher:
         self._handler: _DebouncedHandler | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._watched_paths: set[str] = set()
+        # Map watched path -> ObservedWatch handle for unscheduling
+        self._watches: dict[str, object] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -199,11 +201,27 @@ class ModelFileWatcher:
             logger.warning("Cannot watch non-existent directory: %s", path_str)
             return
 
-        self._observer.schedule(
+        watch = self._observer.schedule(
             self._handler, path=path_str, recursive=True
         )
         self._watched_paths.add(path_str)
+        self._watches[path_str] = watch
         logger.info("File watcher watching: %s", path_str)
+
+    def unwatch_path(self, path: str) -> None:
+        """Remove a directory from the set of watched paths."""
+        if self._observer is None:
+            return
+
+        path_str = str(path)
+        watch = self._watches.pop(path_str, None)
+        if watch is not None:
+            try:
+                self._observer.unschedule(watch)
+            except Exception:
+                logger.warning("Failed to unschedule watch for: %s", path_str)
+            self._watched_paths.discard(path_str)
+            logger.info("File watcher unwatched: %s", path_str)
 
     def stop(self) -> None:
         """Stop the filesystem watcher and clean up threads."""
@@ -217,6 +235,7 @@ class ModelFileWatcher:
             self._observer = None
 
         self._watched_paths.clear()
+        self._watches.clear()
         logger.info("File watcher stopped.")
 
     # ------------------------------------------------------------------

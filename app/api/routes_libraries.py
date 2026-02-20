@@ -1,9 +1,14 @@
 """API routes for managing model libraries (scan directories)."""
 
+import logging
 import os
 
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
+
+from app.services.watcher import ModelFileWatcher
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/libraries", tags=["libraries"])
 
@@ -11,6 +16,11 @@ router = APIRouter(prefix="/api/libraries", tags=["libraries"])
 def _get_db_path(request: Request) -> str:
     """Retrieve the database path from FastAPI app state."""
     return request.app.state.db_path
+
+
+def _get_watcher(request: Request) -> ModelFileWatcher | None:
+    """Retrieve the file watcher from FastAPI app state, if available."""
+    return getattr(request.app.state, "watcher", None)
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +99,11 @@ async def create_library(request: Request):
         )
         library = dict(await cursor.fetchone())
 
+    # Notify watcher to start watching the new library path
+    watcher = _get_watcher(request)
+    if watcher is not None and watcher.is_running:
+        watcher.watch_path(path)
+
     return library
 
 
@@ -133,11 +148,13 @@ async def update_library(request: Request, library_id: int):
         cursor = await db.execute(
             "SELECT * FROM libraries WHERE id = ?", (library_id,)
         )
-        if await cursor.fetchone() is None:
+        existing = await cursor.fetchone()
+        if existing is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Library {library_id} not found",
             )
+        old_path = dict(existing)["path"]
 
         set_clauses: list[str] = []
         params: list[str | int] = []
@@ -161,6 +178,13 @@ async def update_library(request: Request, library_id: int):
         )
         library = dict(await cursor.fetchone())
 
+    # If the path changed, update the watcher
+    if path and path != old_path:
+        watcher = _get_watcher(request)
+        if watcher is not None and watcher.is_running:
+            watcher.unwatch_path(old_path)
+            watcher.watch_path(path)
+
     return library
 
 
@@ -179,15 +203,22 @@ async def delete_library(request: Request, library_id: int):
         await db.execute("PRAGMA foreign_keys=ON")
 
         cursor = await db.execute(
-            "SELECT id FROM libraries WHERE id = ?", (library_id,)
+            "SELECT id, path FROM libraries WHERE id = ?", (library_id,)
         )
-        if await cursor.fetchone() is None:
+        row = await cursor.fetchone()
+        if row is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Library {library_id} not found",
             )
+        lib_path = dict(row)["path"]
 
         await db.execute("DELETE FROM libraries WHERE id = ?", (library_id,))
         await db.commit()
+
+    # Stop watching the deleted library's path
+    watcher = _get_watcher(request)
+    if watcher is not None and watcher.is_running:
+        watcher.unwatch_path(lib_path)
 
     return {"detail": f"Library {library_id} deleted"}
