@@ -1102,6 +1102,19 @@ img {
     font-size: 0.8rem;
 }
 
+.info-field .field-value-path {
+    font-size: 0.7rem;
+    word-break: break-all;
+    max-width: 200px;
+}
+
+.info-field .field-value-hash {
+    font-size: 0.65rem;
+    word-break: break-all;
+    max-width: 180px;
+    opacity: 0.7;
+}
+
 /* Editable fields */
 .editable-field {
     width: 100%;
@@ -1409,6 +1422,17 @@ img {
     }
 }
 
+@keyframes slideUpSheet {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* ============================================================
    Toast / Notification
    ============================================================ */
@@ -1457,6 +1481,11 @@ img {
 }
 
 .sidebar-backdrop {
+    display: none;
+}
+
+/* Breadcrumb view toggle: hidden on desktop (shown via navbar) */
+.breadcrumb-view-toggle {
     display: none;
 }
 
@@ -1535,6 +1564,15 @@ img {
         gap: 8px;
     }
 
+    /* Hide navbar view toggle, show in breadcrumb bar instead */
+    .navbar-actions .view-toggle {
+        display: none;
+    }
+
+    .breadcrumb-view-toggle {
+        display: inline-flex;
+    }
+
     .navbar-actions {
         gap: 4px;
     }
@@ -1546,6 +1584,11 @@ img {
     .breadcrumb-nav {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .breadcrumb-nav::-webkit-scrollbar {
+        display: none;
     }
 
     .breadcrumb-link {
@@ -1557,16 +1600,26 @@ img {
         display: none;
     }
 
-    .detail-panel {
-        max-width: 100%;
+    /* --- Detail modal: bottom sheet style --- */
+    .detail-overlay {
+        padding: 0;
+        align-items: flex-end;
     }
 
-    .detail-overlay {
-        padding: 8px;
+    .detail-panel {
+        max-width: 100%;
+        max-height: 92vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        animation: slideUpSheet 0.3s ease;
+    }
+
+    .detail-content {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
 
     #viewer-container {
-        height: 280px;
+        height: 260px;
     }
 
     /* Table: hide less important columns */
@@ -1589,6 +1642,13 @@ img {
         padding: 10px;
     }
 
+    /* Allow name column to wrap on mobile */
+    .models-table tbody td.col-name {
+        white-space: normal;
+        word-break: break-word;
+        min-width: 120px;
+    }
+
     /* Detail panel info: stack on mobile */
     .detail-info {
         padding: 16px;
@@ -1599,6 +1659,15 @@ img {
         width: 40px;
         height: 40px;
         font-size: 22px;
+    }
+
+    /* Hide download label text on mobile, keep icon */
+    .detail-download-btn .download-label {
+        display: none;
+    }
+
+    .detail-download-btn {
+        padding: 6px 10px;
     }
 
     /* Search clear button bigger */
@@ -1628,9 +1697,53 @@ img {
         border-radius: 0 0 var(--radius) var(--radius);
     }
 
-    /* Settings overlay less padding */
+    /* Settings: full-screen on mobile */
+    .settings-panel {
+        max-width: 100%;
+        max-height: 100vh;
+        height: 100vh;
+        border-radius: 0;
+    }
+
+    .detail-overlay:has(.settings-panel) {
+        padding: 0;
+        align-items: stretch;
+    }
+
     .settings-content {
         padding: 16px;
+    }
+
+    /* Thumbnail mode options: stack vertically */
+    .thumbnail-mode-options {
+        flex-direction: column;
+    }
+
+    /* Thumbnail regen row: stack vertically */
+    .thumbnail-regen-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    /* Detail actions: stack vertically */
+    .detail-actions {
+        flex-direction: column;
+    }
+
+    .detail-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Info field: allow values to wrap */
+    .info-field {
+        flex-wrap: wrap;
+    }
+
+    .info-field .field-value {
+        max-width: 60%;
+        word-break: break-all;
     }
 }
 
@@ -1667,17 +1780,6 @@ img {
         gap: 6px;
     }
 
-    /* Detail modal: full-screen on phone */
-    .detail-overlay {
-        padding: 0;
-    }
-
-    .detail-panel {
-        border-radius: 0;
-        max-height: 100vh;
-        height: 100vh;
-    }
-
     .detail-header {
         padding: 12px 16px;
     }
@@ -1687,10 +1789,10 @@ img {
     }
 
     #viewer-container {
-        height: 240px;
+        height: 220px;
     }
 
-    /* Info field text wrapping */
+    /* Info field: full-width stacking on very small screens */
     .info-field .field-value {
         max-width: 55%;
     }
@@ -1704,6 +1806,16 @@ img {
         max-width: 100%;
         order: 3;
         width: 100%;
+    }
+
+    /* Library items: ensure path text wraps */
+    .library-path {
+        font-size: 0.7rem;
+    }
+
+    /* Breadcrumb bar tighter */
+    .breadcrumb-actions {
+        gap: 4px;
     }
 }
 
@@ -2259,16 +2371,6 @@ img {
 }
 
 @media (max-width: 640px) {
-    .settings-panel {
-        max-width: 100%;
-        max-height: 100vh;
-        border-radius: 0;
-    }
-
-    .detail-overlay:has(.settings-panel) {
-        padding: 0;
-    }
-
     .update-commit {
         flex-wrap: wrap;
     }
@@ -2279,7 +2381,7 @@ img {
     }
 }
 
-/* Landscape phone: give viewer more height */
+/* Landscape phone: compact layout */
 @media (max-height: 500px) and (orientation: landscape) {
     #viewer-container {
         height: 200px;
@@ -2287,11 +2389,21 @@ img {
 
     .detail-overlay {
         padding: 0;
+        align-items: stretch;
     }
 
     .detail-panel {
         border-radius: 0;
         max-height: 100vh;
         height: 100vh;
+    }
+}
+
+/* Path/hash responsive max-width for mobile detail panel */
+@media (max-width: 768px) {
+    .info-field .field-value-path,
+    .info-field .field-value-hash {
+        max-width: none;
+        flex: 1;
     }
 }

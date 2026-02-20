@@ -1093,7 +1093,7 @@ const app = createApp({
             <input type="text"
                    :value="searchQuery"
                    @input="onSearchInput"
-                   placeholder="Search models by name or description..."
+                   placeholder="Search models..."
                    aria-label="Search models">
             <button v-if="searchQuery"
                     class="search-clear"
@@ -1207,6 +1207,19 @@ const app = createApp({
         </div>
         <!-- Right side: result count + actions -->
         <div class="breadcrumb-actions">
+            <!-- View toggle (shown on mobile, hidden on desktop) -->
+            <div class="view-toggle breadcrumb-view-toggle">
+                <button class="btn-ghost"
+                        :class="{ active: viewMode === 'grid' }"
+                        @click="viewMode = 'grid'"
+                        title="Grid view"
+                        v-html="ICONS.grid"></button>
+                <button class="btn-ghost"
+                        :class="{ active: viewMode === 'list' }"
+                        @click="viewMode = 'list'"
+                        title="List view"
+                        v-html="ICONS.list"></button>
+            </div>
             <span class="breadcrumb-count">
                 <strong>{{ pagination.total }}</strong> model{{ pagination.total !== 1 ? 's' : '' }}
             </span>
@@ -1489,7 +1502,7 @@ const app = createApp({
                    download
                    title="Download model file">
                     <span v-html="ICONS.download"></span>
-                    Download
+                    <span class="download-label">Download</span>
                 </a>
                 <button class="close-btn" @click="closeDetail" title="Close">&times;</button>
             </div>
@@ -1569,13 +1582,13 @@ const app = createApp({
                         </div>
                         <div class="info-field" style="margin-top:4px">
                             <span class="field-label">Path</span>
-                            <span class="field-value" style="font-size:0.7rem;word-break:break-all;max-width:200px;text-align:right">
+                            <span class="field-value field-value-path">
                                 {{ selectedModel.file_path }}
                             </span>
                         </div>
                         <div v-if="selectedModel.file_hash" class="info-field">
                             <span class="field-label">Hash</span>
-                            <span class="field-value" style="font-size:0.65rem;word-break:break-all;max-width:180px;text-align:right;opacity:0.7">
+                            <span class="field-value field-value-hash">
                                 {{ selectedModel.file_hash }}
                             </span>
                         </div>
