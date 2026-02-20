@@ -30,13 +30,19 @@ def _get_watcher(request: Request) -> ModelFileWatcher | None:
 
 @router.get("")
 async def list_libraries(request: Request):
-    """Return all configured libraries."""
+    """Return all configured libraries with model counts."""
     db_path = _get_db_path(request)
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM libraries ORDER BY name"
+            """
+            SELECT l.*, COUNT(m.id) as model_count
+            FROM libraries l
+            LEFT JOIN models m ON m.library_id = l.id
+            GROUP BY l.id
+            ORDER BY l.name
+            """
         )
         rows = await cursor.fetchall()
 

@@ -38,6 +38,7 @@ const ICONS = {
     database: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
     eye: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
     image: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+    home: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
 };
 
 /* ==================================================================
@@ -73,6 +74,7 @@ const app = createApp({
             format: '',
             tag: '',
             category: '',
+            library_id: null,
         });
 
         const pagination = reactive({
@@ -147,7 +149,31 @@ const app = createApp({
         });
 
         const hasActiveFilters = computed(() => {
-            return !!(filters.format || filters.tag || filters.category);
+            return !!(filters.format || filters.tag || filters.category || filters.library_id);
+        });
+
+        // Find the library object for the currently selected library_id
+        const selectedLibrary = computed(() => {
+            if (!filters.library_id) return null;
+            return libraries.value.find(l => l.id === filters.library_id) || null;
+        });
+
+        // Build breadcrumb trail from current filters
+        const breadcrumbTrail = computed(() => {
+            const trail = [];
+            if (filters.library_id && selectedLibrary.value) {
+                trail.push({ type: 'library_id', label: selectedLibrary.value.name });
+            }
+            if (filters.category) {
+                trail.push({ type: 'category', label: filters.category });
+            }
+            if (filters.tag) {
+                trail.push({ type: 'tag', label: filters.tag });
+            }
+            if (filters.format) {
+                trail.push({ type: 'format', label: filters.format.toUpperCase() });
+            }
+            return trail;
         });
 
         /* ==============================================================
@@ -164,6 +190,7 @@ const app = createApp({
                 if (filters.format) params.append('format', filters.format);
                 if (filters.tag) params.append('tag', filters.tag);
                 if (filters.category) params.append('category', filters.category);
+                if (filters.library_id) params.append('library_id', String(filters.library_id));
 
                 const res = await fetch(`/api/models?${params}`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -198,6 +225,7 @@ const app = createApp({
                 if (filters.format) params.append('format', filters.format);
                 if (filters.tag) params.append('tags', filters.tag);
                 if (filters.category) params.append('categories', filters.category);
+                if (filters.library_id) params.append('library_id', String(filters.library_id));
 
                 const res = await fetch(`/api/search?${params}`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -785,10 +813,31 @@ const app = createApp({
             closeSidebarIfMobile();
         }
 
+        function setLibraryFilter(libId) {
+            filters.library_id = filters.library_id === libId ? null : libId;
+            pagination.offset = 0;
+            refreshCurrentView();
+        }
+
         function clearFilters() {
             filters.format = '';
             filters.tag = '';
             filters.category = '';
+            filters.library_id = null;
+            pagination.offset = 0;
+            refreshCurrentView();
+        }
+
+        function removeBreadcrumb(crumb) {
+            if (crumb.type === 'format') {
+                filters.format = '';
+            } else if (crumb.type === 'tag') {
+                filters.tag = '';
+            } else if (crumb.type === 'category') {
+                filters.category = '';
+            } else if (crumb.type === 'library_id') {
+                filters.library_id = null;
+            }
             pagination.offset = 0;
             refreshCurrentView();
         }
@@ -959,6 +1008,8 @@ const app = createApp({
             shownCount,
             hasActiveFilters,
             hasLibraries,
+            breadcrumbTrail,
+            selectedLibrary,
 
             // Actions
             onSearchInput,
@@ -977,6 +1028,8 @@ const app = createApp({
             setTagFilter,
             setCategoryFilter,
             clearFilters,
+            setLibraryFilter,
+            removeBreadcrumb,
             toggleCategory,
             saveName,
             saveDesc,
@@ -1123,14 +1176,43 @@ const app = createApp({
             </div>
 
             <button class="btn-icon" @click="openSettings" title="Settings" v-html="ICONS.settings"></button>
-            <button class="btn btn-primary"
-                    @click="triggerScan"
-                    :disabled="scanStatus.scanning || !hasLibraries">
-                <span v-html="ICONS.scan"></span>
-                <span class="scan-label">Scan Library</span>
-            </button>
         </div>
     </nav>
+
+    <!-- ============================================================
+         Breadcrumb Bar
+         ============================================================ -->
+    <div class="breadcrumb-bar">
+        <div class="breadcrumb-nav">
+            <!-- Root: All Models -->
+            <a class="breadcrumb-link" :class="{ active: !hasActiveFilters }" @click="clearFilters">
+                <span class="breadcrumb-icon" v-html="ICONS.home"></span>
+                All Models
+            </a>
+            <!-- Filter trail crumbs -->
+            <template v-for="(crumb, idx) in breadcrumbTrail" :key="idx">
+                <span class="breadcrumb-sep">&rsaquo;</span>
+                <a class="breadcrumb-link active" @click="removeBreadcrumb(crumb)">
+                    {{ crumb.label }}
+                    <span class="breadcrumb-remove">&times;</span>
+                </a>
+            </template>
+        </div>
+        <!-- Right side: result count + actions -->
+        <div class="breadcrumb-actions">
+            <span class="breadcrumb-count">
+                <strong>{{ pagination.total }}</strong> model{{ pagination.total !== 1 ? 's' : '' }}
+            </span>
+            <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="clearFilters">Clear all</button>
+            <button class="btn btn-sm btn-primary"
+                    @click="triggerScan"
+                    :disabled="scanStatus.scanning || !hasLibraries"
+                    title="Scan libraries for new models">
+                <span v-html="ICONS.scan"></span>
+                Scan
+            </button>
+        </div>
+    </div>
 
     <!-- ============================================================
          Body: Sidebar + Main
@@ -1142,6 +1224,19 @@ const app = createApp({
 
         <!-- Sidebar -->
         <aside class="sidebar" :class="{ open: sidebarOpen }">
+
+            <!-- Libraries -->
+            <div class="sidebar-section" v-if="libraries.length > 0">
+                <div class="sidebar-section-title">Libraries</div>
+                <div v-for="lib in libraries" :key="lib.id"
+                     class="sidebar-item"
+                     :class="{ active: filters.library_id === lib.id }"
+                     @click="setLibraryFilter(lib.id)">
+                    <span class="sidebar-item-icon" v-html="ICONS.folder"></span>
+                    <span>{{ lib.name }}</span>
+                    <span v-if="lib.model_count != null" class="item-count">{{ lib.model_count }}</span>
+                </div>
+            </div>
 
             <!-- Format Filters -->
             <div class="sidebar-section">
@@ -1236,35 +1331,6 @@ const app = createApp({
                 </span>
             </div>
 
-            <!-- Content Toolbar -->
-            <div class="content-toolbar">
-                <div class="result-count">
-                    <strong>{{ pagination.total }}</strong>
-                    model{{ pagination.total !== 1 ? 's' : '' }}
-                    <span v-if="searchQuery" class="text-muted">
-                        for "{{ searchQuery }}"
-                    </span>
-                </div>
-            </div>
-
-            <!-- Active Filters -->
-            <div class="active-filters" v-if="hasActiveFilters">
-                <span class="text-muted text-sm">Filters:</span>
-                <span v-if="filters.format" class="filter-chip" @click="setFormatFilter(filters.format)">
-                    Format: {{ filters.format.toUpperCase() }}
-                    <span class="chip-remove">&times;</span>
-                </span>
-                <span v-if="filters.tag" class="filter-chip" @click="setTagFilter(filters.tag)">
-                    Tag: {{ filters.tag }}
-                    <span class="chip-remove">&times;</span>
-                </span>
-                <span v-if="filters.category" class="filter-chip" @click="setCategoryFilter(filters.category)">
-                    Category: {{ filters.category }}
-                    <span class="chip-remove">&times;</span>
-                </span>
-                <button class="btn btn-sm btn-ghost" @click="clearFilters">Clear all</button>
-            </div>
-
             <!-- Loading State -->
             <div v-if="loading && models.length === 0" class="loading-overlay">
                 <div class="spinner"></div>
@@ -1285,7 +1351,7 @@ const app = createApp({
                     Get started by adding a library. Point YASTL at a local directory containing your 3D model files.
                 </div>
                 <div class="empty-message" v-else>
-                    Your library is empty. Click "Scan Library" to discover and import 3D models from your directories.
+                    Your library is empty. Click "Scan" in the toolbar to discover and import 3D models from your directories.
                 </div>
                 <button v-if="!searchQuery && !hasActiveFilters && !hasLibraries"
                         class="btn btn-primary"

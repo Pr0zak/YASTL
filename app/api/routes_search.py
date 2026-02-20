@@ -52,6 +52,7 @@ async def search_models(
     categories: str | None = Query(
         default=None, description="Comma-separated list of category names"
     ),
+    library_id: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
@@ -134,6 +135,11 @@ async def search_models(
                 )"""
             )
             params.extend(cat_list)
+
+        # Library filter
+        if library_id is not None:
+            where_clauses.append("m.library_id = ?")
+            params.append(library_id)
 
         where_sql = ""
         if where_clauses:

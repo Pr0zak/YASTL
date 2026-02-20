@@ -94,8 +94,9 @@ async def list_models(
     format: str | None = Query(default=None, alias="format"),
     tag: str | None = Query(default=None),
     category: str | None = Query(default=None),
+    library_id: int | None = Query(default=None),
 ):
-    """List models with pagination and optional filters for format, tag, and category."""
+    """List models with pagination and optional filters for format, tag, category, and library."""
     db_path = _get_db_path(request)
 
     async with aiosqlite.connect(db_path) as db:
@@ -128,6 +129,10 @@ async def list_models(
                 )"""
             )
             params.append(category)
+
+        if library_id is not None:
+            where_clauses.append("m.library_id = ?")
+            params.append(library_id)
 
         where_sql = ""
         if where_clauses:
