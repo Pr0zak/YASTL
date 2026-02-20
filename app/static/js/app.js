@@ -174,6 +174,8 @@ const app = createApp({
                     offset: String(pagination.offset),
                 });
                 if (filters.format) params.append('format', filters.format);
+                if (filters.tag) params.append('tags', filters.tag);
+                if (filters.category) params.append('categories', filters.category);
 
                 const res = await fetch(`/api/search?${params}`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
