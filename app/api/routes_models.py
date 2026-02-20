@@ -454,7 +454,12 @@ async def serve_model_glb(request: Request, model_id: int):
         if isinstance(loaded, trimesh.Trimesh):
             return loaded.export(file_type="glb")
         elif isinstance(loaded, trimesh.Scene):
-            return loaded.export(file_type="glb")
+            try:
+                return loaded.export(file_type="glb")
+            except Exception:
+                # Scene GLB export failed; concatenate into a single mesh
+                concatenated = trimesh.load(file_path, force="mesh")
+                return concatenated.export(file_type="glb")
         else:
             raise ValueError(
                 f"Cannot convert to GLB: unsupported type {type(loaded).__name__}"

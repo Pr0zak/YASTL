@@ -616,7 +616,7 @@ const app = createApp({
             viewerLoading.value = true;
             initViewer('viewer-container');
 
-            const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply'];
+            const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
             const fmt = (selectedModel.value.file_format || '').toLowerCase();
 
             if (supportedViewerFormats.includes(fmt)) {
