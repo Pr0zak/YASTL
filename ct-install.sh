@@ -386,18 +386,21 @@ install_yastl() {
     step "Installing YASTL application"
 
     pct exec "$CT_ID" -- bash -c "
-        # Clone from GitHub
-        git clone --depth 1 --branch '${YASTL_BRANCH}' '${YASTL_REPO}' /opt/yastl/src 2>/dev/null
-
         # Create data directories
         mkdir -p '${YASTL_DATA_DIR}/thumbnails'
 
         # Set up Python virtual environment
         python3 -m venv /opt/yastl/venv
 
+        # Clone from GitHub
+        if ! git clone --depth 1 --branch '${YASTL_BRANCH}' '${YASTL_REPO}' /opt/yastl/src; then
+            echo 'ERROR: git clone failed. Check network connectivity and that the repo/branch exist.' >&2
+            exit 1
+        fi
+
         # Install YASTL and dependencies
         cd /opt/yastl/src
-        /opt/yastl/venv/bin/pip install --no-cache-dir -q . 2>&1 | tail -1
+        /opt/yastl/venv/bin/pip install --no-cache-dir -q .
     "
 
     success "YASTL installed"
