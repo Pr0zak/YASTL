@@ -448,6 +448,7 @@ const app = createApp({
             fetchLibraries();
             fetchSettings();
             showSettings.value = true;
+            document.body.classList.add('modal-open');
             // Auto-check for updates if not checked yet
             if (!updateInfo.checked && !updateInfo.checking) {
                 checkForUpdates();
@@ -456,6 +457,9 @@ const app = createApp({
 
         function closeSettings() {
             showSettings.value = false;
+            if (!showDetail.value) {
+                document.body.classList.remove('modal-open');
+            }
         }
 
         /* ==============================================================
@@ -593,6 +597,7 @@ const app = createApp({
             isEditingName.value = false;
             isEditingDesc.value = false;
             showDetail.value = true;
+            document.body.classList.add('modal-open');
 
             await nextTick();
 
@@ -629,6 +634,9 @@ const app = createApp({
             isEditingName.value = false;
             isEditingDesc.value = false;
             viewerLoading.value = false;
+            if (!showSettings.value) {
+                document.body.classList.remove('modal-open');
+            }
         }
 
         async function addTag() {
@@ -739,22 +747,31 @@ const app = createApp({
             }
         }
 
+        function closeSidebarIfMobile() {
+            if (window.innerWidth <= 768) {
+                sidebarOpen.value = false;
+            }
+        }
+
         function setFormatFilter(fmt) {
             filters.format = filters.format === fmt ? '' : fmt;
             pagination.offset = 0;
             refreshCurrentView();
+            closeSidebarIfMobile();
         }
 
         function setTagFilter(tagName) {
             filters.tag = filters.tag === tagName ? '' : tagName;
             pagination.offset = 0;
             refreshCurrentView();
+            closeSidebarIfMobile();
         }
 
         function setCategoryFilter(catName) {
             filters.category = filters.category === catName ? '' : catName;
             pagination.offset = 0;
             refreshCurrentView();
+            closeSidebarIfMobile();
         }
 
         function clearFilters() {
@@ -1098,7 +1115,7 @@ const app = createApp({
                     @click="triggerScan"
                     :disabled="scanStatus.scanning || !hasLibraries">
                 <span v-html="ICONS.scan"></span>
-                <span>Scan Library</span>
+                <span class="scan-label">Scan Library</span>
             </button>
         </div>
     </nav>
