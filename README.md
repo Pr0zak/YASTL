@@ -52,18 +52,50 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 | `YASTL_MODEL_LIBRARY_SCAN_PATH` | `/nfs/DATA/3dPrinting` | Directory to scan for models |
 | `YASTL_MODEL_LIBRARY_THUMBNAIL_PATH` | `/data/thumbnails` | Thumbnail storage directory |
 
-## Proxmox LXC Deployment
+## Proxmox LXC Install
 
-A setup script is provided for deploying to a Proxmox LXC container with NFS mount:
+Run this one-liner on your Proxmox host to create an LXC container with YASTL fully installed:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pr0zak/YASTL/main/ct-install.sh)"
+```
+
+The interactive installer will prompt for your NFS server, container resources, and network settings. It handles everything: downloading the Debian template (if needed), creating the container, installing dependencies, and starting the service.
+
+### Non-interactive install
+
+Set environment variables to skip the prompts:
 
 ```bash
 export NFS_SERVER=192.168.1.100
 export NFS_SHARE=/volume1/3dPrinting
-chmod +x deploy/proxmox-setup.sh
+export CT_ID=200
+export YASTL_NONINTERACTIVE=1
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pr0zak/YASTL/main/ct-install.sh)"
+```
+
+### From a cloned repo
+
+If you've already cloned the repo, you can use the setup script directly:
+
+```bash
+export NFS_SERVER=192.168.1.100
+export NFS_SHARE=/volume1/3dPrinting
 ./deploy/proxmox-setup.sh
 ```
 
-See `deploy/proxmox-setup.sh` for all configuration options.
+### Container management
+
+Once installed, manage YASTL from the Proxmox host:
+
+```bash
+pct exec 200 -- systemctl status yastl    # Check status
+pct exec 200 -- journalctl -u yastl -f    # View logs
+pct exec 200 -- systemctl restart yastl   # Restart
+pct exec 200 -- yastl-update              # Pull latest and restart
+```
+
+See `ct-install.sh` and `deploy/proxmox-setup.sh` for all configuration options.
 
 ## API Endpoints
 

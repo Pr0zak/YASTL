@@ -2,19 +2,28 @@
 # YASTL - Proxmox LXC Container Setup Script
 # Run this on the Proxmox host to create and configure an LXC container for YASTL
 #
+# This script works in two modes:
+#   1. Local: Run from a cloned YASTL repo - copies files directly into the container
+#   2. Remote: Set YASTL_INSTALL_MODE=git to clone from GitHub inside the container
+#
 # Prerequisites:
 #   - Proxmox VE host with LXC support
 #   - A Debian/Ubuntu LXC template downloaded
 #   - NFS share accessible from the Proxmox host
 #
 # Usage:
+#   export NFS_SERVER=192.168.1.100
+#   export NFS_SHARE=/volume1/3dPrinting
 #   chmod +x proxmox-setup.sh
 #   ./proxmox-setup.sh
+#
+# For the interactive one-liner installer, use ct-install.sh instead:
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pr0zak/YASTL/main/ct-install.sh)"
 
 set -euo pipefail
 
 # ============================================================
-# Configuration - Edit these values for your environment
+# Configuration - Edit these values or set as environment variables
 # ============================================================
 CT_ID="${CT_ID:-200}"
 CT_HOSTNAME="${CT_HOSTNAME:-yastl}"
@@ -29,11 +38,16 @@ CT_BRIDGE="${CT_BRIDGE:-vmbr0}"
 # NFS mount configuration
 NFS_SERVER="${NFS_SERVER:-}"           # e.g., 192.168.1.100
 NFS_SHARE="${NFS_SHARE:-}"            # e.g., /volume1/3dPrinting
-NFS_MOUNT_POINT="/nfs/DATA/3dPrinting"
+NFS_MOUNT_POINT="/mnt/3dprinting"
 
 # YASTL settings
 YASTL_PORT="${YASTL_PORT:-8000}"
 YASTL_DATA_DIR="/opt/yastl/data"
+
+# Install mode: "local" (copy from checkout) or "git" (clone from GitHub)
+YASTL_INSTALL_MODE="${YASTL_INSTALL_MODE:-local}"
+YASTL_REPO="${YASTL_REPO:-https://github.com/Pr0zak/YASTL.git}"
+YASTL_BRANCH="${YASTL_BRANCH:-main}"
 
 # ============================================================
 
@@ -52,6 +66,13 @@ if [[ -z "$NFS_SERVER" || -z "$NFS_SHARE" ]]; then
     exit 1
 fi
 
+# Detect install mode based on whether we're in a repo checkout
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
+if [[ "$YASTL_INSTALL_MODE" == "local" ]] && [[ ! -f "${SCRIPT_DIR}/pyproject.toml" ]]; then
+    echo "  No local checkout detected, switching to git clone mode."
+    YASTL_INSTALL_MODE="git"
+fi
+
 echo ""
 echo "Configuration:"
 echo "  CT ID:        $CT_ID"
@@ -62,6 +83,7 @@ echo "  Cores:        $CT_CORES"
 echo "  NFS Server:   $NFS_SERVER"
 echo "  NFS Share:    $NFS_SHARE"
 echo "  Mount Point:  $NFS_MOUNT_POINT"
+echo "  Install Mode: $YASTL_INSTALL_MODE"
 echo ""
 
 read -rp "Proceed with container creation? [y/N] " confirm
@@ -88,9 +110,7 @@ pct create "$CT_ID" "$CT_TEMPLATE" \
 # Step 2: Configure NFS mount in container
 echo "[2/6] Configuring NFS mount..."
 
-# Add NFS mount point to container config
 # For unprivileged containers, we bind-mount from the host
-# First, mount NFS on the host
 HOST_NFS_MOUNT="/mnt/yastl-nfs-${CT_ID}"
 mkdir -p "$HOST_NFS_MOUNT"
 
@@ -102,7 +122,7 @@ if ! grep -qF "$HOST_NFS_MOUNT" /etc/fstab; then
 fi
 mount -a 2>/dev/null || mount "$HOST_NFS_MOUNT" || true
 
-# Bind mount NFS into the container
+# Bind mount NFS into the container (read-only)
 pct set "$CT_ID" -mp0 "${HOST_NFS_MOUNT},mp=${NFS_MOUNT_POINT},ro=1"
 echo "  NFS share will be available at ${NFS_MOUNT_POINT} inside the container"
 
@@ -112,11 +132,13 @@ pct start "$CT_ID"
 sleep 5  # Wait for container to boot
 
 pct exec "$CT_ID" -- bash -c "
-    apt-get update
-    apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-venv \
-        libgl1-mesa-glx libglib2.0-0 \
-        git curl
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y -qq --no-install-recommends \
+        python3 python3-pip python3-venv python3-dev \
+        libgl1-mesa-glx libglib2.0-0 libgomp1 \
+        git curl ca-certificates \
+        build-essential pkg-config >/dev/null 2>&1
     apt-get clean
     rm -rf /var/lib/apt/lists/*
 "
@@ -129,33 +151,45 @@ pct exec "$CT_ID" -- bash -c "
     python3 -m venv /opt/yastl/venv
 "
 
-# Copy application files into container
-echo "  Copying application files..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tar -cf - -C "$SCRIPT_DIR" app/ pyproject.toml | pct exec "$CT_ID" -- tar -xf - -C /opt/yastl/
-
-pct exec "$CT_ID" -- bash -c "
-    cd /opt/yastl
-    /opt/yastl/venv/bin/pip install --no-cache-dir .
-"
+if [[ "$YASTL_INSTALL_MODE" == "git" ]]; then
+    echo "  Cloning YASTL from GitHub..."
+    pct exec "$CT_ID" -- bash -c "
+        git clone --depth 1 --branch '${YASTL_BRANCH}' '${YASTL_REPO}' /opt/yastl/src 2>/dev/null
+        cd /opt/yastl/src
+        /opt/yastl/venv/bin/pip install --no-cache-dir -q . 2>&1 | tail -1
+    "
+    WORK_DIR="/opt/yastl/src"
+else
+    echo "  Copying application files from local checkout..."
+    tar -cf - -C "$SCRIPT_DIR" app/ pyproject.toml | pct exec "$CT_ID" -- tar -xf - -C /opt/yastl/
+    pct exec "$CT_ID" -- bash -c "
+        cd /opt/yastl
+        /opt/yastl/venv/bin/pip install --no-cache-dir .
+    "
+    WORK_DIR="/opt/yastl"
+fi
 
 # Step 5: Create systemd service
 echo "[5/6] Creating systemd service..."
-pct exec "$CT_ID" -- bash -c "cat > /etc/systemd/system/yastl.service << 'UNIT'
+pct exec "$CT_ID" -- bash -c "cat > /etc/systemd/system/yastl.service << UNIT
 [Unit]
 Description=YASTL - Yet Another STL 3D Model Library
 After=network.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/yastl
+WorkingDirectory=${WORK_DIR}
 Environment=YASTL_MODEL_LIBRARY_DB=${YASTL_DATA_DIR}/library.db
 Environment=YASTL_MODEL_LIBRARY_SCAN_PATH=${NFS_MOUNT_POINT}
 Environment=YASTL_MODEL_LIBRARY_THUMBNAIL_PATH=${YASTL_DATA_DIR}/thumbnails
+Environment=YASTL_PORT=${YASTL_PORT}
 ExecStart=/opt/yastl/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port ${YASTL_PORT}
 Restart=always
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -166,11 +200,26 @@ pct exec "$CT_ID" -- systemctl daemon-reload
 pct exec "$CT_ID" -- systemctl enable yastl
 pct exec "$CT_ID" -- systemctl start yastl
 
+# Create update helper (only for git installs)
+if [[ "$YASTL_INSTALL_MODE" == "git" ]]; then
+    pct exec "$CT_ID" -- bash -c "cat > /usr/local/bin/yastl-update << 'UPDATEEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo \"Updating YASTL...\"
+cd /opt/yastl/src
+git pull --ff-only
+/opt/yastl/venv/bin/pip install --no-cache-dir -q .
+systemctl restart yastl
+echo \"YASTL updated and restarted.\"
+UPDATEEOF
+chmod +x /usr/local/bin/yastl-update"
+fi
+
 # Step 6: Get container IP and show summary
 echo "[6/6] Verifying installation..."
 sleep 3
 
-CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}')
+CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}') || CT_IP=""
 
 echo ""
 echo "========================================"
@@ -185,8 +234,11 @@ echo "  NFS Mount:     ${NFS_MOUNT_POINT} (read-only)"
 echo "  Database:      ${YASTL_DATA_DIR}/library.db"
 echo "  Thumbnails:    ${YASTL_DATA_DIR}/thumbnails/"
 echo ""
-echo "  Service:       systemctl status yastl (inside CT)"
-echo "  Logs:          journalctl -u yastl -f (inside CT)"
+echo "  Service:       pct exec $CT_ID -- systemctl status yastl"
+echo "  Logs:          pct exec $CT_ID -- journalctl -u yastl -f"
+if [[ "$YASTL_INSTALL_MODE" == "git" ]]; then
+    echo "  Update:        pct exec $CT_ID -- yastl-update"
+fi
 echo ""
 echo "  To trigger initial scan, visit:"
 echo "    http://${CT_IP:-<IP>}:${YASTL_PORT}"
