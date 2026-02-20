@@ -12,8 +12,10 @@ class Settings(BaseSettings):
     # Database
     MODEL_LIBRARY_DB: Path = Path("/data/library.db")
 
-    # Model scanning
-    MODEL_LIBRARY_SCAN_PATH: Path = Path("/nfs/DATA/3dPrinting")
+    # Model scanning — optional legacy env var.  Libraries are now managed
+    # via the web UI (/api/libraries).  If set, this path is imported as a
+    # library on first startup for backwards compatibility.
+    MODEL_LIBRARY_SCAN_PATH: Path | None = None
 
     # Thumbnails
     MODEL_LIBRARY_THUMBNAIL_PATH: Path = Path("/data/thumbnails")

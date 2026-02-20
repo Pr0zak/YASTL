@@ -22,7 +22,7 @@ app/                    # Main application package
   main.py               # FastAPI app init and lifespan
   config.py             # Pydantic settings (YASTL_ env prefix)
   database.py           # SQLite schema, FTS5, async context managers
-  api/                  # Route modules (models, search, scan, tags, categories)
+  api/                  # Route modules (models, search, scan, tags, categories, libraries)
   models/schemas.py     # Pydantic request/response schemas
   services/             # Business logic (scanner, processor, hasher, thumbnail, watcher, search)
   static/               # Frontend SPA (index.html, js/, css/)
@@ -83,8 +83,10 @@ All use the `YASTL_` prefix:
 | Variable | Default | Purpose |
 |---|---|---|
 | `YASTL_MODEL_LIBRARY_DB` | `/data/library.db` | SQLite database path |
-| `YASTL_MODEL_LIBRARY_SCAN_PATH` | `/nfs/DATA/3dPrinting` | Directory to scan for 3D models |
+| `YASTL_MODEL_LIBRARY_SCAN_PATH` | *(none)* | Legacy: auto-imports as a library on first start |
 | `YASTL_MODEL_LIBRARY_THUMBNAIL_PATH` | `/data/thumbnails` | Thumbnail storage directory |
+
+Libraries (scan directories) are now managed via the web UI Settings page rather than environment variables.
 
 ## Testing
 

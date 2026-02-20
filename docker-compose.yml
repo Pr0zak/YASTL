@@ -7,11 +7,12 @@ services:
     volumes:
       # Persistent data (database + thumbnails)
       - yastl-data:/data
-      # Mount your 3D model directory (read-only is fine)
-      - /nfs/DATA/3dPrinting:/models:ro
+      # Mount your 3D model directories here. Add as many as needed,
+      # then configure them via the web UI Settings page.
+      # Example:
+      #   - /path/to/your/models:/models:ro
     environment:
       - YASTL_MODEL_LIBRARY_DB=/data/library.db
-      - YASTL_MODEL_LIBRARY_SCAN_PATH=/models
       - YASTL_MODEL_LIBRARY_THUMBNAIL_PATH=/data/thumbnails
     restart: unless-stopped
 
