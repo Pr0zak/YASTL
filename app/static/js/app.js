@@ -1204,13 +1204,6 @@ const app = createApp({
                 <strong>{{ pagination.total }}</strong> model{{ pagination.total !== 1 ? 's' : '' }}
             </span>
             <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="clearFilters">Clear all</button>
-            <button class="btn btn-sm btn-primary"
-                    @click="triggerScan"
-                    :disabled="scanStatus.scanning || !hasLibraries"
-                    title="Scan libraries for new models">
-                <span v-html="ICONS.scan"></span>
-                Scan
-            </button>
         </div>
     </div>
 
@@ -1661,6 +1654,20 @@ const app = createApp({
                     </div>
                     <div v-else class="text-muted text-sm" style="padding:12px 0">
                         No libraries configured yet. Add one below to get started.
+                    </div>
+
+                    <!-- Scan Libraries -->
+                    <div v-if="libraries.length > 0" style="padding: 0 0 12px 0;">
+                        <button class="btn btn-primary"
+                                @click="triggerScan"
+                                :disabled="scanStatus.scanning"
+                                title="Scan libraries for new models">
+                            <span v-html="ICONS.scan"></span>
+                            {{ scanStatus.scanning ? 'Scanning...' : 'Scan Libraries' }}
+                        </button>
+                        <div v-if="scanStatus.scanning" class="text-muted text-sm" style="margin-top:6px">
+                            {{ scanStatus.processed_files }} / {{ scanStatus.total_files }} files processed
+                        </div>
                     </div>
 
                     <!-- Add Library Form -->
