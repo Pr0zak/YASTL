@@ -68,7 +68,6 @@ FTS_SCHEMA_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS models_fts USING fts5(
     name,
     description,
-    content='',
     tokenize='porter unicode61'
 );
 """

@@ -1,6 +1,5 @@
 """YASTL - Yet Another STL: 3D Model Library"""
 
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -9,6 +8,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+from app.api.routes_categories import router as categories_router
+from app.api.routes_models import router as models_router
+from app.api.routes_scan import router as scan_router
+from app.api.routes_search import router as search_router
+from app.api.routes_tags import router as tags_router
 from app.config import settings
 from app.database import init_db
 from app.services.scanner import Scanner
@@ -76,13 +80,6 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
-
-# Import and register API routers
-from app.api.routes_models import router as models_router
-from app.api.routes_tags import router as tags_router
-from app.api.routes_categories import router as categories_router
-from app.api.routes_scan import router as scan_router
-from app.api.routes_search import router as search_router
 
 app.include_router(models_router)
 app.include_router(tags_router)
