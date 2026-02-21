@@ -81,7 +81,7 @@ const app = createApp({
         const expandedCategories = reactive({});
 
         // Sidebar section collapse state (format starts collapsed)
-        const collapsedSections = reactive({ format: true });
+        const collapsedSections = reactive({ format: true, tags: true, categories: true });
 
         const filters = reactive({
             format: '',
@@ -2324,22 +2324,41 @@ const app = createApp({
 
             <!-- Tags -->
             <div class="sidebar-section">
-                <div class="sidebar-section-title">Tags</div>
-                <div v-if="allTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
-                    No tags yet
+                <div class="sidebar-section-title sidebar-section-toggle"
+                     @click="collapsedSections.tags = !collapsedSections.tags">
+                    <span>Tags</span>
+                    <span v-if="filters.tag || filters.tags.length" class="sidebar-section-active-badge">
+                        {{ filters.tags.length || 1 }} active
+                    </span>
+                    <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.tags }"
+                          v-html="ICONS.chevron"></span>
                 </div>
-                <div v-for="tag in allTags" :key="tag.id"
-                     class="sidebar-item"
-                     :class="{ active: filters.tag === tag.name || filters.tags.includes(tag.name) }"
-                     @click="toggleTagFilter(tag.name)">
-                    <span>{{ tag.name }}</span>
-                    <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
-                </div>
+                <template v-if="!collapsedSections.tags">
+                    <div v-if="allTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
+                        No tags yet
+                    </div>
+                    <div v-for="tag in allTags" :key="tag.id"
+                         class="sidebar-item"
+                         :class="{ active: filters.tag === tag.name || filters.tags.includes(tag.name) }"
+                         @click="toggleTagFilter(tag.name)">
+                        <span>{{ tag.name }}</span>
+                        <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
+                    </div>
+                </template>
             </div>
 
             <!-- Categories -->
             <div class="sidebar-section">
-                <div class="sidebar-section-title">Categories</div>
+                <div class="sidebar-section-title sidebar-section-toggle"
+                     @click="collapsedSections.categories = !collapsedSections.categories">
+                    <span>Categories</span>
+                    <span v-if="filters.category || filters.categories.length" class="sidebar-section-active-badge">
+                        {{ filters.categories.length || 1 }} active
+                    </span>
+                    <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.categories }"
+                          v-html="ICONS.chevron"></span>
+                </div>
+                <template v-if="!collapsedSections.categories">
                 <div v-if="allCategories.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
                     No categories yet
                 </div>
@@ -2385,6 +2404,7 @@ const app = createApp({
                         </li>
                     </template>
                 </ul>
+                </template>
             </div>
 
             <!-- Collections -->
