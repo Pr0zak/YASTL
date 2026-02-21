@@ -1949,13 +1949,6 @@ const app = createApp({
                         @click="toggleFavorite(selectedModel, $event)" title="Toggle favorite">
                     <span v-html="selectedModel.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
                 </button>
-                <a class="btn btn-primary btn-sm detail-download-btn"
-                   :href="'/api/models/' + selectedModel.id + '/download'"
-                   download
-                   title="Download model file">
-                    <span v-html="ICONS.download"></span>
-                    <span class="download-label">Download</span>
-                </a>
                 <button class="close-btn" @click="closeDetail" title="Close">&times;</button>
             </div>
 
