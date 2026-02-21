@@ -1689,8 +1689,6 @@ img {
 
     /* Status menu full-width on mobile */
     .status-menu {
-        position: fixed;
-        top: 56px;
         left: 0;
         right: 0;
         width: auto;
@@ -1882,11 +1880,17 @@ img {
     background: var(--text-muted);
 }
 
-/* Status dropdown menu */
+/* Status dropdown menu (teleported to body) */
+.status-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1099;
+}
+
 .status-menu {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
+    position: fixed;
+    top: 56px;
+    right: 20px;
     width: 280px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -1895,6 +1899,8 @@ img {
     z-index: 1100;
     animation: fadeIn 0.15s ease;
     overflow: hidden;
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
 }
 
 .status-menu-header {
