@@ -138,8 +138,14 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     library_id: int = Form(...),
     subfolder: str | None = Form(None),
+    tags: str | None = Form(None),
+    collection_id: int | None = Form(None),
 ):
-    """Upload local 3D model files and process them into the library."""
+    """Upload local 3D model files and process them into the library.
+
+    Optionally accepts comma-separated tags and a collection_id to apply
+    to all successfully imported models.
+    """
     # Look up library path
     async with get_db() as db:
         cursor = await db.execute(
@@ -155,7 +161,11 @@ async def upload_files(
         dest_dir = dest_dir / subfolder
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    # Parse tags
+    tag_list = [t.strip() for t in (tags or "").split(",") if t.strip()]
+
     results = []
+    model_ids = []
     for upload in files:
         fname = _sanitize_filename(upload.filename or "upload")
         ext = Path(fname).suffix.lower()
@@ -172,16 +182,44 @@ async def upload_files(
             model_id = await process_imported_file(
                 file_path=dest,
                 library_id=library_id,
+                scraped_tags=tag_list or None,
                 subfolder=subfolder,
                 library_path=library_path,
             )
             if model_id is not None:
                 results.append({"filename": fname, "status": "ok", "model_id": model_id})
+                model_ids.append(model_id)
             else:
                 results.append({"filename": fname, "status": "error", "error": "Processing failed or duplicate"})
         except Exception as e:
             logger.warning("Upload processing failed for %s: %s", fname, e)
             results.append({"filename": fname, "status": "error", "error": str(e)})
+
+    # Add to collection if requested
+    if collection_id and model_ids:
+        try:
+            async with get_db() as db:
+                cursor = await db.execute(
+                    "SELECT COALESCE(MAX(position), 0) + 1 as next_pos "
+                    "FROM collection_models WHERE collection_id = ?",
+                    (collection_id,),
+                )
+                row = await cursor.fetchone()
+                next_pos = row["next_pos"]
+                for mid in model_ids:
+                    await db.execute(
+                        "INSERT OR IGNORE INTO collection_models "
+                        "(collection_id, model_id, position) VALUES (?, ?, ?)",
+                        (collection_id, mid, next_pos),
+                    )
+                    next_pos += 1
+                await db.execute(
+                    "UPDATE collections SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (collection_id,),
+                )
+                await db.commit()
+        except Exception as e:
+            logger.warning("Failed to add models to collection %d: %s", collection_id, e)
 
     ok = sum(1 for r in results if r["status"] == "ok")
     return {"detail": f"{ok}/{len(results)} file(s) imported", "results": results}

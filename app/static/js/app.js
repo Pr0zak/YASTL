@@ -206,6 +206,9 @@ const app = createApp({
         const importProgress = reactive({ running: false, total: 0, completed: 0, current_url: null, results: [] });
         const uploadFiles = ref([]);
         const uploadResults = ref([]);
+        const uploadTags = ref('');
+        const uploadTagSuggestions = ref([]);
+        const uploadCollectionId = ref(null);
         let importPollTimer = null;
 
         // Import credentials
@@ -630,6 +633,9 @@ const app = createApp({
             importProgress.results = [];
             uploadFiles.value = [];
             uploadResults.value = [];
+            uploadTags.value = '';
+            uploadTagSuggestions.value = [];
+            uploadCollectionId.value = null;
             // Default to first library if available
             if (libraries.value.length > 0 && !importLibraryId.value) {
                 importLibraryId.value = libraries.value[0].id;
@@ -728,6 +734,28 @@ const app = createApp({
 
         function onFilesSelected(event) {
             uploadFiles.value = Array.from(event.target.files || []);
+            // Generate tag suggestions from filenames
+            const stopWords = new Set([
+                'a','an','the','and','or','but','in','on','at','to','for','of','is','it','by','as','with','from',
+                'file','model','stl','obj','gltf','glb','3mf','ply','step','stp','dae','off','fbx','print','3d',
+                'final','v1','v2','v3','copy','new','old','test','tmp','temp','zip',
+            ]);
+            const seen = new Set();
+            const suggestions = [];
+            for (const f of uploadFiles.value) {
+                const stem = f.name.replace(/\.[^.]+$/, '');
+                // Split on separators + camelCase
+                const words = stem
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/[_\-.\s]+/g, ' ')
+                    .split(' ')
+                    .map(w => w.trim().toLowerCase())
+                    .filter(w => w.length >= 2 && !w.match(/^\d+$/) && !stopWords.has(w));
+                for (const w of words) {
+                    if (!seen.has(w)) { seen.add(w); suggestions.push(w); }
+                }
+            }
+            uploadTagSuggestions.value = suggestions.slice(0, 15);
         }
 
         async function startUpload() {
@@ -739,6 +767,9 @@ const app = createApp({
             const formData = new FormData();
             formData.append('library_id', importLibraryId.value);
             if (importSubfolder.value) formData.append('subfolder', importSubfolder.value);
+            const tagStr = uploadTags.value.trim();
+            if (tagStr) formData.append('tags', tagStr);
+            if (uploadCollectionId.value) formData.append('collection_id', uploadCollectionId.value);
             for (const f of uploadFiles.value) {
                 formData.append('files', f);
             }
@@ -755,6 +786,7 @@ const app = createApp({
                     fetchModels();
                     fetchTags();
                     fetchCategories();
+                    fetchCollections();
                 } else {
                     const err = await res.json();
                     showToast(err.detail || 'Upload failed', 'error');
@@ -764,6 +796,15 @@ const app = createApp({
             } finally {
                 importRunning.value = false;
             }
+        }
+
+        function addUploadTagSuggestion(tag) {
+            const current = uploadTags.value.split(',').map(t => t.trim()).filter(Boolean);
+            if (!current.includes(tag)) {
+                current.push(tag);
+                uploadTags.value = current.join(', ');
+            }
+            uploadTagSuggestions.value = uploadTagSuggestions.value.filter(t => t !== tag);
         }
 
         async function fetchImportCredentials() {
@@ -1910,6 +1951,9 @@ const app = createApp({
             credentialInputs,
             uploadFiles,
             uploadResults,
+            uploadTags,
+            uploadTagSuggestions,
+            uploadCollectionId,
 
             // Computed
             scanProgress,
@@ -1999,6 +2043,7 @@ const app = createApp({
             startImport,
             onFilesSelected,
             startUpload,
+            addUploadTagSuggestion,
             fetchImportCredentials,
             saveImportCredential,
             deleteImportCredential,
@@ -3252,6 +3297,35 @@ const app = createApp({
                                     <div v-for="(f, i) in uploadFiles" :key="i" class="text-sm">{{ f.name }} ({{ formatFileSize(f.size) }})</div>
                                 </div>
                             </label>
+                        </div>
+                    </div>
+
+                    <!-- Tags -->
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">Tags</div>
+                        <div class="form-row">
+                            <input type="text" class="form-input" v-model="uploadTags"
+                                   placeholder="comma-separated tags, e.g. benchy, calibration">
+                        </div>
+                        <div v-if="uploadTagSuggestions.length" class="tag-suggestions" style="margin-top:6px">
+                            <span v-for="s in uploadTagSuggestions" :key="s"
+                                  class="tag-chip tag-suggestion"
+                                  @click="addUploadTagSuggestion(s)"
+                                  title="Click to add">+ {{ s }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Collection -->
+                    <div v-if="uploadFiles.length && collections.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">
+                            <span v-html="ICONS.collection"></span>
+                            Add to Collection
+                        </div>
+                        <div class="form-row">
+                            <select class="form-input" v-model="uploadCollectionId">
+                                <option :value="null">None</option>
+                                <option v-for="col in collections" :key="col.id" :value="col.id">{{ col.name }}</option>
+                            </select>
                         </div>
                     </div>
                 </template>
