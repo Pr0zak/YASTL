@@ -1,19 +1,24 @@
-"""API routes for URL-based model import."""
+"""API routes for URL-based model import and file upload."""
 
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.database import get_db
 from app.services.importer import (
+    MODEL_EXTENSIONS,
     delete_credentials,
     get_credentials,
     get_import_progress,
     import_urls_batch,
     mask_credentials,
+    process_imported_file,
     scrape_metadata,
     set_credentials,
+    _deduplicate_path,
+    _sanitize_filename,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,6 +131,60 @@ async def preview_url(body: PreviewRequest):
         "source_site": meta.get("source_site"),
         "error": meta.get("error"),
     }
+
+
+@router.post("/upload")
+async def upload_files(
+    files: list[UploadFile] = File(...),
+    library_id: int = Form(...),
+    subfolder: str | None = Form(None),
+):
+    """Upload local 3D model files and process them into the library."""
+    # Look up library path
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, path FROM libraries WHERE id = ?", (library_id,)
+        )
+        lib = await cursor.fetchone()
+        if lib is None:
+            raise HTTPException(status_code=404, detail="Library not found")
+
+    library_path = lib["path"]
+    dest_dir = Path(library_path)
+    if subfolder:
+        dest_dir = dest_dir / subfolder
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    results = []
+    for upload in files:
+        fname = _sanitize_filename(upload.filename or "upload")
+        ext = Path(fname).suffix.lower()
+        if ext not in MODEL_EXTENSIONS:
+            results.append({"filename": fname, "status": "error", "error": f"Unsupported format: {ext}"})
+            continue
+
+        dest = _deduplicate_path(dest_dir / fname)
+        try:
+            content = await upload.read()
+            with open(dest, "wb") as f:
+                f.write(content)
+
+            model_id = await process_imported_file(
+                file_path=dest,
+                library_id=library_id,
+                subfolder=subfolder,
+                library_path=library_path,
+            )
+            if model_id is not None:
+                results.append({"filename": fname, "status": "ok", "model_id": model_id})
+            else:
+                results.append({"filename": fname, "status": "error", "error": "Processing failed or duplicate"})
+        except Exception as e:
+            logger.warning("Upload processing failed for %s: %s", fname, e)
+            results.append({"filename": fname, "status": "error", "error": str(e)})
+
+    ok = sum(1 for r in results if r["status"] == "ok")
+    return {"detail": f"{ok}/{len(results)} file(s) imported", "results": results}
 
 
 @router.get("/credentials")
