@@ -31,6 +31,10 @@ async def search_models(
             - ``tags`` (list[str]): filter to models having *all* listed tags
             - ``categories`` (list[str]): filter to models in *any* of the
               listed categories
+            - ``favorites_only`` (bool): only return favorited models
+            - ``collection_id`` (int): filter to models in a specific collection
+            - ``sort_by`` (str): field to sort by (default: BM25 rank)
+            - ``sort_order`` (str): ``asc`` or ``desc``
 
     Returns:
         A dictionary with keys:
@@ -94,6 +98,21 @@ async def search_models(
             )
             params.extend(categories)
 
+        # Favorites filter
+        if filters.get("favorites_only"):
+            where_clauses.append(
+                "m.id IN (SELECT f.model_id FROM favorites f)"
+            )
+
+        # Collection filter
+        collection_id = filters.get("collection_id")
+        if collection_id is not None:
+            where_clauses.append(
+                "m.id IN (SELECT cm.model_id FROM collection_models cm "
+                "WHERE cm.collection_id = ?)"
+            )
+            params.append(collection_id)
+
         where_sql = " AND ".join(where_clauses)
 
         # ----- Count total matching rows ----------------------------------
@@ -107,7 +126,22 @@ async def search_models(
         count_row = await cursor.fetchone()
         total: int = count_row["cnt"] if count_row else 0
 
-        # ----- Fetch paginated results ordered by BM25 --------------------
+        # ----- Determine sort order ---------------------------------------
+        sort_by = filters.get("sort_by")
+        sort_order = filters.get("sort_order", "desc")
+        if sort_order not in ("asc", "desc"):
+            sort_order = "desc"
+
+        allowed_sort = {
+            "name", "created_at", "updated_at", "file_size",
+            "vertex_count", "face_count",
+        }
+        if sort_by and sort_by in allowed_sort:
+            order_clause = f"m.{sort_by} {sort_order}"
+        else:
+            order_clause = "rank"  # default BM25 relevance
+
+        # ----- Fetch paginated results ------------------------------------
         select_sql = f"""
             SELECT
                 m.*,
@@ -115,14 +149,14 @@ async def search_models(
             FROM models_fts
             JOIN models m ON m.id = models_fts.rowid
             WHERE {where_sql}
-            ORDER BY rank
+            ORDER BY {order_clause}
             LIMIT ? OFFSET ?
         """
         page_params = params + [limit, offset]
         cursor = await db.execute(select_sql, page_params)
         rows = await cursor.fetchall()
 
-        # Enrich each model with its tags and categories
+        # Enrich each model with its tags, categories, and favorite status
         models: list[dict] = []
         for row in rows:
             model = dict(row)
@@ -156,6 +190,12 @@ async def search_models(
             )
             cat_rows = await cat_cursor.fetchall()
             model["categories"] = [c["name"] for c in cat_rows]
+
+            # Favorite status
+            fav_cursor = await db.execute(
+                "SELECT 1 FROM favorites WHERE model_id = ?", (model_id,)
+            )
+            model["is_favorite"] = await fav_cursor.fetchone() is not None
 
             models.append(model)
 

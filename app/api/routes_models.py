@@ -110,6 +110,12 @@ async def _fetch_model_with_relations(
     cat_rows = await cursor.fetchall()
     model["categories"] = [dict(r)["name"] for r in cat_rows]
 
+    # Favorite status
+    cursor = await db.execute(
+        "SELECT 1 FROM favorites WHERE model_id = ?", (model_id,)
+    )
+    model["is_favorite"] = await cursor.fetchone() is not None
+
     return model
 
 
@@ -125,11 +131,45 @@ async def list_models(
     offset: int = Query(default=0, ge=0),
     format: str | None = Query(default=None, alias="format"),
     tag: str | None = Query(default=None),
+    tags: str | None = Query(default=None),
     category: str | None = Query(default=None),
+    categories: str | None = Query(default=None),
+    collection: int | None = Query(default=None),
+    favorites_only: bool = Query(default=False),
+    sort_by: str = Query(default="updated_at"),
+    sort_order: str = Query(default="desc"),
     library_id: int | None = Query(default=None),
 ):
-    """List models with pagination and optional filters for format, tag, category, and library."""
+    """List models with pagination and filters.
+
+    Supports multi-tag (AND logic) and multi-category (OR logic) filtering,
+    collection membership, favorites, library, and configurable sorting.
+    """
     db_path = _get_db_path(request)
+
+    # Validate sort params
+    allowed_sort = {
+        "name", "created_at", "updated_at", "file_size",
+        "vertex_count", "face_count",
+    }
+    if sort_by not in allowed_sort:
+        sort_by = "updated_at"
+    if sort_order not in ("asc", "desc"):
+        sort_order = "desc"
+
+    # Merge single tag/tags params into one list
+    tag_list: list[str] = []
+    if tag:
+        tag_list.append(tag)
+    if tags:
+        tag_list.extend(t.strip() for t in tags.split(",") if t.strip())
+
+    # Merge single category/categories params
+    category_list: list[str] = []
+    if category:
+        category_list.append(category)
+    if categories:
+        category_list.extend(c.strip() for c in categories.split(",") if c.strip())
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -142,25 +182,46 @@ async def list_models(
             where_clauses.append("m.file_format = ?")
             params.append(format.lower())
 
-        if tag is not None:
+        # Multi-tag filter (AND logic — model must have ALL tags)
+        if tag_list:
+            tag_placeholders = ", ".join("?" for _ in tag_list)
             where_clauses.append(
-                """m.id IN (
+                f"""m.id IN (
                     SELECT mt.model_id FROM model_tags mt
                     JOIN tags t ON t.id = mt.tag_id
-                    WHERE t.name = ?
+                    WHERE t.name IN ({tag_placeholders})
+                    GROUP BY mt.model_id
+                    HAVING COUNT(DISTINCT t.name) = ?
                 )"""
             )
-            params.append(tag)
+            params.extend(tag_list)
+            params.append(len(tag_list))
 
-        if category is not None:
+        # Multi-category filter (OR logic — model in ANY category)
+        if category_list:
+            cat_placeholders = ", ".join("?" for _ in category_list)
             where_clauses.append(
-                """m.id IN (
+                f"""m.id IN (
                     SELECT mc.model_id FROM model_categories mc
                     JOIN categories c ON c.id = mc.category_id
-                    WHERE c.name = ?
+                    WHERE c.name IN ({cat_placeholders})
                 )"""
             )
-            params.append(category)
+            params.extend(category_list)
+
+        # Collection filter
+        if collection is not None:
+            where_clauses.append(
+                "m.id IN (SELECT cm.model_id FROM collection_models cm "
+                "WHERE cm.collection_id = ?)"
+            )
+            params.append(collection)
+
+        # Favorites filter
+        if favorites_only:
+            where_clauses.append(
+                "m.id IN (SELECT f.model_id FROM favorites f)"
+            )
 
         if library_id is not None:
             where_clauses.append("m.library_id = ?")
@@ -176,17 +237,18 @@ async def list_models(
         total_row = await cursor.fetchone()
         total = dict(total_row)["cnt"]
 
-        # Fetch the page of models
+        # Fetch the page of models with sorting
+        order_sql = f"m.{sort_by} {sort_order}"
         query_sql = f"""
             SELECT m.* FROM models m
             {where_sql}
-            ORDER BY m.updated_at DESC
+            ORDER BY {order_sql}
             LIMIT ? OFFSET ?
         """
         cursor = await db.execute(query_sql, params + [limit, offset])
         rows = await cursor.fetchall()
 
-        # Enrich each model with tags and categories
+        # Enrich each model with tags, categories, and favorite status
         models = []
         for row in rows:
             model = dict(row)
@@ -217,6 +279,12 @@ async def list_models(
             )
             cat_rows = await cursor.fetchall()
             model["categories"] = [dict(r)["name"] for r in cat_rows]
+
+            # Favorite status
+            cursor = await db.execute(
+                "SELECT 1 FROM favorites WHERE model_id = ?", (model_id,)
+            )
+            model["is_favorite"] = await cursor.fetchone() is not None
 
             models.append(model)
 

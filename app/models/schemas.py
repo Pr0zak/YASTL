@@ -45,6 +45,7 @@ class ModelResponse(BaseModel):
     updated_at: str
     tags: list[str] = []
     categories: list[str] = []
+    is_favorite: bool = False
 
 
 class ModelUpdate(BaseModel):
@@ -111,6 +112,104 @@ class LibraryResponse(BaseModel):
     name: str
     path: str
     created_at: str
+
+
+# ---------------------------------------------------------------------------
+# Collection schemas
+# ---------------------------------------------------------------------------
+
+
+class CollectionCreate(BaseModel):
+    """Schema for creating a new collection."""
+    name: str
+    description: str = ""
+    color: str | None = None
+
+
+class CollectionUpdate(BaseModel):
+    """Schema for updating a collection (partial update)."""
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
+
+
+class CollectionResponse(BaseModel):
+    """Collection representation returned by the API."""
+    id: int
+    name: str
+    description: str
+    color: str | None = None
+    model_count: int = 0
+    created_at: str
+    updated_at: str
+
+
+# ---------------------------------------------------------------------------
+# Saved search schemas
+# ---------------------------------------------------------------------------
+
+
+class SavedSearchCreate(BaseModel):
+    """Schema for creating a saved search."""
+    name: str
+    query: str = ""
+    filters: dict = {}
+    sort_by: str = "created_at"
+    sort_order: str = "desc"
+
+
+class SavedSearchUpdate(BaseModel):
+    """Schema for updating a saved search (partial update)."""
+    name: str | None = None
+    query: str | None = None
+    filters: dict | None = None
+    sort_by: str | None = None
+    sort_order: str | None = None
+
+
+class SavedSearchResponse(BaseModel):
+    """Saved search representation returned by the API."""
+    id: int
+    name: str
+    query: str
+    filters: dict
+    sort_by: str
+    sort_order: str
+    created_at: str
+
+
+# ---------------------------------------------------------------------------
+# Bulk operation schemas
+# ---------------------------------------------------------------------------
+
+
+class BulkTagRequest(BaseModel):
+    """Bulk add tags to multiple models."""
+    model_ids: list[int]
+    tags: list[str]
+
+
+class BulkCategoryRequest(BaseModel):
+    """Bulk add categories to multiple models."""
+    model_ids: list[int]
+    category_ids: list[int]
+
+
+class BulkCollectionRequest(BaseModel):
+    """Bulk add models to a collection."""
+    model_ids: list[int]
+    collection_id: int
+
+
+class BulkFavoriteRequest(BaseModel):
+    """Bulk favorite/unfavorite models."""
+    model_ids: list[int]
+    favorite: bool = True
+
+
+class BulkDeleteRequest(BaseModel):
+    """Bulk delete models."""
+    model_ids: list[int]
 
 
 # ---------------------------------------------------------------------------

@@ -39,6 +39,12 @@ const ICONS = {
     eye: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
     image: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
     home: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+    heart: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`,
+    heartFilled: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`,
+    collection: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>`,
+    bookmark: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`,
+    check: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    select: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
 };
 
 /* ==================================================================
@@ -76,8 +82,14 @@ const app = createApp({
         const filters = reactive({
             format: '',
             tag: '',
+            tags: [],
             category: '',
+            categories: [],
             library_id: null,
+            favoritesOnly: false,
+            collection: null,
+            sortBy: 'updated_at',
+            sortOrder: 'desc',
         });
 
         const pagination = reactive({
@@ -134,6 +146,23 @@ const app = createApp({
         });
         let statusPollTimer = null;
 
+        // Catalog system: Collections
+        const collections = ref([]);
+        const showCollectionModal = ref(false);
+        const newCollectionName = ref('');
+        const newCollectionColor = ref('#0f9b8e');
+        const addToCollectionModelId = ref(null);
+        const showAddToCollectionModal = ref(false);
+
+        // Catalog system: Saved searches
+        const savedSearches = ref([]);
+        const showSaveSearchModal = ref(false);
+        const saveSearchName = ref('');
+
+        // Catalog system: Selection mode
+        const selectionMode = ref(false);
+        const selectedModels = reactive(new Set());
+
         /* ---- Computed ---- */
         const hasLibraries = computed(() => libraries.value.length > 0);
         const scanProgress = computed(() => {
@@ -152,7 +181,7 @@ const app = createApp({
         });
 
         const hasActiveFilters = computed(() => {
-            return !!(filters.format || filters.tag || filters.category || filters.library_id);
+            return !!(filters.format || filters.tag || filters.category || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.collection);
         });
 
         // Find the library object for the currently selected library_id
@@ -194,6 +223,12 @@ const app = createApp({
                 if (filters.tag) params.append('tag', filters.tag);
                 if (filters.category) params.append('category', filters.category);
                 if (filters.library_id) params.append('library_id', String(filters.library_id));
+                if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
+                if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
+                if (filters.favoritesOnly) params.append('favorites_only', 'true');
+                if (filters.collection) params.append('collection', filters.collection);
+                params.append('sort_by', filters.sortBy);
+                params.append('sort_order', filters.sortOrder);
 
                 const res = await fetch(`/api/models?${params}`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -834,6 +869,12 @@ const app = createApp({
             filters.tag = '';
             filters.category = '';
             filters.library_id = null;
+            filters.tags = [];
+            filters.categories = [];
+            filters.favoritesOnly = false;
+            filters.collection = null;
+            filters.sortBy = 'updated_at';
+            filters.sortOrder = 'desc';
             pagination.offset = 0;
             refreshCurrentView();
         }
@@ -939,10 +980,335 @@ const app = createApp({
             return f;
         }
 
+        // ---- Collections API ----
+        async function fetchCollections() {
+            try {
+                const resp = await fetch('/api/collections');
+                const data = await resp.json();
+                collections.value = data.collections || [];
+            } catch (e) {
+                console.error('Failed to fetch collections', e);
+            }
+        }
+
+        async function createCollection() {
+            const name = newCollectionName.value.trim();
+            if (!name) return;
+            try {
+                const resp = await fetch('/api/collections', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, color: newCollectionColor.value }),
+                });
+                if (resp.ok) {
+                    showCollectionModal.value = false;
+                    newCollectionName.value = '';
+                    newCollectionColor.value = '#0f9b8e';
+                    await fetchCollections();
+                    showToast('Collection created', 'success');
+                }
+            } catch (e) {
+                showToast('Failed to create collection', 'error');
+            }
+        }
+
+        async function deleteCollection(id) {
+            try {
+                await fetch(`/api/collections/${id}`, { method: 'DELETE' });
+                if (filters.collection === id) {
+                    filters.collection = null;
+                }
+                await fetchCollections();
+                showToast('Collection deleted', 'success');
+            } catch (e) {
+                showToast('Failed to delete collection', 'error');
+            }
+        }
+
+        function openAddToCollection(modelId) {
+            addToCollectionModelId.value = modelId;
+            showAddToCollectionModal.value = true;
+        }
+
+        async function addModelToCollection(collectionId) {
+            const modelId = addToCollectionModelId.value;
+            if (!modelId) return;
+            try {
+                const resp = await fetch(`/api/collections/${collectionId}/models`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_ids: [modelId] }),
+                });
+                if (resp.ok) {
+                    showAddToCollectionModal.value = false;
+                    addToCollectionModelId.value = null;
+                    await fetchCollections();
+                    showToast('Added to collection', 'success');
+                }
+            } catch (e) {
+                showToast('Failed to add to collection', 'error');
+            }
+        }
+
+        function setCollectionFilter(collectionId) {
+            if (filters.collection === collectionId) {
+                filters.collection = null;
+            } else {
+                filters.collection = collectionId;
+            }
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        // ---- Saved Searches API ----
+        async function fetchSavedSearches() {
+            try {
+                const resp = await fetch('/api/saved-searches');
+                const data = await resp.json();
+                savedSearches.value = data.saved_searches || [];
+            } catch (e) {
+                console.error('Failed to fetch saved searches', e);
+            }
+        }
+
+        async function saveCurrentSearch() {
+            const name = saveSearchName.value.trim();
+            if (!name) return;
+            try {
+                const resp = await fetch('/api/saved-searches', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        query: searchQuery.value,
+                        filters: {
+                            format: filters.format,
+                            tags: filters.tags,
+                            categories: filters.categories,
+                            favoritesOnly: filters.favoritesOnly,
+                            collection: filters.collection,
+                        },
+                        sort_by: filters.sortBy,
+                        sort_order: filters.sortOrder,
+                    }),
+                });
+                if (resp.ok) {
+                    showSaveSearchModal.value = false;
+                    saveSearchName.value = '';
+                    await fetchSavedSearches();
+                    showToast('Search saved', 'success');
+                }
+            } catch (e) {
+                showToast('Failed to save search', 'error');
+            }
+        }
+
+        function applySavedSearch(search) {
+            searchQuery.value = search.query || '';
+            const f = search.filters || {};
+            filters.format = f.format || '';
+            filters.tags = f.tags || [];
+            filters.categories = f.categories || [];
+            filters.favoritesOnly = f.favoritesOnly || false;
+            filters.collection = f.collection || null;
+            filters.sortBy = search.sort_by || 'updated_at';
+            filters.sortOrder = search.sort_order || 'desc';
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        async function deleteSavedSearch(id) {
+            try {
+                await fetch(`/api/saved-searches/${id}`, { method: 'DELETE' });
+                await fetchSavedSearches();
+                showToast('Saved search deleted', 'success');
+            } catch (e) {
+                showToast('Failed to delete saved search', 'error');
+            }
+        }
+
+        // ---- Favorites ----
+        async function toggleFavorite(model, e) {
+            if (e) e.stopPropagation();
+            const wasFav = model.is_favorite;
+            model.is_favorite = !wasFav;
+            try {
+                const method = wasFav ? 'DELETE' : 'POST';
+                const resp = await fetch(`/api/models/${model.id}/favorite`, { method });
+                if (!resp.ok) {
+                    model.is_favorite = wasFav;
+                }
+            } catch {
+                model.is_favorite = wasFav;
+            }
+        }
+
+        function toggleFavoritesFilter() {
+            filters.favoritesOnly = !filters.favoritesOnly;
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        // ---- Selection Mode ----
+        function toggleSelectionMode() {
+            selectionMode.value = !selectionMode.value;
+            if (!selectionMode.value) {
+                selectedModels.clear();
+            }
+        }
+
+        function toggleModelSelection(modelId) {
+            if (selectedModels.has(modelId)) {
+                selectedModels.delete(modelId);
+            } else {
+                selectedModels.add(modelId);
+            }
+        }
+
+        function selectAll() {
+            models.value.forEach(m => selectedModels.add(m.id));
+        }
+
+        function deselectAll() {
+            selectedModels.clear();
+        }
+
+        function isSelected(modelId) {
+            return selectedModels.has(modelId);
+        }
+
+        async function bulkFavorite() {
+            const ids = [...selectedModels];
+            if (!ids.length) return;
+            try {
+                await fetch('/api/bulk/favorite', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_ids: ids, favorite: true }),
+                });
+                selectedModels.clear();
+                selectionMode.value = false;
+                await fetchModels();
+                showToast(`${ids.length} model(s) favorited`, 'success');
+            } catch {
+                showToast('Bulk favorite failed', 'error');
+            }
+        }
+
+        async function bulkAddToCollection(collectionId) {
+            const ids = [...selectedModels];
+            if (!ids.length || !collectionId) return;
+            try {
+                await fetch('/api/bulk/collections', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_ids: ids, collection_id: collectionId }),
+                });
+                selectedModels.clear();
+                selectionMode.value = false;
+                showAddToCollectionModal.value = false;
+                await fetchCollections();
+                showToast(`Added ${ids.length} model(s) to collection`, 'success');
+            } catch {
+                showToast('Bulk add to collection failed', 'error');
+            }
+        }
+
+        async function bulkDelete() {
+            const ids = [...selectedModels];
+            if (!ids.length) return;
+            if (!confirm(`Delete ${ids.length} model(s)? This cannot be undone.`)) return;
+            try {
+                await fetch('/api/bulk/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_ids: ids }),
+                });
+                selectedModels.clear();
+                selectionMode.value = false;
+                await fetchModels();
+                showToast(`${ids.length} model(s) deleted`, 'success');
+            } catch {
+                showToast('Bulk delete failed', 'error');
+            }
+        }
+
+        function openBulkAddToCollection() {
+            addToCollectionModelId.value = null;
+            showAddToCollectionModal.value = true;
+        }
+
+        function handleCollectionSelect(collectionId) {
+            if (addToCollectionModelId.value) {
+                addModelToCollection(collectionId);
+            } else {
+                bulkAddToCollection(collectionId);
+            }
+        }
+
+        // ---- Sort / Filter helpers ----
+        function setSortBy(value) {
+            filters.sortBy = value;
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        function toggleSortOrder() {
+            filters.sortOrder = filters.sortOrder === 'asc' ? 'desc' : 'asc';
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        function toggleTagFilter(tagName) {
+            const idx = filters.tags.indexOf(tagName);
+            if (idx >= 0) {
+                filters.tags.splice(idx, 1);
+            } else {
+                filters.tags.push(tagName);
+            }
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        function toggleCategoryFilter(catName) {
+            const idx = filters.categories.indexOf(catName);
+            if (idx >= 0) {
+                filters.categories.splice(idx, 1);
+            } else {
+                filters.categories.push(catName);
+            }
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        function removeTagFilter(tagName) {
+            const idx = filters.tags.indexOf(tagName);
+            if (idx >= 0) {
+                filters.tags.splice(idx, 1);
+                pagination.offset = 0;
+                fetchModels();
+            }
+        }
+
+        function removeCategoryFilter(catName) {
+            const idx = filters.categories.indexOf(catName);
+            if (idx >= 0) {
+                filters.categories.splice(idx, 1);
+                pagination.offset = 0;
+                fetchModels();
+            }
+        }
+
         /* ---- Keyboard handler for modals ---- */
         function onKeydown(e) {
             if (e.key === 'Escape') {
-                if (showStatusMenu.value) {
+                if (showAddToCollectionModal.value) {
+                    showAddToCollectionModal.value = false;
+                } else if (showCollectionModal.value) {
+                    showCollectionModal.value = false;
+                } else if (showSaveSearchModal.value) {
+                    showSaveSearchModal.value = false;
+                } else if (showStatusMenu.value) {
                     closeStatusMenu();
                 } else if (showSettings.value) {
                     closeSettings();
@@ -971,6 +1337,8 @@ const app = createApp({
             fetchCategories();
             fetchScanStatus();
             fetchSystemStatus();
+            fetchCollections();
+            fetchSavedSearches();
             statusPollTimer = setInterval(fetchSystemStatus, 30000);
             document.addEventListener('keydown', onKeydown);
             document.addEventListener('click', onDocumentClick);
@@ -1013,6 +1381,17 @@ const app = createApp({
             regeneratingThumbnails,
             showStatusMenu,
             systemStatus,
+            collections,
+            showCollectionModal,
+            newCollectionName,
+            newCollectionColor,
+            addToCollectionModelId,
+            showAddToCollectionModal,
+            savedSearches,
+            showSaveSearchModal,
+            saveSearchName,
+            selectionMode,
+            selectedModels,
 
             // Computed
             scanProgress,
@@ -1059,6 +1438,34 @@ const app = createApp({
             closeStatusMenu,
             statusLabel,
             statusDotClass,
+            fetchCollections,
+            createCollection,
+            deleteCollection,
+            openAddToCollection,
+            addModelToCollection,
+            setCollectionFilter,
+            fetchSavedSearches,
+            saveCurrentSearch,
+            applySavedSearch,
+            deleteSavedSearch,
+            toggleFavorite,
+            toggleFavoritesFilter,
+            toggleSelectionMode,
+            toggleModelSelection,
+            selectAll,
+            deselectAll,
+            isSelected,
+            bulkFavorite,
+            bulkAddToCollection,
+            bulkDelete,
+            openBulkAddToCollection,
+            handleCollectionSelect,
+            setSortBy,
+            toggleSortOrder,
+            toggleTagFilter,
+            toggleCategoryFilter,
+            removeTagFilter,
+            removeCategoryFilter,
 
             // Helpers
             thumbUrl,
@@ -1129,6 +1536,9 @@ const app = createApp({
                 </button>
             </div>
 
+            <button class="btn-icon" :class="{ active: selectionMode }" @click="toggleSelectionMode" title="Selection mode">
+                <span v-html="ICONS.select"></span>
+            </button>
             <button class="btn-icon" @click="openSettings" title="Settings" v-html="ICONS.settings"></button>
         </div>
     </nav>
@@ -1166,6 +1576,23 @@ const app = createApp({
                         @click="viewMode = 'list'"
                         title="List view"
                         v-html="ICONS.list"></button>
+            </div>
+            <button class="btn btn-sm btn-ghost" v-if="searchQuery || filters.tags.length || filters.categories.length || filters.favoritesOnly"
+                    @click="showSaveSearchModal = true" title="Save this search">
+                <span v-html="ICONS.bookmark"></span> Save
+            </button>
+            <div class="sort-control">
+                <select class="sort-select" :value="filters.sortBy" @change="setSortBy($event.target.value)">
+                    <option value="updated_at">Date Modified</option>
+                    <option value="created_at">Date Added</option>
+                    <option value="name">Name</option>
+                    <option value="file_size">File Size</option>
+                    <option value="vertex_count">Vertices</option>
+                    <option value="face_count">Faces</option>
+                </select>
+                <button class="btn-icon sort-dir-btn" @click="toggleSortOrder" :title="filters.sortOrder === 'asc' ? 'Ascending' : 'Descending'">
+                    {{ filters.sortOrder === 'asc' ? '\u2191' : '\u2193' }}
+                </button>
             </div>
             <span class="breadcrumb-count">
                 <strong>{{ pagination.total }}</strong> model{{ pagination.total !== 1 ? 's' : '' }}
@@ -1228,8 +1655,8 @@ const app = createApp({
                 </div>
                 <div v-for="tag in allTags" :key="tag.id"
                      class="sidebar-item"
-                     :class="{ active: filters.tag === tag.name }"
-                     @click="setTagFilter(tag.name)">
+                     :class="{ active: filters.tag === tag.name || filters.tags.includes(tag.name) }"
+                     @click="toggleTagFilter(tag.name)">
                     <span>{{ tag.name }}</span>
                     <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
                 </div>
@@ -1245,8 +1672,8 @@ const app = createApp({
                     <template v-for="cat in allCategories" :key="cat.id">
                         <li>
                             <div class="category-item"
-                                 :class="{ active: filters.category === cat.name }"
-                                 @click="setCategoryFilter(cat.name)">
+                                 :class="{ active: filters.category === cat.name || filters.categories.includes(cat.name) }"
+                                 @click="toggleCategoryFilter(cat.name)">
                                 <span v-if="cat.children && cat.children.length"
                                       class="category-toggle"
                                       :class="{ expanded: expandedCategories[cat.id] }"
@@ -1260,8 +1687,8 @@ const app = createApp({
                                 class="category-children">
                                 <li v-for="child in cat.children" :key="child.id">
                                     <div class="category-item"
-                                         :class="{ active: filters.category === child.name }"
-                                         @click="setCategoryFilter(child.name)">
+                                         :class="{ active: filters.category === child.name || filters.categories.includes(child.name) }"
+                                         @click="toggleCategoryFilter(child.name)">
                                         <span style="width:16px;display:inline-block"></span>
                                         <span class="category-name">{{ child.name }}</span>
                                         <span v-if="child.model_count" class="category-count">({{ child.model_count }})</span>
@@ -1271,8 +1698,8 @@ const app = createApp({
                                         class="category-children">
                                         <li v-for="grandchild in child.children" :key="grandchild.id">
                                             <div class="category-item"
-                                                 :class="{ active: filters.category === grandchild.name }"
-                                                 @click="setCategoryFilter(grandchild.name)">
+                                                 :class="{ active: filters.category === grandchild.name || filters.categories.includes(grandchild.name) }"
+                                                 @click="toggleCategoryFilter(grandchild.name)">
                                                 <span style="width:16px;display:inline-block"></span>
                                                 <span class="category-name">{{ grandchild.name }}</span>
                                             </div>
@@ -1284,10 +1711,58 @@ const app = createApp({
                     </template>
                 </ul>
             </div>
+
+            <!-- Collections -->
+            <div class="sidebar-section">
+                <div class="sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between">
+                    Collections
+                    <button class="btn-icon" style="width:20px;height:20px" @click="showCollectionModal = true"
+                            title="New collection"><span v-html="ICONS.plus"></span></button>
+                </div>
+                <div class="sidebar-item" :class="{ active: filters.favoritesOnly }" @click="toggleFavoritesFilter">
+                    <span v-html="ICONS.heart"></span>
+                    <span>Favorites</span>
+                </div>
+                <div v-for="col in collections" :key="col.id"
+                     class="sidebar-item" :class="{ active: filters.collection === col.id }"
+                     @click="setCollectionFilter(col.id)">
+                    <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
+                    <span class="truncate">{{ col.name }}</span>
+                    <span class="item-count">{{ col.model_count }}</span>
+                    <button class="sidebar-item-delete" @click.stop="deleteCollection(col.id)">&times;</button>
+                </div>
+            </div>
+
+            <!-- Saved Searches -->
+            <div class="sidebar-section" v-if="savedSearches.length">
+                <div class="sidebar-section-title">Saved Searches</div>
+                <div v-for="search in savedSearches" :key="search.id"
+                     class="sidebar-item" @click="applySavedSearch(search)">
+                    <span v-html="ICONS.bookmark"></span>
+                    <span class="truncate">{{ search.name }}</span>
+                    <button class="sidebar-item-delete" @click.stop="deleteSavedSearch(search.id)">&times;</button>
+                </div>
+            </div>
         </aside>
 
         <!-- Main Content -->
         <main class="main-content">
+
+            <!-- Active Filter Chips -->
+            <div class="active-filters" v-if="filters.tags.length || filters.categories.length">
+                <template v-for="tag in filters.tags" :key="'tag-'+tag">
+                    <span class="filter-chip">
+                        Tag: {{ tag }}
+                        <button class="chip-remove" @click="removeTagFilter(tag)">&times;</button>
+                    </span>
+                </template>
+                <template v-for="cat in filters.categories" :key="'cat-'+cat">
+                    <span class="filter-chip">
+                        {{ cat }}
+                        <button class="chip-remove" @click="removeCategoryFilter(cat)">&times;</button>
+                    </span>
+                </template>
+            </div>
 
             <!-- Scan Progress Banner -->
             <div v-if="scanStatus.scanning" class="scan-banner">
@@ -1343,7 +1818,7 @@ const app = createApp({
                  ============================================================ -->
             <div v-else-if="viewMode === 'grid'" class="models-grid">
                 <div v-for="model in models" :key="model.id"
-                     class="model-card" @click="viewModel(model)">
+                     class="model-card" :class="{ selected: selectionMode && isSelected(model.id) }" @click="viewModel(model)">
                     <!-- Thumbnail -->
                     <div class="card-thumbnail">
                         <img :src="thumbUrl(model)"
@@ -1359,6 +1834,14 @@ const app = createApp({
                                 {{ model.file_format }}
                             </span>
                         </span>
+                        <button v-if="!selectionMode" class="card-fav-btn" :class="{ active: model.is_favorite }"
+                                @click.stop="toggleFavorite(model, $event)" title="Toggle favorite">
+                            <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
+                        </button>
+                        <button v-if="selectionMode" class="card-select-check"
+                                @click.stop="toggleModelSelection(model.id)">
+                            <span v-html="ICONS.check"></span>
+                        </button>
                     </div>
                     <!-- Body -->
                     <div class="card-body">
@@ -1381,6 +1864,8 @@ const app = createApp({
                 <table class="models-table">
                     <thead>
                         <tr>
+                            <th v-if="selectionMode" class="col-select" style="width:32px"></th>
+                            <th class="col-fav" style="width:32px"></th>
                             <th>Name</th>
                             <th class="col-format">Format</th>
                             <th class="col-vertices">Vertices</th>
@@ -1391,7 +1876,13 @@ const app = createApp({
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="model in models" :key="model.id" @click="viewModel(model)">
+                        <tr v-for="model in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id) }" @click="viewModel(model)">
+                            <td v-if="selectionMode" class="col-select" @click.stop="toggleModelSelection(model.id)" style="cursor:pointer;text-align:center">
+                                <span v-html="ICONS.check" :style="{ opacity: isSelected(model.id) ? 1 : 0.3 }"></span>
+                            </td>
+                            <td class="col-fav" @click.stop="toggleFavorite(model, $event)" style="cursor:pointer;text-align:center">
+                                <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
+                            </td>
                             <td class="col-name">{{ model.name }}</td>
                             <td class="col-format">
                                 <span class="format-badge" :class="formatClass(model.file_format)">
@@ -1454,6 +1945,10 @@ const app = createApp({
                                autofocus>
                     </template>
                 </div>
+                <button class="btn btn-sm btn-ghost" :class="{ 'text-danger': selectedModel.is_favorite }"
+                        @click="toggleFavorite(selectedModel, $event)" title="Toggle favorite">
+                    <span v-html="selectedModel.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
+                </button>
                 <a class="btn btn-primary btn-sm detail-download-btn"
                    :href="'/api/models/' + selectedModel.id + '/download'"
                    download
@@ -1907,6 +2402,95 @@ const app = createApp({
             </div>
         </div>
     </teleport>
+
+    <!-- ============================================================
+         Selection Bar
+         ============================================================ -->
+    <div v-if="selectionMode && selectedModels.size > 0" class="selection-bar">
+        <div class="selection-info">
+            <strong>{{ selectedModels.size }}</strong> selected
+            <button class="btn btn-sm btn-ghost" @click="selectAll">Select All</button>
+            <button class="btn btn-sm btn-ghost" @click="deselectAll">Deselect All</button>
+        </div>
+        <div class="selection-actions">
+            <button class="btn btn-sm btn-primary" @click="bulkFavorite">
+                <span v-html="ICONS.heart"></span> Favorite
+            </button>
+            <button class="btn btn-sm btn-secondary" @click="openBulkAddToCollection">
+                <span v-html="ICONS.collection"></span> Collection
+            </button>
+            <button class="btn btn-sm btn-danger" @click="bulkDelete">
+                <span v-html="ICONS.trash"></span> Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Create Collection Modal
+         ============================================================ -->
+    <div v-if="showCollectionModal" class="detail-overlay" @click.self="showCollectionModal = false">
+        <div class="mini-modal">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <h3 style="margin:0">New Collection</h3>
+                <button class="close-btn" @click="showCollectionModal = false">&times;</button>
+            </div>
+            <div class="form-row">
+                <label class="form-label">Name</label>
+                <input class="form-input" v-model="newCollectionName" placeholder="Collection name"
+                       @keydown.enter="createCollection">
+            </div>
+            <div class="form-row">
+                <label class="form-label">Color</label>
+                <input type="color" v-model="newCollectionColor" style="width:48px;height:32px;border:none;cursor:pointer">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-secondary" @click="showCollectionModal = false">Cancel</button>
+                <button class="btn btn-primary" @click="createCollection">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Add to Collection Modal
+         ============================================================ -->
+    <div v-if="showAddToCollectionModal" class="detail-overlay" @click.self="showAddToCollectionModal = false">
+        <div class="mini-modal">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <h3 style="margin:0">Add to Collection</h3>
+                <button class="close-btn" @click="showAddToCollectionModal = false">&times;</button>
+            </div>
+            <div v-if="collections.length === 0" class="text-muted text-sm" style="padding:16px 0;text-align:center">
+                No collections yet. Create one first.
+            </div>
+            <div v-for="col in collections" :key="col.id"
+                 class="sidebar-item" @click="handleCollectionSelect(col.id)">
+                <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
+                <span>{{ col.name }}</span>
+                <span class="item-count">{{ col.model_count }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Save Search Modal
+         ============================================================ -->
+    <div v-if="showSaveSearchModal" class="detail-overlay" @click.self="showSaveSearchModal = false">
+        <div class="mini-modal">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <h3 style="margin:0">Save Search</h3>
+                <button class="close-btn" @click="showSaveSearchModal = false">&times;</button>
+            </div>
+            <div class="form-row">
+                <label class="form-label">Name</label>
+                <input class="form-input" v-model="saveSearchName" placeholder="Search name"
+                       @keydown.enter="saveCurrentSearch">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-secondary" @click="showSaveSearchModal = false">Cancel</button>
+                <button class="btn btn-primary" @click="saveCurrentSearch">Save</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ============================================================
          Toast Notifications

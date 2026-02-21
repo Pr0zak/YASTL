@@ -1852,6 +1852,252 @@ img {
 }
 
 /* ============================================================
+   Catalog System: Favorites
+   ============================================================ */
+
+.card-fav-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(22, 33, 62, 0.75);
+    backdrop-filter: blur(4px);
+    border: none;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition);
+    z-index: 2;
+    padding: 0;
+    opacity: 0;
+}
+
+.model-card:hover .card-fav-btn,
+.card-fav-btn.active {
+    opacity: 1;
+}
+
+.card-fav-btn:hover {
+    background: rgba(22, 33, 62, 0.95);
+    transform: scale(1.1);
+}
+
+.card-fav-btn.active {
+    color: var(--danger);
+}
+
+.card-fav-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ============================================================
+   Catalog System: Selection Mode
+   ============================================================ */
+
+.card-select-check {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    background: rgba(22, 33, 62, 0.75);
+    backdrop-filter: blur(4px);
+    border: 2px solid var(--border-light);
+    color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition);
+    z-index: 2;
+    padding: 0;
+}
+
+.card-select-check:hover {
+    border-color: var(--accent);
+}
+
+.model-card.selected .card-select-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.card-select-check svg {
+    width: 12px;
+    height: 12px;
+}
+
+.model-card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-dim), 0 4px 20px var(--shadow);
+}
+
+/* Selection bar — fixed bottom toolbar for bulk actions */
+.selection-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1500;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 20px var(--shadow);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    animation: slideUpBar 0.25s ease;
+}
+
+.selection-bar .selection-info {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.selection-bar .selection-info strong {
+    color: var(--accent);
+}
+
+.selection-bar .selection-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@keyframes slideUpBar {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* ============================================================
+   Catalog System: Sort Controls
+   ============================================================ */
+
+.sort-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    padding: 5px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: border-color var(--transition);
+    appearance: auto;
+}
+
+.sort-select:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.sort-dir-btn {
+    transition: transform var(--transition);
+}
+
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ============================================================
+   Catalog System: Collections
+   ============================================================ */
+
+.collection-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.sidebar-item-delete {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    opacity: 0;
+    transition: all var(--transition);
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.sidebar-item:hover .sidebar-item-delete {
+    opacity: 1;
+}
+
+.sidebar-item-delete:hover {
+    color: var(--danger);
+    background: rgba(231, 76, 60, 0.15);
+}
+
+/* ============================================================
+   Catalog System: Mini Modals
+   ============================================================ */
+
+.mini-modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    min-width: 340px;
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: slideUp 0.2s ease;
+}
+
+.mini-modal h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+}
+
+.mini-modal .form-row {
+    margin-bottom: 12px;
+}
+
+.mini-modal .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+/* ============================================================
    Utility classes
    ============================================================ */
 
