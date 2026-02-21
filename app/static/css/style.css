@@ -1142,6 +1142,18 @@ img {
     max-width: 200px;
 }
 
+.source-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--color-primary, #4f8cff);
+    text-decoration: none;
+    word-break: break-all;
+}
+.source-link:hover { text-decoration: underline; }
+.source-link svg { flex-shrink: 0; }
+
 .info-field .field-value-hash {
     font-size: 0.65rem;
     word-break: break-all;

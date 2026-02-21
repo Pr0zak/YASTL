@@ -775,6 +775,21 @@ def _parse_attribution(text: str, meta: dict) -> None:
         # Look for key: value patterns
         kv = re.match(r"^(Title|URL|Creator|Tags|Description)\s*:\s*(.+)", clean, re.IGNORECASE)
         if not kv:
+            # Thingiverse README format: "Title by Creator on Thingiverse: URL"
+            tv_readme = re.match(
+                r"^(.+?)\s+by\s+(\S+)\s+on\s+Thingiverse:\s*(https?://\S+)",
+                clean, re.IGNORECASE,
+            )
+            if tv_readme:
+                if not meta["title"]:
+                    meta["title"] = tv_readme.group(1).strip()
+                if not meta.get("creator"):
+                    meta["creator"] = tv_readme.group(2).strip()
+                if not meta["source_url"]:
+                    meta["source_url"] = tv_readme.group(3).strip()
+                    meta["site"] = "thingiverse"
+                continue
+
             # Also try "thing:12345" URLs embedded anywhere
             url_match = re.search(r"(https?://(?:www\.)?thingiverse\.com/thing[:/]\d+)", clean)
             if url_match and not meta["source_url"]:
@@ -858,8 +873,8 @@ async def process_uploaded_zip(
                     with open(dest, "wb") as f:
                         f.write(data)
 
-                    # Use zip title for single-file zips, filename for multi
-                    title = meta["title"] if len(meta["model_files"]) == 1 else None
+                    # Use zip title as model name for all extracted files
+                    title = meta["title"]
 
                     model_id = await process_imported_file(
                         file_path=dest,
