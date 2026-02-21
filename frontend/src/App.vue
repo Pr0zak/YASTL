@@ -74,8 +74,10 @@ const sidebarOpen = ref(false);
 // Editable field state
 const editName = ref('');
 const editDesc = ref('');
+const editSourceUrl = ref('');
 const isEditingName = ref(false);
 const isEditingDesc = ref(false);
+const isEditingSourceUrl = ref(false);
 
 // Category expansion state (by category id)
 const expandedCategories = reactive({});
@@ -216,7 +218,7 @@ const {
     showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
     importRunning, importDone, importPreview, importProgress,
     uploadFiles, uploadResults, uploadTags, uploadTagSuggestions,
-    uploadCollectionId, uploadZipMeta,
+    uploadCollectionId, uploadSourceUrl, uploadDescription, uploadZipMeta,
     importCredentials, credentialInputs,
     openImportModal: _openImportModal,
     closeImportModal: _closeImportModal,
@@ -538,8 +540,10 @@ async function viewModel(model) {
 
     editName.value = selectedModel.value.name || '';
     editDesc.value = selectedModel.value.description || '';
+    editSourceUrl.value = selectedModel.value.source_url || '';
     isEditingName.value = false;
     isEditingDesc.value = false;
+    isEditingSourceUrl.value = false;
     tagSuggestions.value = [];
     showDetail.value = true;
     document.body.classList.add('modal-open');
@@ -582,6 +586,7 @@ function closeDetail() {
     selectedModel.value = null;
     isEditingName.value = false;
     isEditingDesc.value = false;
+    isEditingSourceUrl.value = false;
     viewerLoading.value = false;
     if (!showSettings.value) {
         document.body.classList.remove('modal-open');
@@ -624,6 +629,7 @@ async function updateModel(modelId, data) {
         selectedModel.value = updated;
         editName.value = updated.name || '';
         editDesc.value = updated.description || '';
+        editSourceUrl.value = updated.source_url || '';
         updateModelInList(updated);
         showToast('Model updated');
     } catch (err) {
@@ -631,6 +637,7 @@ async function updateModel(modelId, data) {
     }
     isEditingName.value = false;
     isEditingDesc.value = false;
+    isEditingSourceUrl.value = false;
 }
 
 async function renameModelFile() {
@@ -789,6 +796,22 @@ function startEditName() {
 function startEditDesc() {
     editDesc.value = selectedModel.value?.description || '';
     isEditingDesc.value = true;
+}
+
+function saveSourceUrl() {
+    if (!selectedModel.value) return;
+    const val = editSourceUrl.value.trim();
+    // Allow clearing (empty string → null) or setting a URL
+    if (val !== (selectedModel.value.source_url || '')) {
+        updateModel(selectedModel.value.id, { source_url: val || null });
+    } else {
+        isEditingSourceUrl.value = false;
+    }
+}
+
+function startEditSourceUrl() {
+    editSourceUrl.value = selectedModel.value?.source_url || '';
+    isEditingSourceUrl.value = true;
 }
 
 // ---- Favorites count ----
@@ -1255,8 +1278,10 @@ const { pickNextCollectionColor } = collectionsComposable;
         :viewerLoading="viewerLoading"
         :editName="editName"
         :editDesc="editDesc"
+        :editSourceUrl="editSourceUrl"
         :isEditingName="isEditingName"
         :isEditingDesc="isEditingDesc"
+        :isEditingSourceUrl="isEditingSourceUrl"
         :tagSuggestions="tagSuggestions"
         :tagSuggestionsLoading="tagSuggestionsLoading"
         :newTagInput="newTagInput"
@@ -1265,13 +1290,17 @@ const { pickNextCollectionColor } = collectionsComposable;
         @close="closeDetail"
         @update:editName="editName = $event"
         @update:editDesc="editDesc = $event"
+        @update:editSourceUrl="editSourceUrl = $event"
         @update:isEditingName="isEditingName = $event"
         @update:isEditingDesc="isEditingDesc = $event"
+        @update:isEditingSourceUrl="isEditingSourceUrl = $event"
         @update:newTagInput="newTagInput = $event"
         @saveName="saveName"
         @saveDesc="saveDesc"
+        @saveSourceUrl="saveSourceUrl"
         @startEditName="startEditName"
         @startEditDesc="startEditDesc"
+        @startEditSourceUrl="startEditSourceUrl"
         @resetView="handleResetView"
         @toggleFavorite="toggleFavorite"
         @openAddToCollection="openAddToCollection"
@@ -1462,6 +1491,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :uploadTags="uploadTags"
         :uploadTagSuggestions="uploadTagSuggestions"
         :uploadCollectionId="uploadCollectionId"
+        :uploadSourceUrl="uploadSourceUrl"
+        :uploadDescription="uploadDescription"
         :uploadZipMeta="uploadZipMeta"
         :libraries="libraries"
         :collections="collections"
@@ -1474,6 +1505,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         @update:importSubfolder="importSubfolder = $event"
         @update:uploadTags="uploadTags = $event"
         @update:uploadCollectionId="uploadCollectionId = $event"
+        @update:uploadSourceUrl="uploadSourceUrl = $event"
+        @update:uploadDescription="uploadDescription = $event"
         @previewImportUrl="previewImportUrl"
         @startImport="startImport"
         @onFilesSelected="onFilesSelected"

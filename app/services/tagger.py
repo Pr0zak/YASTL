@@ -6,10 +6,12 @@ Generates tag suggestions for 3D models based on metadata:
 - File format as a tag
 - Size classification based on dimensions (small/medium/large)
 - Vertex count classification (low-poly/high-poly)
+- Source URL slug words and site detection
 """
 
 import logging
 import re
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,47 @@ def _classify_complexity(vertex_count: int | None, face_count: int | None) -> st
         return "high-poly"
 
 
+def _add_url_slug_tags(url: str, add_fn) -> None:
+    """Extract meaningful words from URL path segments as tag suggestions.
+
+    Parses the URL path, splits slug segments on hyphens/underscores,
+    and filters out noise (IDs, stop words, site-specific patterns).
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return
+
+    # Skip query/fragment, just use path segments
+    segments = [s for s in parsed.path.strip("/").split("/") if s]
+
+    # Filter out common non-descriptive segments
+    skip_segments = {
+        "thing", "things", "model", "models", "design", "designs",
+        "object", "objects", "download", "downloads", "files",
+        "en", "fr", "de", "es", "3d-model", "3d-models",
+    }
+
+    for segment in segments:
+        # Remove Thingiverse thing:12345 pattern
+        segment = re.sub(r"^thing:", "", segment)
+        # Skip pure numeric IDs
+        if segment.isdigit():
+            continue
+        # Split on hyphens, underscores
+        words = re.split(r"[-_]+", segment)
+        for w in words:
+            w = w.strip().lower()
+            if (
+                w
+                and len(w) >= MIN_TAG_LENGTH
+                and not w.isdigit()
+                and w not in STOP_WORDS
+                and w not in skip_segments
+            ):
+                add_fn(w)
+
+
 def suggest_tags(model: dict) -> list[str]:
     """Generate tag suggestions for a model based on its metadata.
 
@@ -164,5 +207,15 @@ def suggest_tags(model: dict) -> list[str]:
         _add("printables")
     elif "makerworld" in source_url:
         _add("makerworld")
+    elif "cults3d" in source_url:
+        _add("cults3d")
+    elif "myminifactory" in source_url:
+        _add("myminifactory")
+    elif "thangs" in source_url:
+        _add("thangs")
+
+    # 7. Words from source URL path slug
+    if source_url:
+        _add_url_slug_tags(source_url, _add)
 
     return suggestions[:MAX_SUGGESTIONS]

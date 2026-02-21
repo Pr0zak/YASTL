@@ -141,11 +141,13 @@ async def upload_files(
     subfolder: str | None = Form(None),
     tags: str | None = Form(None),
     collection_id: int | None = Form(None),
+    source_url: str | None = Form(None),
+    description: str | None = Form(None),
 ):
     """Upload local 3D model files and process them into the library.
 
-    Optionally accepts comma-separated tags and a collection_id to apply
-    to all successfully imported models.
+    Optionally accepts comma-separated tags, a collection_id, source_url,
+    and description to apply to all successfully imported models.
     """
     # Look up library path
     async with get_db() as db:
@@ -164,6 +166,19 @@ async def upload_files(
 
     # Parse tags
     tag_list = [t.strip() for t in (tags or "").split(",") if t.strip()]
+
+    # Validate and clean source_url
+    if source_url:
+        source_url = source_url.strip()
+        if not source_url:
+            source_url = None
+        elif not source_url.startswith(("http://", "https://")):
+            raise HTTPException(
+                status_code=400,
+                detail="source_url must start with http:// or https://",
+            )
+    if description is not None:
+        description = description.strip()
 
     results = []
     model_ids = []
@@ -200,6 +215,7 @@ async def upload_files(
                     scraped_tags=tag_list or None,
                     subfolder=subfolder,
                     library_path=library_path,
+                    source_url=source_url,
                 )
                 if model_id is not None:
                     results.append({"filename": fname, "status": "ok", "model_id": model_id})
@@ -209,6 +225,29 @@ async def upload_files(
         except Exception as e:
             logger.warning("Upload processing failed for %s: %s", fname, e)
             results.append({"filename": fname, "status": "error", "error": str(e)})
+
+    # Update models with source_url and/or description if provided
+    if (source_url or description) and model_ids:
+        try:
+            async with get_db() as db:
+                set_parts: list[str] = []
+                params: list[str | int] = []
+                if source_url:
+                    set_parts.append("source_url = ?")
+                    params.append(source_url)
+                if description:
+                    set_parts.append("description = ?")
+                    params.append(description)
+                set_parts.append("updated_at = CURRENT_TIMESTAMP")
+                set_sql = ", ".join(set_parts)
+                for mid in model_ids:
+                    await db.execute(
+                        f"UPDATE models SET {set_sql} WHERE id = ?",
+                        params + [mid],
+                    )
+                await db.commit()
+        except Exception as e:
+            logger.warning("Failed to update upload metadata: %s", e)
 
     # Add to collection if requested
     if collection_id and model_ids:

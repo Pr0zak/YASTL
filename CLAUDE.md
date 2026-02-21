@@ -2,14 +2,15 @@
 
 ## Project Overview
 
-YASTL (Yet Another STL) is a full-stack web application for browsing, searching, and previewing 3D model files. Python FastAPI backend with a Vue 3 + Three.js frontend served as static files (no build step).
+YASTL (Yet Another STL) is a full-stack web application for browsing, searching, and previewing 3D model files. Python FastAPI backend with a Vue 3 + Three.js frontend (Vite SFC build with legacy CDN fallback).
 
 **Repo:** https://github.com/Pr0zak/YASTL
 
 ## Tech Stack
 
 - **Backend:** Python 3.11+, FastAPI, Uvicorn, aiosqlite (async SQLite with FTS5)
-- **Frontend:** Vue 3 + Three.js via CDN (no build tooling, no bundler)
+- **Frontend:** Vue 3 + Three.js — Vite SFC build (`frontend/` → `app/static/dist/`), legacy CDN fallback in `app/static/`
+- **Build:** Vite 6, vue-tsc, ESLint
 - **3D Processing:** trimesh, numpy-stl, pygltflib, manifold3d, scipy
 - **trimesh extras:** networkx (3MF scene graphs), lxml (3MF XML parsing), cascadio + gmsh (STEP files, optional)
 - **Hashing:** xxhash (xxh128 for duplicate detection)
@@ -22,35 +23,54 @@ YASTL (Yet Another STL) is a full-stack web application for browsing, searching,
 
 ```
 app/                    # Main application package
-  main.py               # FastAPI app init and lifespan
+  main.py               # FastAPI app init and lifespan (serves dist/ if present, else static/)
   config.py             # Pydantic settings (YASTL_ env prefix)
-  database.py           # SQLite schema, migrations, FTS5, async context managers
-  api/                  # Route modules
-    routes_models.py    # Model CRUD, file serving, GLB conversion, tags, categories
+  database.py           # Runtime DB logic (imports schema from database_schema.py)
+  database_schema.py    # SCHEMA_SQL, FTS_SCHEMA_SQL, migrations, indexes
+  api/                  # Route modules (split into focused files)
+    _helpers.py         # Shared route helpers (_get_db_path, _fetch_model_with_relations)
+    routes_models.py    # Model CRUD (name, description, source_url)
+    routes_model_files.py # File serving, GLB conversion, thumbnails
+    routes_model_tags.py  # Per-model tag operations
+    routes_model_categories.py # Per-model category operations
     routes_search.py    # Full-text search with filters
     routes_scan.py      # Scan triggers, reindex, repair
     routes_tags.py      # Tag management
     routes_categories.py # Category management
     routes_libraries.py # Library management
+    routes_import.py    # URL import + file upload (source_url, description metadata)
     routes_settings.py  # Settings API, thumbnail regeneration + progress tracking
     routes_status.py    # System health status (scanner, watcher, DB, thumbnails)
     routes_catalog.py   # Favorites, collections, bulk ops, saved searches
     routes_update.py    # Git-based update check and apply
   models/schemas.py     # Pydantic request/response schemas
-  services/             # Business logic
+  services/             # Business logic (split into focused modules)
     scanner.py          # Directory scanning, auto-categories from dir structure
     processor.py        # 3D metadata extraction (FORMAT_MAP, TRIMESH_SUPPORTED)
-    thumbnail.py        # Server-side thumbnail generation (wireframe/solid modes)
+    importer.py         # Import pipeline (URL download, zip handling)
+    scrapers.py         # Site detection + metadata scraping (6 sites)
+    downloader.py       # File download + S3 detection
+    tagger.py           # Auto-tag suggestions from URLs and filenames
+    import_credentials.py # Credential CRUD + masking
+    thumbnail.py        # Thumbnail generation entry point
+    thumbnail_render.py # Rendering backends (wireframe, solid)
+    thumbnail_mesh.py   # Mesh collection + simplification
     hasher.py           # xxhash-based file hashing
     watcher.py          # watchdog file system observer
     zip_handler.py      # Zip archive support (extraction, caching)
     step_converter.py   # STEP→trimesh conversion (OCP or gmsh backends)
-  static/               # Frontend SPA
-    index.html          # Main page
-    js/app.js           # Vue 3 app, API calls, state management
-    js/viewer.js        # Three.js viewer (STL/OBJ/glTF/PLY/3MF loaders)
-    js/search.js        # Debounce, highlight, formatting utilities
+  static/               # Legacy CDN frontend (fallback)
+    index.html          # Main page (CDN-loaded Vue 3 + Three.js)
+    dist/               # Vite build output (served first if present)
+    js/                 # Legacy JS modules (app.js, viewer.js, api.js, composables)
     css/style.css       # CSS custom properties theming
+frontend/               # Vite + Vue SFC source
+  src/
+    App.vue             # Main Vue app component
+    api.js              # API wrapper functions
+    components/         # Vue SFC components (DetailPanel, ImportModal, SettingsPanel, etc.)
+    composables/        # Vue composables (useImport, useViewer, etc.)
+  vite.config.js        # Vite config (builds to ../app/static/dist/)
 tests/                  # pytest test suite
   conftest.py           # Shared fixtures (temp dirs, temp DB, async client)
 ```
@@ -82,6 +102,9 @@ ruff check app/ tests/
 # Format
 ruff format app/ tests/
 
+# Build Vite frontend
+cd frontend && npm run build
+
 # Docker
 docker compose up -d
 ```
@@ -95,11 +118,11 @@ docker compose up -d
 - **No ORM:** Direct SQL with parameterized queries (`?` placeholders) and context managers
 - **Error handling:** `HTTPException` for API errors; try/except with logging in services
 - **Logging:** `logging` module with `"yastl"` root logger name
-- **Frontend:** Vue 3 composition API, CSS custom properties for theming, inline SVG icons
+- **Frontend:** Vue 3 composition API (SFC + legacy CDN), CSS custom properties for theming, inline SVG icons
 
 ## Architecture Notes
 
-- **No build step** for frontend — Vue 3 and Three.js loaded from CDN via ES modules
+- **Dual frontend** — Vite SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/ if present, otherwise falls back to legacy CDN frontend in `app/static/`
 - **SQLite with WAL mode** — concurrent reads, FTS5 for full-text search (porter tokenizer)
 - **Service layer pattern** — business logic in `app/services/`, routes in `app/api/`
 - **Background tasks** — directory scanning and file watching run off the request/response thread

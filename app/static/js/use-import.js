@@ -42,6 +42,8 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
     const uploadTags = ref('');
     const uploadTagSuggestions = ref([]);
     const uploadCollectionId = ref(null);
+    const uploadSourceUrl = ref('');
+    const uploadDescription = ref('');
     const uploadZipMeta = ref(null);
 
     // Import credentials
@@ -63,6 +65,8 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         uploadTags.value = '';
         uploadTagSuggestions.value = [];
         uploadCollectionId.value = null;
+        uploadSourceUrl.value = '';
+        uploadDescription.value = '';
         uploadZipMeta.value = null;
         // Default to first library if available
         if (libraries.value.length > 0 && !importLibraryId.value) {
@@ -197,6 +201,10 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         const tagStr = uploadTags.value.trim();
         if (tagStr) formData.append('tags', tagStr);
         if (uploadCollectionId.value) formData.append('collection_id', uploadCollectionId.value);
+        const srcUrl = uploadSourceUrl.value.trim() || (uploadZipMeta.value?.source_url || '');
+        if (srcUrl) formData.append('source_url', srcUrl);
+        const desc = uploadDescription.value.trim();
+        if (desc) formData.append('description', desc);
         for (const f of uploadFiles.value) {
             formData.append('files', f);
         }
@@ -273,6 +281,8 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         uploadTags,
         uploadTagSuggestions,
         uploadCollectionId,
+        uploadSourceUrl,
+        uploadDescription,
         uploadZipMeta,
         importCredentials,
         credentialInputs,

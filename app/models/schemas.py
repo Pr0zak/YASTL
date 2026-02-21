@@ -52,6 +52,7 @@ class ModelResponse(BaseModel):
     file_hash: str | None = None
     zip_path: str | None = None
     zip_entry: str | None = None
+    source_url: str | None = None
     created_at: str
     updated_at: str
     tags: list[str] = []
@@ -64,6 +65,18 @@ class ModelUpdate(BaseModel):
 
     name: str | None = None
     description: str | None = None
+    source_url: str | None = None
+
+    @field_validator("source_url")
+    @classmethod
+    def source_url_must_be_valid(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if v == "":
+                return None
+            if not v.startswith(("http://", "https://")):
+                raise ValueError("source_url must start with http:// or https://")
+        return v
 
 
 # ---------------------------------------------------------------------------
