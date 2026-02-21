@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 
 from app.api.routes_bulk import router as bulk_router
 from app.api.routes_categories import router as categories_router
+from app.api.routes_import import router as import_router
 from app.api.routes_collections import router as collections_router
 from app.api.routes_favorites import router as favorites_router
 from app.api.routes_libraries import router as libraries_router
@@ -140,6 +141,7 @@ app.include_router(favorites_router)
 app.include_router(collections_router)
 app.include_router(saved_searches_router)
 app.include_router(bulk_router)
+app.include_router(import_router)
 
 # Serve static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")

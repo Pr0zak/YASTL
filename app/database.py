@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS models (
     library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
     zip_path TEXT,
     zip_entry TEXT,
+    source_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -227,6 +228,15 @@ async def init_db(db_path: str | Path | None = None) -> None:
                 )
             except Exception:
                 pass  # Columns already exist or table just created with them
+
+        # Add source_url column for URL-imported models
+        if "source_url" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN source_url TEXT"
+                )
+            except Exception:
+                pass  # Column already exists or table just created with it
 
         # Create indexes on migrated columns (must run after migrations)
         for sql in _POST_MIGRATION_INDEXES:

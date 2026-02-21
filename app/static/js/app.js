@@ -45,6 +45,8 @@ const ICONS = {
     bookmark: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`,
     check: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
     select: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
+    link: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+    copy: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
 };
 
 /* ==================================================================
@@ -63,6 +65,8 @@ const app = createApp({
         const allTags = ref([]);
         const allCategories = ref([]);
         const newTagInput = ref('');
+        const tagSuggestions = ref([]);
+        const tagSuggestionsLoading = ref(false);
         const toasts = ref([]);
         const sidebarOpen = ref(false);
         const viewerLoading = ref(false);
@@ -87,6 +91,7 @@ const app = createApp({
             categories: [],
             library_id: null,
             favoritesOnly: false,
+            duplicatesOnly: false,
             collection: null,
             sortBy: 'updated_at',
             sortOrder: 'desc',
@@ -176,6 +181,23 @@ const app = createApp({
         const selectionMode = ref(false);
         const selectedModels = reactive(new Set());
 
+        // Bulk tag modal
+        const showBulkTagModal = ref(false);
+        const bulkTagInput = ref('');
+
+        // URL Import
+        const showImportModal = ref(false);
+        const importUrls = ref('');
+        const importLibraryId = ref(null);
+        const importSubfolder = ref('');
+        const importRunning = ref(false);
+        const importPreview = reactive({ loading: false, data: null });
+        const importProgress = reactive({ running: false, total: 0, completed: 0, current_url: null, results: [] });
+        let importPollTimer = null;
+
+        // Import credentials
+        const importCredentials = ref({});
+
         /* ---- Computed ---- */
         const hasLibraries = computed(() => libraries.value.length > 0);
         const scanProgress = computed(() => {
@@ -194,7 +216,7 @@ const app = createApp({
         });
 
         const hasActiveFilters = computed(() => {
-            return !!(filters.format || filters.tag || filters.category || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.collection);
+            return !!(filters.format || filters.tag || filters.category || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection);
         });
 
         // Find the library object for the currently selected library_id
@@ -239,6 +261,7 @@ const app = createApp({
                 if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
                 if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
                 if (filters.favoritesOnly) params.append('favorites_only', 'true');
+                if (filters.duplicatesOnly) params.append('duplicates_only', 'true');
                 if (filters.collection) params.append('collection', filters.collection);
                 params.append('sort_by', filters.sortBy);
                 params.append('sort_order', filters.sortOrder);
@@ -579,6 +602,248 @@ const app = createApp({
         }
 
         /* ==============================================================
+           URL Import
+           ============================================================== */
+
+        function openImportModal() {
+            fetchLibraries();
+            importUrls.value = '';
+            importSubfolder.value = '';
+            importPreview.loading = false;
+            importPreview.data = null;
+            // Default to first library if available
+            if (libraries.value.length > 0 && !importLibraryId.value) {
+                importLibraryId.value = libraries.value[0].id;
+            }
+            showImportModal.value = true;
+            document.body.classList.add('modal-open');
+        }
+
+        function closeImportModal() {
+            showImportModal.value = false;
+            if (!showDetail.value && !showSettings.value) {
+                document.body.classList.remove('modal-open');
+            }
+        }
+
+        async function previewImportUrl() {
+            const lines = importUrls.value.split('\n').map(u => u.trim()).filter(Boolean);
+            if (!lines.length) return;
+            const firstUrl = lines[0];
+            importPreview.loading = true;
+            importPreview.data = null;
+            try {
+                const res = await fetch('/api/import/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: firstUrl }),
+                });
+                if (res.ok) {
+                    importPreview.data = await res.json();
+                } else {
+                    const err = await res.json();
+                    importPreview.data = { error: err.detail || 'Preview failed' };
+                }
+            } catch (e) {
+                importPreview.data = { error: 'Network error' };
+            } finally {
+                importPreview.loading = false;
+            }
+        }
+
+        async function startImport() {
+            const urls = importUrls.value.split('\n').map(u => u.trim()).filter(Boolean);
+            if (!urls.length || !importLibraryId.value) return;
+
+            importRunning.value = true;
+            try {
+                const res = await fetch('/api/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        urls,
+                        library_id: importLibraryId.value,
+                        subfolder: importSubfolder.value || null,
+                    }),
+                });
+                if (res.ok) {
+                    showToast(`Importing ${urls.length} URL(s)...`, 'info');
+                    startImportPolling();
+                } else {
+                    const data = await res.json();
+                    showToast(data.detail || 'Import failed', 'error');
+                    importRunning.value = false;
+                }
+            } catch (e) {
+                showToast('Failed to start import', 'error');
+                importRunning.value = false;
+            }
+        }
+
+        function startImportPolling() {
+            if (importPollTimer) clearInterval(importPollTimer);
+            importPollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/import/status');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    importProgress.running = data.running;
+                    importProgress.total = data.total;
+                    importProgress.completed = data.completed;
+                    importProgress.current_url = data.current_url;
+                    importProgress.results = data.results || [];
+                    if (!data.running) {
+                        clearInterval(importPollTimer);
+                        importPollTimer = null;
+                        importRunning.value = false;
+                        const ok = (data.results || []).filter(r => r.status === 'ok').length;
+                        showToast(`Import complete: ${ok} URL(s) imported`);
+                        fetchModels();
+                        fetchTags();
+                        fetchCategories();
+                    }
+                } catch (e) {
+                    console.error('importPoll error:', e);
+                }
+            }, 2000);
+        }
+
+        async function fetchImportCredentials() {
+            try {
+                const res = await fetch('/api/import/credentials');
+                if (res.ok) {
+                    importCredentials.value = await res.json();
+                }
+            } catch (e) {
+                console.error('fetchImportCredentials error:', e);
+            }
+        }
+
+        async function saveImportCredential(site, key, value) {
+            try {
+                const creds = {};
+                creds[key] = value;
+                const res = await fetch('/api/import/credentials', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ site, credentials: creds }),
+                });
+                if (res.ok) {
+                    importCredentials.value = await res.json();
+                    showToast(`${site} credentials saved`);
+                } else {
+                    const data = await res.json();
+                    showToast(data.detail || 'Failed to save credentials', 'error');
+                }
+            } catch (e) {
+                showToast('Failed to save credentials', 'error');
+            }
+        }
+
+        async function deleteImportCredential(site) {
+            try {
+                const res = await fetch(`/api/import/credentials/${site}`, { method: 'DELETE' });
+                if (res.ok) {
+                    importCredentials.value = await res.json();
+                    showToast(`${site} credentials removed`);
+                }
+            } catch (e) {
+                showToast('Failed to remove credentials', 'error');
+            }
+        }
+
+        /* ==============================================================
+           Duplicate filter toggle
+           ============================================================== */
+
+        function toggleDuplicatesFilter() {
+            filters.duplicatesOnly = !filters.duplicatesOnly;
+            pagination.offset = 0;
+            fetchModels();
+        }
+
+        /* ==============================================================
+           Tag Suggestions
+           ============================================================== */
+
+        async function fetchTagSuggestions() {
+            if (!selectedModel.value) return;
+            tagSuggestionsLoading.value = true;
+            tagSuggestions.value = [];
+            try {
+                const res = await fetch(`/api/models/suggest-tags/${selectedModel.value.id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    tagSuggestions.value = data.suggestions || [];
+                }
+            } catch (e) {
+                console.error('fetchTagSuggestions error:', e);
+            } finally {
+                tagSuggestionsLoading.value = false;
+            }
+        }
+
+        async function applyTagSuggestion(tag) {
+            // Add the suggested tag to the model
+            newTagInput.value = tag;
+            await addTag();
+            // Remove from suggestions list
+            tagSuggestions.value = tagSuggestions.value.filter(t => t !== tag);
+        }
+
+        async function bulkAutoTag() {
+            const ids = [...selectedModels];
+            if (!ids.length) return;
+            try {
+                const res = await fetch('/api/bulk/auto-tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_ids: ids }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    showToast(`Auto-tagged ${data.models_tagged} model(s) with ${data.tags_added} tags`, 'success');
+                    selectedModels.clear();
+                    selectionMode.value = false;
+                    await fetchModels();
+                    await fetchTags();
+                } else {
+                    showToast('Auto-tag failed', 'error');
+                }
+            } catch {
+                showToast('Auto-tag failed', 'error');
+            }
+        }
+
+        async function bulkAddTags() {
+            const ids = [...selectedModels];
+            const tagsStr = bulkTagInput.value.trim();
+            if (!ids.length || !tagsStr) return;
+            const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+            if (!tags.length) return;
+            try {
+                const res = await fetch('/api/bulk/tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_ids: ids, tags }),
+                });
+                if (res.ok) {
+                    showToast(`Tags applied to ${ids.length} model(s)`, 'success');
+                    showBulkTagModal.value = false;
+                    bulkTagInput.value = '';
+                    selectedModels.clear();
+                    selectionMode.value = false;
+                    await fetchModels();
+                    await fetchTags();
+                } else {
+                    showToast('Bulk tag failed', 'error');
+                }
+            } catch {
+                showToast('Bulk tag failed', 'error');
+            }
+        }
+
+        /* ==============================================================
            Update System
            ============================================================== */
 
@@ -712,6 +977,7 @@ const app = createApp({
             editDesc.value = selectedModel.value.description || '';
             isEditingName.value = false;
             isEditingDesc.value = false;
+            tagSuggestions.value = [];
             showDetail.value = true;
             document.body.classList.add('modal-open');
 
@@ -911,6 +1177,7 @@ const app = createApp({
             filters.tags = [];
             filters.categories = [];
             filters.favoritesOnly = false;
+            filters.duplicatesOnly = false;
             filters.collection = null;
             filters.sortBy = 'updated_at';
             filters.sortOrder = 'desc';
@@ -1436,7 +1703,11 @@ const app = createApp({
         /* ---- Keyboard handler for modals ---- */
         function onKeydown(e) {
             if (e.key === 'Escape') {
-                if (showAddToCollectionModal.value) {
+                if (showBulkTagModal.value) {
+                    showBulkTagModal.value = false;
+                } else if (showImportModal.value) {
+                    closeImportModal();
+                } else if (showAddToCollectionModal.value) {
                     showAddToCollectionModal.value = false;
                 } else if (showCollectionModal.value) {
                     showCollectionModal.value = false;
@@ -1474,6 +1745,7 @@ const app = createApp({
             fetchCollections();
             fetchFavoritesCount();
             fetchSavedSearches();
+            fetchImportCredentials();
             statusPollTimer = setInterval(fetchSystemStatus, 30000);
             document.addEventListener('keydown', onKeydown);
             document.addEventListener('click', onDocumentClick);
@@ -1494,6 +1766,10 @@ const app = createApp({
             allTags,
             allCategories,
             newTagInput,
+            tagSuggestions,
+            tagSuggestionsLoading,
+            showBulkTagModal,
+            bulkTagInput,
             toasts,
             sidebarOpen,
             viewerLoading,
@@ -1531,6 +1807,14 @@ const app = createApp({
             saveSearchName,
             selectionMode,
             selectedModels,
+            showImportModal,
+            importUrls,
+            importLibraryId,
+            importSubfolder,
+            importRunning,
+            importPreview,
+            importProgress,
+            importCredentials,
 
             // Computed
             scanProgress,
@@ -1612,6 +1896,18 @@ const app = createApp({
             toggleCategoryFilter,
             removeTagFilter,
             removeCategoryFilter,
+            openImportModal,
+            closeImportModal,
+            previewImportUrl,
+            startImport,
+            fetchImportCredentials,
+            saveImportCredential,
+            deleteImportCredential,
+            toggleDuplicatesFilter,
+            fetchTagSuggestions,
+            applyTagSuggestion,
+            bulkAutoTag,
+            bulkAddTags,
 
             // Helpers
             thumbUrl,
@@ -1682,6 +1978,9 @@ const app = createApp({
                 </button>
             </div>
 
+            <button class="btn-icon" @click="openImportModal" title="Import from URL">
+                <span v-html="ICONS.link"></span>
+            </button>
             <button class="btn-icon" :class="{ active: selectionMode }" @click="toggleSelectionMode" title="Selection mode">
                 <span v-html="ICONS.select"></span>
             </button>
@@ -1870,6 +2169,10 @@ const app = createApp({
                     <span>Favorites</span>
                     <span v-if="favoritesCount > 0" class="item-count">{{ favoritesCount }}</span>
                 </div>
+                <div class="sidebar-item" :class="{ active: filters.duplicatesOnly }" @click="toggleDuplicatesFilter">
+                    <span v-html="ICONS.copy"></span>
+                    <span>Duplicates</span>
+                </div>
                 <div v-for="col in collections" :key="col.id"
                      class="sidebar-item" :class="{ active: filters.collection === col.id }"
                      @click="setCollectionFilter(col.id)">
@@ -2004,6 +2307,7 @@ const app = createApp({
                         <div class="card-meta">
                             {{ formatFileSize(model.file_size) }}
                             <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span>
+                            <span v-if="model.is_duplicate" class="dup-badge" title="Duplicate file (same hash)">dup</span>
                         </div>
                         <div class="card-tags" v-if="model.tags && model.tags.length">
                             <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
@@ -2041,7 +2345,7 @@ const app = createApp({
                             <td class="col-fav" @click.stop="toggleFavorite(model, $event)" style="cursor:pointer;text-align:center">
                                 <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
                             </td>
-                            <td class="col-name">{{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span></td>
+                            <td class="col-name">{{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span></td>
                             <td class="col-format">
                                 <span class="format-badge" :class="formatClass(model.file_format)">
                                     {{ model.file_format }}
@@ -2231,6 +2535,18 @@ const app = createApp({
                                    @keydown.enter="addTag">
                             <button class="btn btn-sm btn-primary" @click="addTag">Add</button>
                         </div>
+                        <!-- Tag suggestions -->
+                        <div style="margin-top:8px">
+                            <button class="btn btn-sm btn-ghost" @click="fetchTagSuggestions" :disabled="tagSuggestionsLoading">
+                                Suggest Tags
+                            </button>
+                            <div v-if="tagSuggestions.length > 0" class="tag-suggestions" style="margin-top:6px">
+                                <span v-for="s in tagSuggestions" :key="s" class="tag-chip tag-suggestion"
+                                      @click="applyTagSuggestion(s)" style="cursor:pointer">
+                                    + {{ s }}
+                                </span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Categories -->
@@ -2406,6 +2722,47 @@ const app = createApp({
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
                             {{ regenProgress.completed }} / {{ regenProgress.total }} models
                         </span>
+                    </div>
+                </div>
+
+                <!-- Import Credentials Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.link"></span>
+                        Import Credentials
+                    </div>
+                    <div class="settings-section-desc">
+                        Configure API keys or cookies for 3D model hosting sites to enable richer metadata extraction during URL import.
+                    </div>
+
+                    <div class="import-cred-list">
+                        <div class="import-cred-item" v-for="site in ['thingiverse', 'makerworld', 'printables', 'myminifactory', 'cults3d', 'thangs']" :key="site">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                                <span style="font-weight:600;text-transform:capitalize;font-size:0.85rem">{{ site }}</span>
+                                <button v-if="importCredentials[site]" class="btn btn-sm btn-ghost text-danger"
+                                        @click="deleteImportCredential(site)">Remove</button>
+                            </div>
+                            <div v-if="site === 'thingiverse'" class="form-row">
+                                <label class="form-label">API Key</label>
+                                <div style="display:flex;gap:6px">
+                                    <input type="password" class="form-input" :placeholder="importCredentials.thingiverse ? importCredentials.thingiverse.api_key || 'Not set' : 'Not set'"
+                                           :id="'cred-' + site"
+                                           style="flex:1">
+                                    <button class="btn btn-sm btn-primary"
+                                            @click="saveImportCredential(site, 'api_key', document.getElementById('cred-' + site).value)">Save</button>
+                                </div>
+                            </div>
+                            <div v-else class="form-row">
+                                <label class="form-label">Cookie / Token</label>
+                                <div style="display:flex;gap:6px">
+                                    <input type="password" class="form-input" :placeholder="importCredentials[site] ? importCredentials[site].cookie || 'Not set' : 'Not set'"
+                                           :id="'cred-' + site"
+                                           style="flex:1">
+                                    <button class="btn btn-sm btn-primary"
+                                            @click="saveImportCredential(site, 'cookie', document.getElementById('cred-' + site).value)">Save</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -2615,6 +2972,12 @@ const app = createApp({
             <button class="btn btn-sm btn-primary" @click="bulkFavorite">
                 <span v-html="ICONS.heart"></span> Favorite
             </button>
+            <button class="btn btn-sm btn-secondary" @click="showBulkTagModal = true">
+                Tag
+            </button>
+            <button class="btn btn-sm btn-secondary" @click="bulkAutoTag">
+                Auto-Tag
+            </button>
             <button class="btn btn-sm btn-secondary" @click="openBulkAddToCollection">
                 <span v-html="ICONS.collection"></span> Collection
             </button>
@@ -2687,6 +3050,114 @@ const app = createApp({
             <div class="form-actions">
                 <button class="btn btn-secondary" @click="showSaveSearchModal = false">Cancel</button>
                 <button class="btn btn-primary" @click="saveCurrentSearch">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Import Modal
+         ============================================================ -->
+    <div v-if="showImportModal" class="detail-overlay" @click.self="closeImportModal">
+        <div class="settings-panel" style="max-width:560px">
+            <div class="detail-header">
+                <div class="detail-title">Import from URL</div>
+                <button class="close-btn" @click="closeImportModal" title="Close">&times;</button>
+            </div>
+            <div class="settings-content">
+                <!-- URL Input -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.link"></span>
+                        URLs
+                    </div>
+                    <div class="settings-section-desc">
+                        Paste one or more URLs (one per line). Supports Thingiverse, MakerWorld, Printables, MyMiniFactory, Cults3D, Thangs, or direct download links.
+                    </div>
+                    <div class="form-row">
+                        <textarea class="form-input import-textarea"
+                                  v-model="importUrls"
+                                  placeholder="https://www.thingiverse.com/thing/12345&#10;https://example.com/model.stl"
+                                  rows="4"
+                                  @blur="previewImportUrl"></textarea>
+                    </div>
+                </div>
+
+                <!-- Preview -->
+                <div v-if="importPreview.loading" class="text-muted text-sm" style="padding:8px 0;display:flex;align-items:center;gap:8px">
+                    <div class="spinner spinner-sm"></div> Fetching preview...
+                </div>
+                <div v-else-if="importPreview.data && !importPreview.data.error" class="import-preview-card">
+                    <div v-if="importPreview.data.title" style="font-weight:600;margin-bottom:4px">{{ importPreview.data.title }}</div>
+                    <div v-if="importPreview.data.source_site" class="text-muted text-sm" style="margin-bottom:4px;text-transform:capitalize">{{ importPreview.data.source_site }}</div>
+                    <div v-if="importPreview.data.file_count" class="text-sm">{{ importPreview.data.file_count }} downloadable file(s)</div>
+                    <div v-if="importPreview.data.tags && importPreview.data.tags.length" class="tags-list" style="margin-top:6px">
+                        <span v-for="t in importPreview.data.tags.slice(0, 8)" :key="t" class="tag-chip">{{ t }}</span>
+                        <span v-if="importPreview.data.tags.length > 8" class="tag-chip" style="opacity:0.7">+{{ importPreview.data.tags.length - 8 }}</span>
+                    </div>
+                </div>
+                <div v-else-if="importPreview.data && importPreview.data.error" class="text-sm text-danger" style="padding:8px 0">
+                    {{ importPreview.data.error }}
+                </div>
+
+                <!-- Library + Subfolder -->
+                <div class="settings-section" style="margin-top:16px">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.folder"></span>
+                        Destination
+                    </div>
+                    <div class="form-row">
+                        <label class="form-label">Library</label>
+                        <select class="form-input" v-model="importLibraryId">
+                            <option v-for="lib in libraries" :key="lib.id" :value="lib.id">{{ lib.name }}</option>
+                        </select>
+                    </div>
+                    <div class="form-row" style="margin-top:8px">
+                        <label class="form-label">Subfolder (optional)</label>
+                        <input type="text" class="form-input" v-model="importSubfolder"
+                               placeholder="e.g. imported/thingiverse">
+                    </div>
+                </div>
+
+                <!-- Progress -->
+                <div v-if="importRunning && importProgress.total > 0" style="margin-top:16px">
+                    <div class="regen-progress-bar">
+                        <div class="regen-progress-fill" :style="{ width: Math.round((importProgress.completed / importProgress.total) * 100) + '%' }"></div>
+                    </div>
+                    <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                        {{ importProgress.completed }} / {{ importProgress.total }} URLs
+                        <span v-if="importProgress.current_url" style="opacity:0.7"> &mdash; {{ importProgress.current_url }}</span>
+                    </span>
+                </div>
+
+                <!-- Actions -->
+                <div class="form-actions" style="margin-top:20px;display:flex;justify-content:flex-end;gap:8px">
+                    <button class="btn btn-secondary" @click="closeImportModal">Cancel</button>
+                    <button class="btn btn-primary"
+                            @click="startImport"
+                            :disabled="importRunning || !importUrls.trim() || !importLibraryId">
+                        <span v-html="ICONS.download"></span>
+                        {{ importRunning ? 'Importing...' : 'Import' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Bulk Tag Modal
+         ============================================================ -->
+    <div v-if="showBulkTagModal" class="detail-overlay" @click.self="showBulkTagModal = false">
+        <div class="mini-modal">
+            <h3>Add Tags to {{ selectedModels.size }} Model(s)</h3>
+            <div class="form-row">
+                <label class="form-label">Tags (comma-separated)</label>
+                <input type="text" class="form-input" v-model="bulkTagInput"
+                       placeholder="e.g. figurine, fantasy, painted"
+                       @keydown.enter="bulkAddTags">
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-secondary" @click="showBulkTagModal = false">Cancel</button>
+                <button class="btn btn-primary" @click="bulkAddTags" :disabled="!bulkTagInput.trim()">Apply Tags</button>
             </div>
         </div>
     </div>
