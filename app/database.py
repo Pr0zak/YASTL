@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS models (
     dimensions_z REAL,
     thumbnail_path TEXT,
     file_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
     library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
     zip_path TEXT,
     zip_entry TEXT,
@@ -78,6 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_models_file_path ON models(file_path);
 CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);
 CREATE INDEX IF NOT EXISTS idx_models_library_id ON models(library_id);
+CREATE INDEX IF NOT EXISTS idx_models_status ON models(status);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path);
 """
@@ -160,6 +162,14 @@ async def init_db(db_path: str | Path | None = None) -> None:
                 await db.execute("ALTER TABLE models ADD COLUMN zip_entry TEXT")
             except Exception:
                 pass  # Columns already exist or table just created with them
+
+        if "status" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+                )
+            except Exception:
+                pass  # Column already exists or table just created with it
 
         await db.commit()
 
