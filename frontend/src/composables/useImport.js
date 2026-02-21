@@ -24,7 +24,7 @@ import { ref, reactive } from 'vue';
  * @param {Function} fetchCollectionsFn - Callback to refresh collections
  * @param {Function} startInlineNewCollectionFn - Callback to start inline new collection
  */
-export function useImport(showToast, refreshData, libraries, collections, fetchCollectionsFn, startInlineNewCollectionFn) {
+export function useImport(showToast, refreshData, libraries, collections, fetchCollectionsFn, _startInlineNewCollectionFn) {
     // Modal state
     const showImportModal = ref(false);
     const importMode = ref('url');
@@ -157,7 +157,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
                 const tvMatch = stem.match(/[\s_-]+(\d{4,})(?:[\s_-]+files)?$/i);
                 if (tvMatch) {
                     const thingId = tvMatch[1];
-                    const titlePart = stem.slice(0, tvMatch.index).replace(/[\s_\-]+$/g, '').trim();
+                    const titlePart = stem.slice(0, tvMatch.index).replace(/[\s_-]+$/g, '').trim();
                     uploadZipMeta.value = {
                         title: titlePart || stem,
                         source_url: `https://www.thingiverse.com/thing:${thingId}`,
@@ -166,7 +166,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
                     if (!seen.has('thingiverse')) { seen.add('thingiverse'); suggestions.push('thingiverse'); }
                 } else {
                     // Generic zip — show title from filename
-                    const cleaned = stem.replace(/[_\-]+/g, ' ').trim();
+                    const cleaned = stem.replace(/[_-]+/g, ' ').trim();
                     uploadZipMeta.value = { title: cleaned, source_url: null, site: null };
                 }
             }

@@ -4,17 +4,20 @@
  * Main Vue 3 Application (Vite SFC)
  */
 import { ref, reactive, computed, onMounted, nextTick } from 'vue';
-import { initViewer, loadModel, disposeViewer, resetCamera } from './viewer.js';
-import {
-    debounce,
-    highlightMatch,
-    formatFileSize,
-    formatDate,
-    formatNumber,
-    formatDimensions,
-} from './search.js';
+import { debounce } from './search.js';
 import { ICONS } from './icons.js';
 import { useToast } from './composables/useToast.js';
+import { useViewer } from './composables/useViewer.js';
+
+/* ---- Child components ---- */
+import NavBar from './components/NavBar.vue';
+import SideBar from './components/SideBar.vue';
+import ModelGrid from './components/ModelGrid.vue';
+import DetailPanel from './components/DetailPanel.vue';
+import SettingsModal from './components/SettingsModal.vue';
+import ImportModal from './components/ImportModal.vue';
+import CollectionModal from './components/CollectionModal.vue';
+import SelectionBar from './components/SelectionBar.vue';
 import {
     apiGetModels,
     apiGetModel,
@@ -45,6 +48,15 @@ import { useUpdates } from './composables/useUpdates.js';
 /* ---- Toast ---- */
 const { toasts, showToast } = useToast();
 
+/* ---- 3D Viewer ---- */
+const {
+    viewerLoading,
+    initViewer,
+    loadModel,
+    resetCamera,
+    dispose: disposeViewer,
+} = useViewer();
+
 /* ---- Core reactive state ---- */
 const models = ref([]);
 const selectedModel = ref(null);
@@ -58,7 +70,6 @@ const newTagInput = ref('');
 const tagSuggestions = ref([]);
 const tagSuggestionsLoading = ref(false);
 const sidebarOpen = ref(false);
-const viewerLoading = ref(false);
 
 // Editable field state
 const editName = ref('');
@@ -120,6 +131,7 @@ const systemStatus = reactive({
     database: { status: 'unknown' },
     thumbnails: { status: 'unknown' },
 });
+// eslint-disable-next-line no-unused-vars -- interval ref kept for root component lifecycle
 let statusPollTimer = null;
 
 /* ---- Composables ---- */
@@ -127,7 +139,7 @@ const settingsComposable = useSettings(showToast, () => fetchModels());
 const {
     showSettings, libraries, newLibName, newLibPath, addingLibrary,
     thumbnailMode, regeneratingThumbnails, regenProgress,
-    fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
+    fetchLibraries, addLibrary, deleteLibrary,
     setThumbnailMode, regenerateThumbnails,
 } = settingsComposable;
 
@@ -181,7 +193,7 @@ const selectionComposable = useSelection(
 );
 const {
     selectionMode, selectedModels, showBulkTagModal, bulkTagInput,
-    toggleSelectionMode, toggleModelSelection, selectAll, deselectAll, isSelected,
+    toggleSelectionMode, toggleModelSelection, selectAll, deselectAll,
     bulkFavorite, bulkAutoTag, bulkAddTags,
     bulkAddToCollection: _bulkAddToCollection,
     bulkDelete,
@@ -675,20 +687,6 @@ function setFormatFilter(fmt) {
     closeSidebarIfMobile();
 }
 
-function setTagFilter(tagName) {
-    filters.tag = filters.tag === tagName ? '' : tagName;
-    pagination.offset = 0;
-    refreshCurrentView();
-    closeSidebarIfMobile();
-}
-
-function setCategoryFilter(catName) {
-    filters.category = filters.category === catName ? '' : catName;
-    pagination.offset = 0;
-    refreshCurrentView();
-    closeSidebarIfMobile();
-}
-
 function setLibraryFilter(libId) {
     filters.library_id = filters.library_id === libId ? null : libId;
     pagination.offset = 0;
@@ -791,56 +789,6 @@ function startEditName() {
 function startEditDesc() {
     editDesc.value = selectedModel.value?.description || '';
     isEditingDesc.value = true;
-}
-
-function zipName(model) {
-    if (!model.zip_path) return '';
-    const parts = model.zip_path.replace(/\\/g, '/').split('/');
-    const filename = parts[parts.length - 1] || '';
-    return filename.replace(/\.zip$/i, '');
-}
-
-/* ---- Thumbnail helpers ---- */
-function thumbUrl(model) {
-    if (model.thumbnail_path) {
-        return `/thumbnails/${model.thumbnail_path}`;
-    }
-    return `/api/models/${model.id}/thumbnail`;
-}
-
-function onThumbError(e) {
-    e.target.style.display = 'none';
-    const fallback = e.target.parentElement?.querySelector('.no-thumbnail');
-    if (fallback) fallback.style.display = 'flex';
-}
-
-function thumbnailStatus(model) {
-    if (!model.thumbnail_path) return 'missing';
-    if (!model.thumbnail_mode) return 'stale';
-    if (model.thumbnail_mode !== thumbnailMode.value) return 'stale';
-    return 'current';
-}
-
-function thumbStatusClass(model) {
-    const s = thumbnailStatus(model);
-    if (s === 'current') return 'thumb-status-current';
-    if (s === 'stale') return 'thumb-status-stale';
-    return 'thumb-status-missing';
-}
-
-function thumbStatusTitle(model) {
-    const s = thumbnailStatus(model);
-    if (s === 'current') return 'Thumbnail is up to date';
-    if (s === 'stale') return 'Thumbnail was generated with different settings';
-    return 'No thumbnail';
-}
-
-/* ---- Format badge CSS class ---- */
-function formatClass(fmt) {
-    if (!fmt) return '';
-    const f = fmt.toLowerCase().replace('.', '');
-    if (f === '3mf') return '_3mf';
-    return f;
 }
 
 // ---- Favorites count ----
@@ -1077,63 +1025,23 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Navbar
          ============================================================ -->
-    <nav class="navbar">
-        <!-- Mobile sidebar toggle -->
-        <button class="btn-icon sidebar-toggle" @click="sidebarOpen = !sidebarOpen"
-                title="Toggle sidebar" v-html="ICONS.menu"></button>
-
-        <!-- Brand -->
-        <div class="navbar-brand">
-            <div class="logo-icon">3D</div>
-            <h1><span>YA</span>STL</h1>
-        </div>
-
-        <!-- Search -->
-        <div class="search-container">
-            <span class="search-icon" v-html="ICONS.search"></span>
-            <input type="text"
-                   :value="searchQuery"
-                   @input="onSearchInput"
-                   placeholder="Search models..."
-                   aria-label="Search models">
-            <button v-if="searchQuery"
-                    class="search-clear"
-                    @click="clearSearch"
-                    title="Clear search">&times;</button>
-        </div>
-
-        <!-- Actions -->
-        <div class="navbar-actions">
-            <div class="view-toggle">
-                <button class="btn-ghost"
-                        :class="{ active: viewMode === 'grid' }"
-                        @click="viewMode = 'grid'"
-                        title="Grid view"
-                        v-html="ICONS.grid"></button>
-                <button class="btn-ghost"
-                        :class="{ active: viewMode === 'list' }"
-                        @click="viewMode = 'list'"
-                        title="List view"
-                        v-html="ICONS.list"></button>
-            </div>
-            <!-- Status Indicator -->
-            <div class="status-wrapper" @click.stop>
-                <button class="btn-icon status-btn" :class="statusDotClass(systemStatus.health)"
-                        @click="toggleStatusMenu" title="System Status">
-                    <span v-html="ICONS.activity"></span>
-                    <span class="status-dot" :class="statusDotClass(systemStatus.health)"></span>
-                </button>
-            </div>
-
-            <button class="btn-icon" @click="openImportModal" title="Import Models">
-                <span v-html="ICONS.link"></span>
-            </button>
-            <button class="btn-icon" :class="{ active: selectionMode }" @click="toggleSelectionMode" title="Selection mode">
-                <span v-html="ICONS.select"></span>
-            </button>
-            <button class="btn-icon" @click="openSettings" title="Settings" v-html="ICONS.settings"></button>
-        </div>
-    </nav>
+    <NavBar
+        :searchQuery="searchQuery"
+        :viewMode="viewMode"
+        :scanStatus="scanStatus"
+        :systemStatus="systemStatus"
+        :selectionMode="selectionMode"
+        :sidebarOpen="sidebarOpen"
+        @update:searchQuery="searchQuery = $event"
+        @update:viewMode="viewMode = $event"
+        @update:sidebarOpen="sidebarOpen = $event"
+        @openSettings="openSettings"
+        @openImportModal="openImportModal"
+        @toggleSelectionMode="toggleSelectionMode"
+        @toggleStatusMenu="toggleStatusMenu"
+        @searchInput="onSearchInput"
+        @clearSearch="clearSearch"
+    />
 
     <!-- ============================================================
          Breadcrumb Bar
@@ -1198,182 +1106,38 @@ const { pickNextCollectionColor } = collectionsComposable;
          ============================================================ -->
     <div class="app-body">
 
-        <!-- Sidebar backdrop (mobile) -->
-        <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false"></div>
-
-        <!-- Sidebar -->
-        <aside class="sidebar" :class="{ open: sidebarOpen }">
-
-            <!-- Libraries -->
-            <div class="sidebar-section" v-if="libraries.length > 0">
-                <div class="sidebar-section-title">Libraries</div>
-                <div v-for="lib in libraries" :key="lib.id"
-                     class="sidebar-item"
-                     :class="{ active: filters.library_id === lib.id }"
-                     @click="setLibraryFilter(lib.id)">
-                    <span class="sidebar-item-icon" v-html="ICONS.folder"></span>
-                    <span>{{ lib.name }}</span>
-                    <span v-if="lib.model_count != null" class="item-count">{{ lib.model_count }}</span>
-                </div>
-            </div>
-
-            <!-- Format Filters (collapsible) -->
-            <div class="sidebar-section">
-                <div class="sidebar-section-title sidebar-section-toggle"
-                     @click="collapsedSections.format = !collapsedSections.format">
-                    <span>Format</span>
-                    <span v-if="filters.format" class="sidebar-section-active-badge">
-                        {{ filters.format.toUpperCase() }}
-                    </span>
-                    <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.format }"
-                          v-html="ICONS.chevron"></span>
-                </div>
-                <template v-if="!collapsedSections.format">
-                    <label v-for="fmt in ['stl','obj','gltf','glb','3mf','step','stp','ply','fbx','dae','off']"
-                           :key="fmt"
-                           class="checkbox-item"
-                           @click.prevent="setFormatFilter(fmt)">
-                        <input type="checkbox" :checked="filters.format === fmt" readonly>
-                        <span class="format-badge" :class="formatClass(fmt)">{{ fmt.toUpperCase() }}</span>
-                    </label>
-                </template>
-            </div>
-
-            <!-- Tags -->
-            <div class="sidebar-section">
-                <div class="sidebar-section-title sidebar-section-toggle"
-                     @click="collapsedSections.tags = !collapsedSections.tags">
-                    <span>Tags</span>
-                    <span v-if="filters.tag || filters.tags.length" class="sidebar-section-active-badge">
-                        {{ filters.tags.length || 1 }} active
-                    </span>
-                    <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.tags }"
-                          v-html="ICONS.chevron"></span>
-                </div>
-                <template v-if="!collapsedSections.tags">
-                    <div v-if="allTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
-                        No tags yet
-                    </div>
-                    <div v-for="tag in allTags" :key="tag.id"
-                         class="sidebar-item"
-                         :class="{ active: filters.tag === tag.name || filters.tags.includes(tag.name) }"
-                         @click="toggleTagFilter(tag.name)">
-                        <span>{{ tag.name }}</span>
-                        <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
-                    </div>
-                </template>
-            </div>
-
-            <!-- Categories -->
-            <div class="sidebar-section">
-                <div class="sidebar-section-title sidebar-section-toggle"
-                     @click="collapsedSections.categories = !collapsedSections.categories">
-                    <span>Categories</span>
-                    <span v-if="filters.category || filters.categories.length" class="sidebar-section-active-badge">
-                        {{ filters.categories.length || 1 }} active
-                    </span>
-                    <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.categories }"
-                          v-html="ICONS.chevron"></span>
-                </div>
-                <template v-if="!collapsedSections.categories">
-                <div v-if="allCategories.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
-                    No categories yet
-                </div>
-                <ul class="category-tree">
-                    <template v-for="cat in allCategories" :key="cat.id">
-                        <li>
-                            <div class="category-item"
-                                 :class="{ active: filters.category === cat.name || filters.categories.includes(cat.name) }"
-                                 @click="toggleCategoryFilter(cat.name)">
-                                <span v-if="cat.children && cat.children.length"
-                                      class="category-toggle"
-                                      :class="{ expanded: expandedCategories[cat.id] }"
-                                      @click.stop="toggleCategory(cat.id)"
-                                      v-html="ICONS.chevron"></span>
-                                <span v-else style="width:16px;display:inline-block"></span>
-                                <span class="category-name">{{ cat.name }}</span>
-                                <span v-if="cat.model_count" class="category-count">({{ cat.model_count }})</span>
-                            </div>
-                            <ul v-if="cat.children && cat.children.length && expandedCategories[cat.id]"
-                                class="category-children">
-                                <li v-for="child in cat.children" :key="child.id">
-                                    <div class="category-item"
-                                         :class="{ active: filters.category === child.name || filters.categories.includes(child.name) }"
-                                         @click="toggleCategoryFilter(child.name)">
-                                        <span v-if="child.children && child.children.length"
-                                              class="category-toggle"
-                                              :class="{ expanded: expandedCategories[child.id] }"
-                                              @click.stop="toggleCategory(child.id)"
-                                              v-html="ICONS.chevron"></span>
-                                        <span v-else style="width:16px;display:inline-block"></span>
-                                        <span class="category-name">{{ child.name }}</span>
-                                        <span v-if="child.model_count" class="category-count">({{ child.model_count }})</span>
-                                    </div>
-                                    <!-- Third level -->
-                                    <ul v-if="child.children && child.children.length && expandedCategories[child.id]"
-                                        class="category-children">
-                                        <li v-for="grandchild in child.children" :key="grandchild.id">
-                                            <div class="category-item"
-                                                 :class="{ active: filters.category === grandchild.name || filters.categories.includes(grandchild.name) }"
-                                                 @click="toggleCategoryFilter(grandchild.name)">
-                                                <span style="width:16px;display:inline-block"></span>
-                                                <span class="category-name">{{ grandchild.name }}</span>
-                                            </div>
-                                        </li>
-                                    </ul>
-                                </li>
-                            </ul>
-                        </li>
-                    </template>
-                </ul>
-                </template>
-            </div>
-
-            <!-- Collections -->
-            <div class="sidebar-section">
-                <div class="sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between">
-                    Collections
-                    <button class="btn-icon" style="width:20px;height:20px" @click="openCollectionModal()"
-                            title="New collection"><span v-html="ICONS.plus"></span></button>
-                </div>
-                <div class="sidebar-item" :class="{ active: filters.favoritesOnly }" @click="toggleFavoritesFilter">
-                    <span v-html="ICONS.heart"></span>
-                    <span>Favorites</span>
-                    <span v-if="favoritesCount > 0" class="item-count">{{ favoritesCount }}</span>
-                </div>
-                <div class="sidebar-item" :class="{ active: filters.duplicatesOnly }" @click="toggleDuplicatesFilter">
-                    <span v-html="ICONS.copy"></span>
-                    <span>Duplicates</span>
-                </div>
-                <div v-for="col in collections" :key="col.id"
-                     class="sidebar-item" :class="{ active: filters.collection === col.id }"
-                     @click="setCollectionFilter(col.id)">
-                    <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
-                    <template v-if="editingCollectionId === col.id">
-                        <input class="sidebar-edit-input" v-model="editCollectionName"
-                               @blur="saveCollectionName(col)"
-                               @keydown.enter="saveCollectionName(col)"
-                               @keydown.escape="editingCollectionId = null"
-                               @click.stop
-                               autofocus>
-                    </template>
-                    <span v-else class="truncate" @dblclick.stop="startEditCollection(col)">{{ col.name }}</span>
-                    <span class="item-count">{{ col.model_count }}</span>
-                    <button class="sidebar-item-delete" @click.stop="deleteCollection(col.id)">&times;</button>
-                </div>
-            </div>
-
-            <!-- Saved Searches -->
-            <div class="sidebar-section" v-if="savedSearches.length">
-                <div class="sidebar-section-title">Saved Searches</div>
-                <div v-for="search in savedSearches" :key="search.id"
-                     class="sidebar-item" @click="applySavedSearch(search)">
-                    <span v-html="ICONS.bookmark"></span>
-                    <span class="truncate">{{ search.name }}</span>
-                    <button class="sidebar-item-delete" @click.stop="deleteSavedSearch(search.id)">&times;</button>
-                </div>
-            </div>
-        </aside>
+        <SideBar
+            :sidebarOpen="sidebarOpen"
+            :filters="filters"
+            :allTags="allTags"
+            :allCategories="allCategories"
+            :collections="collections"
+            :libraries="libraries"
+            :favoritesCount="favoritesCount"
+            :collapsedSections="collapsedSections"
+            :expandedCategories="expandedCategories"
+            :savedSearches="savedSearches"
+            :editingCollectionId="editingCollectionId"
+            :editCollectionName="editCollectionName"
+            @update:sidebarOpen="sidebarOpen = $event"
+            @update:editCollectionName="editCollectionName = $event"
+            @setLibraryFilter="setLibraryFilter"
+            @setFormatFilter="setFormatFilter"
+            @toggleTagFilter="toggleTagFilter"
+            @toggleCategoryFilter="toggleCategoryFilter"
+            @toggleCategory="toggleCategory"
+            @toggleCollapsedSection="(section) => collapsedSections[section] = !collapsedSections[section]"
+            @setCollectionFilter="setCollectionFilter"
+            @toggleFavoritesFilter="toggleFavoritesFilter"
+            @toggleDuplicatesFilter="toggleDuplicatesFilter"
+            @openCollectionModal="openCollectionModal"
+            @startEditCollection="startEditCollection"
+            @saveCollectionName="saveCollectionName"
+            @cancelEditCollection="editingCollectionId = null"
+            @deleteCollection="deleteCollection"
+            @applySavedSearch="applySavedSearch"
+            @deleteSavedSearch="deleteSavedSearch"
+        />
 
         <!-- Main Content -->
         <main class="main-content">
@@ -1444,100 +1208,19 @@ const { pickNextCollectionColor } = collectionsComposable;
             </div>
 
             <!-- ============================================================
-                 Grid View
+                 Model Grid / List
                  ============================================================ -->
-            <div v-else-if="viewMode === 'grid'" class="models-grid">
-                <div v-for="model in models" :key="model.id"
-                     class="model-card" :class="{ selected: selectionMode && isSelected(model.id) }" @click="viewModel(model)">
-                    <!-- Thumbnail -->
-                    <div class="card-thumbnail">
-                        <img :src="thumbUrl(model)"
-                             :alt="model.name"
-                             @error="onThumbError"
-                             loading="lazy">
-                        <div class="no-thumbnail" style="display:none">
-                            <span v-html="ICONS.cube"></span>
-                            <span>{{ model.file_format }}</span>
-                        </div>
-                        <span class="card-format">
-                            <span class="format-badge" :class="formatClass(model.file_format)">
-                                {{ model.file_format }}
-                            </span>
-                        </span>
-                        <button v-if="!selectionMode" class="card-fav-btn" :class="{ active: model.is_favorite }"
-                                @click.stop="toggleFavorite(model, $event)" title="Toggle favorite">
-                            <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
-                        </button>
-                        <button v-if="selectionMode" class="card-select-check"
-                                @click.stop="toggleModelSelection(model.id)">
-                            <span v-html="ICONS.check"></span>
-                        </button>
-                    </div>
-                    <!-- Body -->
-                    <div class="card-body">
-                        <div class="card-name" :title="model.name">{{ model.name }}</div>
-                        <div class="card-meta">
-                            {{ formatFileSize(model.file_size) }}
-                            <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span>
-                            <span v-if="model.is_duplicate" class="dup-badge" title="Duplicate file (same hash)">dup</span>
-                        </div>
-                        <div class="card-tags" v-if="model.tags && model.tags.length">
-                            <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
-                            <span v-if="model.tags.length > 3" class="tag-chip" style="opacity:0.7">
-                                +{{ model.tags.length - 3 }}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ============================================================
-                 List View
-                 ============================================================ -->
-            <div v-else class="models-list">
-                <table class="models-table">
-                    <thead>
-                        <tr>
-                            <th v-if="selectionMode" class="col-select" style="width:32px"></th>
-                            <th class="col-fav" style="width:32px"></th>
-                            <th>Name</th>
-                            <th class="col-format">Format</th>
-                            <th class="col-vertices">Vertices</th>
-                            <th class="col-faces">Faces</th>
-                            <th class="col-size">Size</th>
-                            <th class="col-date">Date</th>
-                            <th class="col-tags">Tags</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="model in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id) }" @click="viewModel(model)">
-                            <td v-if="selectionMode" class="col-select" @click.stop="toggleModelSelection(model.id)" style="cursor:pointer;text-align:center">
-                                <span v-html="ICONS.check" :style="{ opacity: isSelected(model.id) ? 1 : 0.3 }"></span>
-                            </td>
-                            <td class="col-fav" @click.stop="toggleFavorite(model, $event)" style="cursor:pointer;text-align:center">
-                                <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
-                            </td>
-                            <td class="col-name">{{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span></td>
-                            <td class="col-format">
-                                <span class="format-badge" :class="formatClass(model.file_format)">
-                                    {{ model.file_format }}
-                                </span>
-                            </td>
-                            <td class="col-vertices">{{ formatNumber(model.vertex_count) }}</td>
-                            <td class="col-faces">{{ formatNumber(model.face_count) }}</td>
-                            <td class="col-size">{{ formatFileSize(model.file_size) }}</td>
-                            <td class="col-date">{{ formatDate(model.updated_at || model.created_at) }}</td>
-                            <td class="col-tags">
-                                <span v-for="t in (model.tags || []).slice(0, 2)" :key="t"
-                                      class="tag-chip" style="margin-right:4px">{{ t }}</span>
-                                <span v-if="(model.tags || []).length > 2" class="text-muted text-sm">
-                                    +{{ model.tags.length - 2 }}
-                                </span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <ModelGrid
+                v-else
+                :models="models"
+                :viewMode="viewMode"
+                :selectionMode="selectionMode"
+                :selectedModels="selectedModels"
+                :thumbnailMode="thumbnailMode"
+                @viewModel="viewModel"
+                @toggleSelect="toggleModelSelection"
+                @toggleFavorite="toggleFavorite"
+            />
 
             <!-- Load More / Pagination Info -->
             <div v-if="models.length > 0 && !loading" class="pagination-bar">
@@ -1566,538 +1249,71 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Detail Modal / Overlay
          ============================================================ -->
-    <div v-if="showDetail && selectedModel" class="detail-overlay" @click.self="closeDetail">
-        <div class="detail-panel">
-            <!-- Header -->
-            <div class="detail-header">
-                <div class="detail-title">
-                    <template v-if="!isEditingName">
-                        <span @dblclick="startEditName" title="Double-click to edit">
-                            {{ selectedModel.name }}
-                        </span>
-                    </template>
-                    <template v-else>
-                        <input type="text"
-                               v-model="editName"
-                               @blur="saveName"
-                               @keydown.enter="saveName"
-                               @keydown.escape="isEditingName = false"
-                               style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:1.1rem;font-weight:600"
-                               autofocus>
-                    </template>
-                </div>
-                <button class="btn btn-sm btn-ghost" :class="{ 'text-danger': selectedModel.is_favorite }"
-                        @click="toggleFavorite(selectedModel, $event)" title="Toggle favorite">
-                    <span v-html="selectedModel.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
-                </button>
-                <button class="btn btn-sm btn-ghost"
-                        @click="openAddToCollection(selectedModel.id)" title="Add to collection">
-                    <span v-html="ICONS.collection"></span>
-                </button>
-                <button class="close-btn" @click="closeDetail" title="Close">&times;</button>
-            </div>
-
-            <!-- Content: Viewer + Info -->
-            <div class="detail-content">
-                <!-- 3D Viewer -->
-                <div class="detail-viewer">
-                    <div id="viewer-container">
-                        <!-- Viewer loading -->
-                        <div v-if="viewerLoading" class="viewer-loading">
-                            <div class="spinner"></div>
-                            <span>Loading 3D model...</span>
-                        </div>
-                    </div>
-                    <!-- Viewer toolbar -->
-                    <div class="viewer-toolbar">
-                        <button class="btn" @click="handleResetView">Reset View</button>
-                    </div>
-                </div>
-
-                <!-- Info Panel -->
-                <div class="detail-info">
-
-                    <!-- Duplicate Warning -->
-                    <div v-if="selectedModel.file_hash" class="duplicate-warning" style="display:none">
-                        <span v-html="ICONS.warning"></span>
-                        <span>This file has duplicates in the library.</span>
-                    </div>
-
-                    <!-- Description -->
-                    <div class="info-section">
-                        <div class="info-section-title">Description</div>
-                        <div v-if="!isEditingDesc"
-                             @dblclick="startEditDesc"
-                             style="cursor:pointer;min-height:36px;font-size:0.85rem;color:var(--text-secondary);padding:4px 0">
-                            {{ selectedModel.description || 'Double-click to add a description...' }}
-                        </div>
-                        <div v-else class="editable-field">
-                            <textarea v-model="editDesc"
-                                      rows="3"
-                                      @blur="saveDesc"
-                                      @keydown.escape="isEditingDesc = false"
-                                      placeholder="Enter description..."
-                                      autofocus></textarea>
-                        </div>
-                    </div>
-
-                    <!-- Source Link -->
-                    <div v-if="selectedModel.source_url" class="info-section">
-                        <div class="info-section-title">Source</div>
-                        <a :href="selectedModel.source_url" target="_blank" rel="noopener"
-                           class="source-link">
-                            <span v-html="ICONS.link || '&#128279;'"></span>
-                            {{ selectedModel.source_url }}
-                        </a>
-                    </div>
-
-                    <!-- File Information -->
-                    <div class="info-section">
-                        <div class="info-section-title">File Information</div>
-                        <div class="info-field">
-                            <span class="field-label">Format</span>
-                            <span class="field-value">
-                                <span class="format-badge" :class="formatClass(selectedModel.file_format)">
-                                    {{ selectedModel.file_format }}
-                                </span>
-                            </span>
-                        </div>
-                        <div class="info-field">
-                            <span class="field-label">Size</span>
-                            <span class="field-value">{{ formatFileSize(selectedModel.file_size) }}</span>
-                        </div>
-                        <div class="info-field">
-                            <span class="field-label">Vertices</span>
-                            <span class="field-value">{{ formatNumber(selectedModel.vertex_count) }}</span>
-                        </div>
-                        <div class="info-field">
-                            <span class="field-label">Faces</span>
-                            <span class="field-value">{{ formatNumber(selectedModel.face_count) }}</span>
-                        </div>
-                        <div class="info-field">
-                            <span class="field-label">Dimensions</span>
-                            <span class="field-value">
-                                {{ formatDimensions(selectedModel.dimensions_x, selectedModel.dimensions_y, selectedModel.dimensions_z) }}
-                            </span>
-                        </div>
-                        <div v-if="selectedModel.zip_path" class="info-field" style="margin-top:4px">
-                            <span class="field-label">Zip Archive</span>
-                            <span class="field-value field-value-path">
-                                {{ selectedModel.zip_path }}
-                            </span>
-                        </div>
-                        <div v-if="selectedModel.zip_entry" class="info-field">
-                            <span class="field-label">Zip Entry</span>
-                            <span class="field-value field-value-path">
-                                {{ selectedModel.zip_entry }}
-                            </span>
-                        </div>
-                        <div class="info-field" :style="selectedModel.zip_path ? {} : { 'margin-top': '4px' }">
-                            <span class="field-label">Path</span>
-                            <span class="field-value field-value-path">
-                                {{ selectedModel.file_path }}
-                            </span>
-                        </div>
-                        <div v-if="selectedModel.file_hash" class="info-field">
-                            <span class="field-label">Hash</span>
-                            <span class="field-value field-value-hash">
-                                {{ selectedModel.file_hash }}
-                            </span>
-                        </div>
-                        <div v-if="!selectedModel.zip_path" style="margin-top:8px">
-                            <button class="btn btn-sm btn-ghost" @click="renameModelFile" title="Rename file on disk to match model name">
-                                <span v-html="ICONS.edit || '&#9998;'"></span> Rename File
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Tags -->
-                    <div class="info-section">
-                        <div class="info-section-title">Tags</div>
-                        <div class="tags-list">
-                            <span v-for="tag in (selectedModel.tags || [])" :key="tag" class="tag-chip">
-                                {{ tag }}
-                                <button class="tag-remove" @click="removeTag(tag)" title="Remove tag">&times;</button>
-                            </span>
-                            <span v-if="!selectedModel.tags || !selectedModel.tags.length"
-                                  class="text-muted text-sm">No tags</span>
-                        </div>
-                        <div class="tag-add-row">
-                            <input type="text"
-                                   v-model="newTagInput"
-                                   placeholder="Add tag..."
-                                   @keydown.enter="addTag">
-                            <button class="btn btn-sm btn-primary" @click="addTag">Add</button>
-                        </div>
-                        <!-- Tag suggestions -->
-                        <div style="margin-top:8px">
-                            <button class="btn btn-sm btn-ghost" @click="fetchTagSuggestions" :disabled="tagSuggestionsLoading">
-                                Suggest Tags
-                            </button>
-                            <div v-if="tagSuggestions.length > 0" class="tag-suggestions" style="margin-top:6px">
-                                <span v-for="s in tagSuggestions" :key="s" class="tag-chip tag-suggestion"
-                                      @click="applyTagSuggestion(s)" style="cursor:pointer">
-                                    + {{ s }}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Categories -->
-                    <div class="info-section">
-                        <div class="info-section-title">Categories</div>
-                        <div class="tags-list">
-                            <span v-for="cat in (selectedModel.categories || [])" :key="cat"
-                                  class="tag-chip" style="background:var(--bg-primary);color:var(--text-secondary);border:1px solid var(--border)">
-                                {{ cat }}
-                            </span>
-                            <span v-if="!selectedModel.categories || !selectedModel.categories.length"
-                                  class="text-muted text-sm">Uncategorized</span>
-                        </div>
-                    </div>
-
-                    <!-- Collections -->
-                    <div class="info-section">
-                        <div class="info-section-title" style="display:flex;align-items:center;justify-content:space-between">
-                            Collections
-                            <button class="btn-icon" style="width:20px;height:20px"
-                                    @click="openAddToCollection(selectedModel.id)" title="Add to collection">
-                                <span v-html="ICONS.plus"></span>
-                            </button>
-                        </div>
-                        <div class="tags-list">
-                            <span v-for="col in (selectedModel.collections || [])" :key="col.id"
-                                  class="tag-chip" :style="{ background: (col.color || '#666') + '22', color: col.color || '#666', border: '1px solid ' + (col.color || '#666') + '44' }">
-                                <span class="collection-dot" :style="{ background: col.color || '#666' }" style="width:8px;height:8px;margin-right:4px"></span>
-                                {{ col.name }}
-                                <button class="tag-remove" @click="removeModelFromCollection(col.id, selectedModel.id)" title="Remove from collection">&times;</button>
-                            </span>
-                            <span v-if="!selectedModel.collections || !selectedModel.collections.length"
-                                  class="text-muted text-sm">No collections</span>
-                        </div>
-                    </div>
-
-                    <!-- Actions -->
-                    <div class="detail-actions">
-                        <a class="btn btn-secondary" style="flex:1"
-                           :href="'/api/models/' + selectedModel.id + '/download'"
-                           download>
-                            <span v-html="ICONS.download"></span>
-                            Download {{ selectedModel.file_format ? selectedModel.file_format.toUpperCase() : '' }}
-                        </a>
-                        <button class="btn btn-danger" style="flex:1" @click="deleteModel(selectedModel)">
-                            <span v-html="ICONS.trash"></span>
-                            Delete
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <DetailPanel
+        :selectedModel="selectedModel"
+        :showDetail="showDetail"
+        :viewerLoading="viewerLoading"
+        :editName="editName"
+        :editDesc="editDesc"
+        :isEditingName="isEditingName"
+        :isEditingDesc="isEditingDesc"
+        :tagSuggestions="tagSuggestions"
+        :tagSuggestionsLoading="tagSuggestionsLoading"
+        :newTagInput="newTagInput"
+        :allCategories="allCategories"
+        :collections="collections"
+        @close="closeDetail"
+        @update:editName="editName = $event"
+        @update:editDesc="editDesc = $event"
+        @update:isEditingName="isEditingName = $event"
+        @update:isEditingDesc="isEditingDesc = $event"
+        @update:newTagInput="newTagInput = $event"
+        @saveName="saveName"
+        @saveDesc="saveDesc"
+        @startEditName="startEditName"
+        @startEditDesc="startEditDesc"
+        @resetView="handleResetView"
+        @toggleFavorite="toggleFavorite"
+        @openAddToCollection="openAddToCollection"
+        @removeModelFromCollection="removeModelFromCollection"
+        @addTag="addTag"
+        @removeTag="removeTag"
+        @fetchTagSuggestions="fetchTagSuggestions"
+        @applyTagSuggestion="applyTagSuggestion"
+        @renameModelFile="renameModelFile"
+        @deleteModel="deleteModel"
+    />
 
     <!-- ============================================================
          Settings Modal
          ============================================================ -->
-    <div v-if="showSettings" class="detail-overlay" @click.self="closeSettings">
-        <div class="settings-panel">
-            <!-- Header -->
-            <div class="detail-header">
-                <div class="detail-title">Settings</div>
-                <button class="close-btn" @click="closeSettings" title="Close">&times;</button>
-            </div>
-
-            <div class="settings-content">
-                <!-- Libraries Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span v-html="ICONS.folder"></span>
-                        Libraries
-                    </div>
-                    <div class="settings-section-desc">
-                        Add local directories containing your 3D model files. YASTL will scan these paths to discover and index models.
-                    </div>
-
-                    <!-- Existing Libraries -->
-                    <div v-if="libraries.length > 0" class="library-list">
-                        <div v-for="lib in libraries" :key="lib.id" class="library-item">
-                            <div class="library-info">
-                                <div class="library-name">{{ lib.name }}</div>
-                                <div class="library-path">{{ lib.path }}</div>
-                            </div>
-                            <button class="btn-icon btn-icon-danger" @click="deleteLibrary(lib)" title="Remove library">
-                                <span v-html="ICONS.trash"></span>
-                            </button>
-                        </div>
-                    </div>
-                    <div v-else class="text-muted text-sm" style="padding:12px 0">
-                        No libraries configured yet. Add one below to get started.
-                    </div>
-
-                    <!-- Scan Libraries -->
-                    <div v-if="libraries.length > 0" style="padding: 0 0 12px 0;">
-                        <button class="btn btn-primary"
-                                @click="triggerScan"
-                                :disabled="scanStatus.scanning"
-                                title="Scan libraries for new models">
-                            <span v-html="ICONS.scan"></span>
-                            {{ scanStatus.scanning ? 'Scanning...' : 'Scan Libraries' }}
-                        </button>
-                        <div v-if="scanStatus.scanning" class="text-muted text-sm" style="margin-top:6px">
-                            {{ scanStatus.processed_files }} / {{ scanStatus.total_files }} files processed
-                        </div>
-                    </div>
-
-                    <!-- Add Library Form -->
-                    <div class="add-library-form">
-                        <div class="form-row">
-                            <label class="form-label">Library Name</label>
-                            <input type="text"
-                                   v-model="newLibName"
-                                   placeholder="e.g. My 3D Models"
-                                   class="form-input">
-                        </div>
-                        <div class="form-row">
-                            <label class="form-label">Local Path</label>
-                            <input type="text"
-                                   v-model="newLibPath"
-                                   placeholder="e.g. /home/user/models"
-                                   class="form-input"
-                                   @keydown.enter="addLibrary">
-                        </div>
-                        <button class="btn btn-primary"
-                                @click="addLibrary"
-                                :disabled="addingLibrary || !newLibName.trim() || !newLibPath.trim()">
-                            <span v-html="ICONS.plus"></span>
-                            Add Library
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Thumbnails Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span v-html="ICONS.image"></span>
-                        Thumbnails
-                    </div>
-                    <div class="settings-section-desc">
-                        Choose how model preview thumbnails are rendered. Solid mode shows filled faces with lighting; wireframe shows edges only.
-                    </div>
-
-                    <div class="thumbnail-mode-options">
-                        <label class="thumbnail-mode-option" :class="{ active: thumbnailMode === 'wireframe' }" @click="setThumbnailMode('wireframe')">
-                            <input type="radio" name="thumbnailMode" value="wireframe" :checked="thumbnailMode === 'wireframe'">
-                            <div class="thumbnail-mode-info">
-                                <div class="thumbnail-mode-label">Wireframe</div>
-                                <div class="thumbnail-mode-desc">Edges and outlines only</div>
-                            </div>
-                        </label>
-                        <label class="thumbnail-mode-option" :class="{ active: thumbnailMode === 'solid' }" @click="setThumbnailMode('solid')">
-                            <input type="radio" name="thumbnailMode" value="solid" :checked="thumbnailMode === 'solid'">
-                            <div class="thumbnail-mode-info">
-                                <div class="thumbnail-mode-label">Solid</div>
-                                <div class="thumbnail-mode-desc">Filled faces with lighting</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="thumbnail-regen-row">
-                        <button class="btn btn-secondary"
-                                @click="regenerateThumbnails"
-                                :disabled="regeneratingThumbnails">
-                            <span v-html="ICONS.refresh"></span>
-                            Regenerate All Thumbnails
-                        </button>
-                        <span class="text-muted text-sm">Re-render existing thumbnails with the current mode</span>
-                    </div>
-                    <div v-if="regeneratingThumbnails && regenProgress.total > 0" class="regen-progress" style="margin-top:12px">
-                        <div class="regen-progress-bar">
-                            <div class="regen-progress-fill" :style="{ width: Math.round((regenProgress.completed / regenProgress.total) * 100) + '%' }"></div>
-                        </div>
-                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
-                            {{ regenProgress.completed }} / {{ regenProgress.total }} models
-                        </span>
-                    </div>
-                </div>
-
-                <!-- Import Credentials Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span v-html="ICONS.link"></span>
-                        Import Credentials
-                    </div>
-                    <div class="settings-section-desc">
-                        Configure API keys or cookies for 3D model hosting sites to enable richer metadata extraction during URL import.
-                    </div>
-
-                    <div class="import-cred-list">
-                        <div class="import-cred-item" v-for="site in ['thingiverse', 'makerworld', 'printables', 'myminifactory', 'cults3d', 'thangs']" :key="site">
-                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                                <span style="font-weight:600;text-transform:capitalize;font-size:0.85rem">{{ site }}</span>
-                                <button v-if="importCredentials[site]" class="btn btn-sm btn-ghost text-danger"
-                                        @click="deleteImportCredential(site)">Remove</button>
-                            </div>
-                            <div v-if="site === 'thingiverse'" class="form-row">
-                                <label class="form-label">API Key</label>
-                                <div style="display:flex;gap:6px">
-                                    <input type="text" class="form-input" v-model="credentialInputs[site]"
-                                           :placeholder="importCredentials.thingiverse ? importCredentials.thingiverse.api_key || 'Not set' : 'Not set'"
-                                           style="flex:1">
-                                    <button class="btn btn-sm btn-primary"
-                                            @click="saveImportCredential(site, 'api_key')">Save</button>
-                                </div>
-                            </div>
-                            <div v-else-if="site === 'makerworld'" class="form-row">
-                                <label class="form-label">Token</label>
-                                <div style="display:flex;gap:6px">
-                                    <input type="text" class="form-input" v-model="credentialInputs[site]"
-                                           :placeholder="importCredentials[site] ? importCredentials[site].token || 'Not set' : 'Not set'"
-                                           style="flex:1">
-                                    <button class="btn btn-sm btn-primary"
-                                            @click="saveImportCredential(site, 'token')">Save</button>
-                                </div>
-                                <div class="text-muted" style="font-size:0.7rem;margin-top:4px">
-                                    In your browser on makerworld.com: press F12 &rarr; Application &rarr; Cookies &rarr; copy the <strong>token</strong> value (starts with AAB_). Valid for 90 days.
-                                </div>
-                            </div>
-                            <div v-else class="form-row">
-                                <label class="form-label">Cookie</label>
-                                <div style="display:flex;gap:6px">
-                                    <input type="text" class="form-input" v-model="credentialInputs[site]"
-                                           :placeholder="importCredentials[site] ? importCredentials[site].cookie || 'Not set' : 'Not set'"
-                                           style="flex:1">
-                                    <button class="btn btn-sm btn-primary"
-                                            @click="saveImportCredential(site, 'cookie')">Save</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Update Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span v-html="ICONS.refresh"></span>
-                        Updates
-                    </div>
-                    <div class="settings-section-desc">
-                        Check for and apply updates from the remote repository. The service will restart automatically after updating.
-                    </div>
-
-                    <!-- Not a git repo -->
-                    <div v-if="updateInfo.checked && !updateInfo.is_git_repo" class="update-status update-status-unavailable">
-                        <div class="update-status-icon">
-                            <span v-html="ICONS.warning"></span>
-                        </div>
-                        <div class="update-status-text">
-                            <div class="update-status-title">Updates unavailable</div>
-                            <div class="update-status-detail">
-                                Not running from a git repository. Updates require a git-based installation.
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Restarting -->
-                    <div v-else-if="updateInfo.restarting" class="update-status update-status-restarting">
-                        <div class="update-status-icon">
-                            <div class="spinner spinner-sm"></div>
-                        </div>
-                        <div class="update-status-text">
-                            <div class="update-status-title">Restarting...</div>
-                            <div class="update-status-detail">
-                                YASTL is restarting with the latest changes. This page will reload automatically.
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Applying update -->
-                    <div v-else-if="updateInfo.applying" class="update-status update-status-applying">
-                        <div class="update-status-icon">
-                            <div class="spinner spinner-sm"></div>
-                        </div>
-                        <div class="update-status-text">
-                            <div class="update-status-title">Applying update...</div>
-                            <div class="update-status-detail">
-                                Pulling changes and reinstalling dependencies.
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Checking -->
-                    <div v-else-if="updateInfo.checking" class="update-status update-status-checking">
-                        <div class="update-status-icon">
-                            <div class="spinner spinner-sm"></div>
-                        </div>
-                        <div class="update-status-text">
-                            <div class="update-status-title">Checking for updates...</div>
-                        </div>
-                    </div>
-
-                    <!-- Update available -->
-                    <div v-else-if="updateInfo.update_available" class="update-status update-status-available">
-                        <div class="update-status-header">
-                            <div class="update-status-icon update-icon-available">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="12" y2="16"/><line x1="16" y1="12" x2="12" y2="16"/></svg>
-                            </div>
-                            <div class="update-status-text">
-                                <div class="update-status-title">Update available</div>
-                                <div class="update-status-detail">
-                                    {{ updateInfo.commits_behind }} new commit{{ updateInfo.commits_behind !== 1 ? 's' : '' }}
-                                    on <code>{{ updateInfo.branch }}</code>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Commit list -->
-                        <div v-if="updateInfo.commits.length" class="update-commits">
-                            <div v-for="commit in updateInfo.commits" :key="commit.sha" class="update-commit">
-                                <code class="commit-sha">{{ commit.sha }}</code>
-                                <span class="commit-message">{{ commit.message }}</span>
-                                <span class="commit-meta">{{ commit.author }} &middot; {{ commit.date }}</span>
-                            </div>
-                        </div>
-                        <button class="btn btn-primary update-apply-btn"
-                                @click="applyUpdate"
-                                :disabled="updateInfo.applying">
-                            <span v-html="ICONS.download"></span>
-                            Update &amp; Restart
-                        </button>
-                    </div>
-
-                    <!-- Up to date -->
-                    <div v-else-if="updateInfo.checked && !updateInfo.error" class="update-status update-status-current">
-                        <div class="update-status-icon update-icon-current">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
-                        </div>
-                        <div class="update-status-text">
-                            <div class="update-status-title">Up to date</div>
-                            <div class="update-status-detail">
-                                v{{ updateInfo.current_version }}
-                                <span v-if="updateInfo.current_sha" class="text-muted">
-                                    &middot; {{ updateInfo.current_sha.substring(0, 8) }}
-                                </span>
-                                <span v-if="updateInfo.branch" class="text-muted">
-                                    &middot; {{ updateInfo.branch }}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Error -->
-                    <div v-if="updateInfo.error" class="update-error">
-                        <span v-html="ICONS.warning"></span>
-                        {{ updateInfo.error }}
-                    </div>
-
-                    <!-- Check button -->
-                    <button class="btn btn-secondary update-check-btn"
-                            @click="checkForUpdates"
-                            :disabled="updateInfo.checking || updateInfo.applying || updateInfo.restarting">
-                        <span v-html="ICONS.refresh"></span>
-                        Check for Updates
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <SettingsModal
+        :showSettings="showSettings"
+        :libraries="libraries"
+        :newLibName="newLibName"
+        :newLibPath="newLibPath"
+        :addingLibrary="addingLibrary"
+        :thumbnailMode="thumbnailMode"
+        :regeneratingThumbnails="regeneratingThumbnails"
+        :regenProgress="regenProgress"
+        :updateInfo="updateInfo"
+        :scanStatus="scanStatus"
+        :importCredentials="importCredentials"
+        :credentialInputs="credentialInputs"
+        @close="closeSettings"
+        @update:newLibName="newLibName = $event"
+        @update:newLibPath="newLibPath = $event"
+        @addLibrary="addLibrary"
+        @deleteLibrary="deleteLibrary"
+        @triggerScan="triggerScan"
+        @setThumbnailMode="setThumbnailMode"
+        @regenerateThumbnails="regenerateThumbnails"
+        @checkForUpdates="checkForUpdates"
+        @applyUpdate="applyUpdate"
+        @saveImportCredential="saveImportCredential"
+        @deleteImportCredential="deleteImportCredential"
+        @updateCredentialInput="(site, val) => credentialInputs[site] = val"
+    />
 
     <!-- ============================================================
          Status Menu (teleported to body to avoid navbar stacking context)
@@ -2169,104 +1385,43 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Selection Bar
          ============================================================ -->
-    <div v-if="selectionMode && selectedModels.size > 0" class="selection-bar">
-        <div class="selection-info">
-            <strong>{{ selectedModels.size }}</strong> selected
-            <button class="btn btn-sm btn-ghost" @click="selectAll">Select All</button>
-            <button class="btn btn-sm btn-ghost" @click="deselectAll">Deselect All</button>
-        </div>
-        <div class="selection-actions">
-            <button class="btn btn-sm btn-primary" @click="bulkFavorite">
-                <span v-html="ICONS.heart"></span> Favorite
-            </button>
-            <button class="btn btn-sm btn-secondary" @click="showBulkTagModal = true">
-                Tag
-            </button>
-            <button class="btn btn-sm btn-secondary" @click="bulkAutoTag">
-                Auto-Tag
-            </button>
-            <button class="btn btn-sm btn-secondary" @click="openBulkAddToCollection">
-                <span v-html="ICONS.collection"></span> Collection
-            </button>
-            <button class="btn btn-sm btn-danger" @click="bulkDelete">
-                <span v-html="ICONS.trash"></span> Delete
-            </button>
-        </div>
-    </div>
+    <SelectionBar
+        :selectionMode="selectionMode"
+        :selectedModels="selectedModels"
+        @selectAll="selectAll"
+        @deselectAll="deselectAll"
+        @bulkFavorite="bulkFavorite"
+        @showBulkTagModal="showBulkTagModal = true"
+        @bulkAutoTag="bulkAutoTag"
+        @openBulkAddToCollection="openBulkAddToCollection"
+        @bulkDelete="bulkDelete"
+    />
 
     <!-- ============================================================
-         Create Collection Modal
+         Collection Modals
          ============================================================ -->
-    <div v-if="showCollectionModal" class="detail-overlay" @click.self="showCollectionModal = false">
-        <div class="mini-modal">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="margin:0">New Collection</h3>
-                <button class="close-btn" @click="showCollectionModal = false">&times;</button>
-            </div>
-            <div class="form-row">
-                <label class="form-label">Name</label>
-                <input class="form-input" v-model="newCollectionName" placeholder="Collection name"
-                       @keydown.enter="createCollection">
-            </div>
-            <div class="form-row">
-                <label class="form-label">Color</label>
-                <div class="color-swatch-grid">
-                    <button v-for="c in COLLECTION_COLORS" :key="c"
-                            class="color-swatch" :class="{ active: newCollectionColor === c }"
-                            :style="{ background: c }"
-                            @click="newCollectionColor = c"
-                            type="button"></button>
-                </div>
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-secondary" @click="showCollectionModal = false">Cancel</button>
-                <button class="btn btn-primary" @click="createCollection">Create</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ============================================================
-         Add to Collection Modal
-         ============================================================ -->
-    <div v-if="showAddToCollectionModal" class="detail-overlay" @click.self="showAddToCollectionModal = false">
-        <div class="mini-modal">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="margin:0">Add to Collection</h3>
-                <button class="close-btn" @click="showAddToCollectionModal = false">&times;</button>
-            </div>
-            <div v-for="col in collections" :key="col.id"
-                 class="sidebar-item" @click="handleCollectionSelect(col.id)">
-                <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
-                <span>{{ col.name }}</span>
-                <span class="item-count">{{ col.model_count }}</span>
-            </div>
-            <!-- Inline new collection -->
-            <div v-if="inlineNewCollection.active" class="inline-new-collection">
-                <div style="display:flex;gap:8px;align-items:center">
-                    <span class="collection-dot" :style="{ background: inlineNewCollection.color }" style="flex-shrink:0;cursor:pointer"
-                          @click="inlineNewCollection.color = pickNextCollectionColor()"></span>
-                    <input class="form-input" v-model="inlineNewCollection.name" placeholder="Collection name"
-                           @keydown.enter="confirmInlineNewCollection('addToCollection')"
-                           @keydown.escape="cancelInlineNewCollection"
-                           style="flex:1;padding:4px 8px;font-size:0.85rem" autofocus>
-                    <button class="btn btn-primary btn-sm" @click="confirmInlineNewCollection('addToCollection')"
-                            :disabled="!inlineNewCollection.name.trim()">Add</button>
-                    <button class="btn btn-ghost btn-sm" @click="cancelInlineNewCollection">&times;</button>
-                </div>
-                <div class="color-swatch-grid" style="margin-top:6px">
-                    <button v-for="c in COLLECTION_COLORS" :key="c"
-                            class="color-swatch color-swatch-sm" :class="{ active: inlineNewCollection.color === c }"
-                            :style="{ background: c }"
-                            @click="inlineNewCollection.color = c"
-                            type="button"></button>
-                </div>
-            </div>
-            <div v-else class="sidebar-item" @click="startInlineNewCollection" style="color:var(--color-primary, #4f8cff)">
-                <span v-html="ICONS.plus"></span>
-                <span>New Collection</span>
-            </div>
-        </div>
-    </div>
+    <CollectionModal
+        :showCollectionModal="showCollectionModal"
+        :showAddToCollectionModal="showAddToCollectionModal"
+        :newCollectionName="newCollectionName"
+        :newCollectionColor="newCollectionColor"
+        :addToCollectionModelId="addToCollectionModelId"
+        :collections="collections"
+        :COLLECTION_COLORS="COLLECTION_COLORS"
+        :inlineNewCollection="inlineNewCollection"
+        @update:showCollectionModal="showCollectionModal = $event"
+        @update:showAddToCollectionModal="showAddToCollectionModal = $event"
+        @update:newCollectionName="newCollectionName = $event"
+        @update:newCollectionColor="newCollectionColor = $event"
+        @createCollection="createCollection"
+        @handleCollectionSelect="handleCollectionSelect"
+        @startInlineNewCollection="startInlineNewCollection"
+        @confirmInlineNewCollection="confirmInlineNewCollection"
+        @cancelInlineNewCollection="cancelInlineNewCollection"
+        @pickNextCollectionColor="inlineNewCollection.color = pickNextCollectionColor()"
+        @updateInlineNewCollectionName="inlineNewCollection.name = $event"
+        @updateInlineNewCollectionColor="inlineNewCollection.color = $event"
+    />
 
     <!-- ============================================================
          Save Search Modal
@@ -2292,233 +1447,44 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Import Modal
          ============================================================ -->
-    <div v-if="showImportModal" class="detail-overlay" @click.self="closeImportModal">
-        <div class="settings-panel" style="max-width:560px">
-            <div class="detail-header">
-                <div class="detail-title">Import Models</div>
-                <button class="close-btn" @click="closeImportModal" title="Close">&times;</button>
-            </div>
-            <div class="settings-content">
-                <!-- Mode tabs -->
-                <div class="import-tabs">
-                    <button class="import-tab" :class="{ active: importMode === 'url' }" @click="importMode = 'url'">
-                        <span v-html="ICONS.link"></span> From URL
-                    </button>
-                    <button class="import-tab" :class="{ active: importMode === 'file' }" @click="importMode = 'file'">
-                        <span v-html="ICONS.download"></span> Upload Files
-                    </button>
-                </div>
-
-                <!-- URL mode -->
-                <template v-if="importMode === 'url'">
-                    <div class="settings-section">
-                        <div class="settings-section-desc">
-                            Paste one or more URLs (one per line). Supports Thingiverse, MakerWorld, Printables, MyMiniFactory, Cults3D, Thangs, or direct download links.
-                        </div>
-                        <div class="form-row">
-                            <textarea class="form-input import-textarea"
-                                      v-model="importUrls"
-                                      placeholder="https://www.thingiverse.com/thing/12345&#10;https://example.com/model.stl"
-                                      rows="4"
-                                      @blur="previewImportUrl"></textarea>
-                        </div>
-                    </div>
-
-                    <!-- Preview -->
-                    <div v-if="importPreview.loading" class="text-muted text-sm" style="padding:8px 0;display:flex;align-items:center;gap:8px">
-                        <div class="spinner spinner-sm"></div> Fetching preview...
-                    </div>
-                    <div v-else-if="importPreview.data" class="import-preview-card">
-                        <div v-if="importPreview.data.error" class="text-sm text-danger" style="padding:4px 0 8px">
-                            {{ importPreview.data.error }}
-                        </div>
-                        <div v-if="importPreview.data.title" style="font-weight:600;margin-bottom:4px">{{ importPreview.data.title }}</div>
-                        <div v-if="importPreview.data.source_site" class="text-muted text-sm" style="margin-bottom:4px;text-transform:capitalize">{{ importPreview.data.source_site }}</div>
-                        <div v-if="importPreview.data.file_count" class="text-sm">{{ importPreview.data.file_count }} downloadable file(s)</div>
-                        <div v-if="importPreview.data.tags && importPreview.data.tags.length" class="tags-list" style="margin-top:6px">
-                            <span v-for="t in importPreview.data.tags.slice(0, 8)" :key="t" class="tag-chip">{{ t }}</span>
-                            <span v-if="importPreview.data.tags.length > 8" class="tag-chip" style="opacity:0.7">+{{ importPreview.data.tags.length - 8 }}</span>
-                        </div>
-                    </div>
-                </template>
-
-                <!-- File upload mode -->
-                <template v-if="importMode === 'file'">
-                    <div class="settings-section">
-                        <div class="settings-section-desc">
-                            Select 3D model files to upload (.stl, .obj, .3mf, .step, .gltf, .glb, .ply, .zip).
-                        </div>
-                        <div class="form-row">
-                            <label class="file-upload-area" :class="{ 'has-files': uploadFiles.length }">
-                                <input type="file" multiple
-                                       accept=".stl,.obj,.gltf,.glb,.3mf,.ply,.dae,.off,.step,.stp,.fbx,.zip"
-                                       @change="onFilesSelected"
-                                       style="display:none">
-                                <div v-if="!uploadFiles.length" class="file-upload-placeholder">
-                                    <span v-html="ICONS.download"></span>
-                                    <span>Click to select files or drag &amp; drop</span>
-                                </div>
-                                <div v-else class="file-upload-list">
-                                    <div v-for="(f, i) in uploadFiles" :key="i" class="text-sm">{{ f.name }} ({{ formatFileSize(f.size) }})</div>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Zip metadata preview -->
-                    <div v-if="uploadZipMeta" class="import-preview-card">
-                        <div v-if="uploadZipMeta.title" style="font-weight:600;margin-bottom:4px">{{ uploadZipMeta.title }}</div>
-                        <div v-if="uploadZipMeta.site" class="text-muted text-sm" style="margin-bottom:4px;text-transform:capitalize">
-                            {{ uploadZipMeta.site }}
-                        </div>
-                        <a v-if="uploadZipMeta.source_url"
-                           :href="uploadZipMeta.source_url" target="_blank" rel="noopener"
-                           class="text-sm" style="color:var(--color-primary, #4f8cff)">{{ uploadZipMeta.source_url }}</a>
-                        <div class="text-sm text-muted" style="margin-top:4px">
-                            Zip will be extracted &mdash; model files inside will be imported individually
-                        </div>
-                    </div>
-
-                    <!-- Tags -->
-                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
-                        <div class="settings-section-title">Tags</div>
-                        <div class="form-row">
-                            <input type="text" class="form-input" v-model="uploadTags"
-                                   placeholder="comma-separated tags, e.g. benchy, calibration">
-                        </div>
-                        <div v-if="uploadTagSuggestions.length" class="tag-suggestions" style="margin-top:6px">
-                            <span v-for="s in uploadTagSuggestions" :key="s"
-                                  class="tag-chip tag-suggestion"
-                                  @click="addUploadTagSuggestion(s)"
-                                  title="Click to add">+ {{ s }}</span>
-                        </div>
-                    </div>
-
-                    <!-- Collection -->
-                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
-                        <div class="settings-section-title">
-                            <span v-html="ICONS.collection"></span>
-                            Add to Collection
-                        </div>
-                        <div class="form-row">
-                            <select class="form-input" v-model="uploadCollectionId"
-                                    @change="uploadCollectionId === '__new__' && startInlineNewCollection()">
-                                <option :value="null">None</option>
-                                <option v-for="col in collections" :key="col.id" :value="col.id">{{ col.name }}</option>
-                                <option value="__new__">+ New Collection...</option>
-                            </select>
-                        </div>
-                        <div v-if="uploadCollectionId === '__new__'" class="inline-new-collection" style="margin-top:8px">
-                            <div style="display:flex;gap:8px;align-items:center">
-                                <input class="form-input" v-model="inlineNewCollection.name" placeholder="Collection name"
-                                       @keydown.enter="confirmInlineNewCollection('upload')"
-                                       @keydown.escape="uploadCollectionId = null"
-                                       style="flex:1;padding:4px 8px;font-size:0.85rem" autofocus>
-                                <button class="btn btn-primary btn-sm" @click="confirmInlineNewCollection('upload')"
-                                        :disabled="!inlineNewCollection.name.trim()">Create</button>
-                            </div>
-                            <div class="color-swatch-grid" style="margin-top:6px">
-                                <button v-for="c in COLLECTION_COLORS" :key="c"
-                                        class="color-swatch color-swatch-sm" :class="{ active: inlineNewCollection.color === c }"
-                                        :style="{ background: c }"
-                                        @click="inlineNewCollection.color = c"
-                                        type="button"></button>
-                            </div>
-                        </div>
-                    </div>
-                </template>
-
-                <!-- Library + Subfolder (shared) -->
-                <div class="settings-section" style="margin-top:16px">
-                    <div class="settings-section-title">
-                        <span v-html="ICONS.folder"></span>
-                        Destination
-                    </div>
-                    <div class="form-row">
-                        <label class="form-label">Library</label>
-                        <select class="form-input" v-model="importLibraryId">
-                            <option v-for="lib in libraries" :key="lib.id" :value="lib.id">{{ lib.name }}</option>
-                        </select>
-                    </div>
-                    <div class="form-row" style="margin-top:8px">
-                        <label class="form-label">Subfolder (optional)</label>
-                        <input type="text" class="form-input" v-model="importSubfolder"
-                               placeholder="e.g. imported/thingiverse">
-                    </div>
-                </div>
-
-                <!-- Progress (URL mode) -->
-                <div v-if="importRunning && importMode === 'url' && importProgress.total > 0" style="margin-top:16px">
-                    <div class="regen-progress-bar">
-                        <div class="regen-progress-fill" :style="{ width: Math.round((importProgress.completed / importProgress.total) * 100) + '%' }"></div>
-                    </div>
-                    <span class="text-muted text-sm" style="margin-top:4px;display:block">
-                        {{ importProgress.completed }} / {{ importProgress.total }} URLs
-                        <span v-if="importProgress.current_url" style="opacity:0.7"> &mdash; {{ importProgress.current_url }}</span>
-                    </span>
-                </div>
-
-                <!-- Results (URL mode) -->
-                <div v-if="importDone && importMode === 'url' && importProgress.results.length" class="import-results" style="margin-top:16px">
-                    <div class="settings-section-title" style="margin-bottom:8px">Results</div>
-                    <div v-for="(r, i) in importProgress.results" :key="i" class="import-result-row">
-                        <span v-if="r.status === 'ok'" class="import-status-icon import-status-ok" title="Success">&#10003;</span>
-                        <span v-else class="import-status-icon import-status-error" title="Failed">&#10007;</span>
-                        <div class="import-result-detail">
-                            <div class="import-result-url">{{ r.url }}</div>
-                            <div v-if="r.status === 'ok'" class="text-sm" style="color:var(--color-success, #4caf50)">
-                                {{ r.models.length }} model(s) imported
-                            </div>
-                            <div v-else class="text-sm" style="color:var(--color-danger, #ef4444)">
-                                {{ r.error || 'Import failed' }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Results (file upload mode) -->
-                <div v-if="importDone && importMode === 'file' && uploadResults.length" class="import-results" style="margin-top:16px">
-                    <div class="settings-section-title" style="margin-bottom:8px">Results</div>
-                    <div v-for="(r, i) in uploadResults" :key="i" class="import-result-row">
-                        <span v-if="r.status === 'ok'" class="import-status-icon import-status-ok" title="Success">&#10003;</span>
-                        <span v-else class="import-status-icon import-status-error" title="Failed">&#10007;</span>
-                        <div class="import-result-detail">
-                            <div class="import-result-url">{{ r.filename }}</div>
-                            <div v-if="r.status === 'ok'" class="text-sm" style="color:var(--color-success, #4caf50)">
-                                Imported successfully
-                            </div>
-                            <div v-else class="text-sm" style="color:var(--color-danger, #ef4444)">
-                                {{ r.error || 'Import failed' }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Actions -->
-                <div class="form-actions" style="margin-top:20px;display:flex;justify-content:flex-end;gap:8px">
-                    <button v-if="importDone" class="btn btn-primary" @click="closeImportModal">Done</button>
-                    <template v-else-if="importMode === 'url'">
-                        <button class="btn btn-secondary" @click="closeImportModal">Cancel</button>
-                        <button class="btn btn-primary"
-                                @click="startImport"
-                                :disabled="importRunning || !importUrls.trim() || !importLibraryId">
-                            <span v-html="ICONS.download"></span>
-                            {{ importRunning ? 'Importing...' : 'Import' }}
-                        </button>
-                    </template>
-                    <template v-else>
-                        <button class="btn btn-secondary" @click="closeImportModal">Cancel</button>
-                        <button class="btn btn-primary"
-                                @click="startUpload"
-                                :disabled="importRunning || !uploadFiles.length || !importLibraryId">
-                            <span v-html="ICONS.download"></span>
-                            {{ importRunning ? 'Uploading...' : 'Upload' }}
-                        </button>
-                    </template>
-                </div>
-            </div>
-        </div>
-    </div>
+    <ImportModal
+        :showImportModal="showImportModal"
+        :importMode="importMode"
+        :importUrls="importUrls"
+        :importLibraryId="importLibraryId"
+        :importSubfolder="importSubfolder"
+        :importRunning="importRunning"
+        :importDone="importDone"
+        :importPreview="importPreview"
+        :importProgress="importProgress"
+        :uploadFiles="uploadFiles"
+        :uploadResults="uploadResults"
+        :uploadTags="uploadTags"
+        :uploadTagSuggestions="uploadTagSuggestions"
+        :uploadCollectionId="uploadCollectionId"
+        :uploadZipMeta="uploadZipMeta"
+        :libraries="libraries"
+        :collections="collections"
+        :inlineNewCollection="inlineNewCollection"
+        :COLLECTION_COLORS="COLLECTION_COLORS"
+        @close="closeImportModal"
+        @update:importMode="importMode = $event"
+        @update:importUrls="importUrls = $event"
+        @update:importLibraryId="importLibraryId = $event"
+        @update:importSubfolder="importSubfolder = $event"
+        @update:uploadTags="uploadTags = $event"
+        @update:uploadCollectionId="uploadCollectionId = $event"
+        @previewImportUrl="previewImportUrl"
+        @startImport="startImport"
+        @onFilesSelected="onFilesSelected"
+        @startUpload="startUpload"
+        @addUploadTagSuggestion="addUploadTagSuggestion"
+        @startInlineNewCollection="startInlineNewCollection"
+        @confirmInlineNewCollection="confirmInlineNewCollection"
+        @cancelInlineNewCollection="cancelInlineNewCollection"
+        @updateInlineNewCollectionName="inlineNewCollection.name = $event"
+        @updateInlineNewCollectionColor="inlineNewCollection.color = $event"
+    />
 
     <!-- ============================================================
          Bulk Tag Modal

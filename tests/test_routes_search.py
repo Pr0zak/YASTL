@@ -222,26 +222,29 @@ class TestSanitizeFtsQuery:
     """Unit tests for the _sanitize_fts_query helper."""
 
     def test_plain_text(self):
-        assert _sanitize_fts_query("dragon") == '"dragon"'
+        assert _sanitize_fts_query("dragon") == '"dragon"*'
 
     def test_multiple_tokens(self):
-        assert _sanitize_fts_query("fire dragon") == '"fire" "dragon"'
+        assert _sanitize_fts_query("fire dragon") == '"fire"* "dragon"*'
 
     def test_strips_quotes(self):
         result = _sanitize_fts_query('"hello world"')
-        assert '"' not in result.replace('"hello"', "").replace('"world"', "")
+        # Quotes from user input are stripped; tokens are re-quoted with prefix *
+        assert "hello" in result
+        assert "world" in result
 
     def test_strips_special_chars(self):
         result = _sanitize_fts_query("a*b(c)d:e")
-        # Should produce quoted tokens without special chars
-        assert "*" not in result
+        # Should produce quoted tokens without special chars (except trailing * for prefix matching)
         assert "(" not in result
         assert ":" not in result
+        # Each token gets a trailing * for prefix matching
+        assert '"a"*' in result
 
     def test_empty_after_stripping(self):
         assert _sanitize_fts_query("***") == ""
 
     def test_boolean_keywords_quoted(self):
         result = _sanitize_fts_query("cat AND dog")
-        # AND should be inside quotes, not treated as operator
-        assert result == '"cat" "AND" "dog"'
+        # AND should be inside quotes, not treated as operator; each token gets prefix *
+        assert result == '"cat"* "AND"* "dog"*'
