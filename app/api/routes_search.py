@@ -21,19 +21,19 @@ def _sanitize_fts_query(raw: str) -> str:
 
     Strips characters that carry special meaning in FTS5 query syntax
     (e.g. ``"``, ``*``, ``NEAR``, boolean operators) and wraps each
-    remaining token in double-quotes so that the query is treated as a
-    sequence of literal phrases.
+    remaining token in double-quotes with a trailing ``*`` for prefix
+    matching, so that partial words match (e.g. "ben" matches "benchy").
 
     Returns an empty string if no usable tokens remain.
     """
     # Remove special characters
     cleaned = _FTS5_SPECIAL_RE.sub(" ", raw)
-    # Split into tokens and quote each one to avoid FTS5 keyword
-    # interpretation (AND, OR, NOT, NEAR)
+    # Split into tokens, quote each one to avoid FTS5 keyword
+    # interpretation (AND, OR, NOT, NEAR), and add * for prefix matching
     tokens = cleaned.split()
     if not tokens:
         return ""
-    return " ".join(f'"{tok}"' for tok in tokens)
+    return " ".join(f'"{tok}"*' for tok in tokens)
 
 
 # ---------------------------------------------------------------------------

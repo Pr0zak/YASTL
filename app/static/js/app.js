@@ -196,12 +196,16 @@ const app = createApp({
 
         // URL Import
         const showImportModal = ref(false);
+        const importMode = ref('url');  // 'url' or 'file'
         const importUrls = ref('');
         const importLibraryId = ref(null);
         const importSubfolder = ref('');
         const importRunning = ref(false);
+        const importDone = ref(false);
         const importPreview = reactive({ loading: false, data: null });
         const importProgress = reactive({ running: false, total: 0, completed: 0, current_url: null, results: [] });
+        const uploadFiles = ref([]);
+        const uploadResults = ref([]);
         let importPollTimer = null;
 
         // Import credentials
@@ -617,10 +621,15 @@ const app = createApp({
 
         function openImportModal() {
             fetchLibraries();
+            importMode.value = 'url';
             importUrls.value = '';
             importSubfolder.value = '';
             importPreview.loading = false;
             importPreview.data = null;
+            importDone.value = false;
+            importProgress.results = [];
+            uploadFiles.value = [];
+            uploadResults.value = [];
             // Default to first library if available
             if (libraries.value.length > 0 && !importLibraryId.value) {
                 importLibraryId.value = libraries.value[0].id;
@@ -706,8 +715,7 @@ const app = createApp({
                         clearInterval(importPollTimer);
                         importPollTimer = null;
                         importRunning.value = false;
-                        const ok = (data.results || []).filter(r => r.status === 'ok').length;
-                        showToast(`Import complete: ${ok} URL(s) imported`);
+                        importDone.value = true;
                         fetchModels();
                         fetchTags();
                         fetchCategories();
@@ -716,6 +724,46 @@ const app = createApp({
                     console.error('importPoll error:', e);
                 }
             }, 2000);
+        }
+
+        function onFilesSelected(event) {
+            uploadFiles.value = Array.from(event.target.files || []);
+        }
+
+        async function startUpload() {
+            if (!uploadFiles.value.length || !importLibraryId.value) return;
+            importRunning.value = true;
+            importDone.value = false;
+            uploadResults.value = [];
+
+            const formData = new FormData();
+            formData.append('library_id', importLibraryId.value);
+            if (importSubfolder.value) formData.append('subfolder', importSubfolder.value);
+            for (const f of uploadFiles.value) {
+                formData.append('files', f);
+            }
+
+            try {
+                const res = await fetch('/api/import/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    uploadResults.value = data.results || [];
+                    importDone.value = true;
+                    fetchModels();
+                    fetchTags();
+                    fetchCategories();
+                } else {
+                    const err = await res.json();
+                    showToast(err.detail || 'Upload failed', 'error');
+                }
+            } catch (e) {
+                showToast('Upload failed', 'error');
+            } finally {
+                importRunning.value = false;
+            }
         }
 
         async function fetchImportCredentials() {
@@ -1850,14 +1898,18 @@ const app = createApp({
             selectionMode,
             selectedModels,
             showImportModal,
+            importMode,
             importUrls,
             importLibraryId,
             importSubfolder,
             importRunning,
+            importDone,
             importPreview,
             importProgress,
             importCredentials,
             credentialInputs,
+            uploadFiles,
+            uploadResults,
 
             // Computed
             scanProgress,
@@ -1945,6 +1997,8 @@ const app = createApp({
             closeImportModal,
             previewImportUrl,
             startImport,
+            onFilesSelected,
+            startUpload,
             fetchImportCredentials,
             saveImportCredential,
             deleteImportCredential,
@@ -2023,7 +2077,7 @@ const app = createApp({
                 </button>
             </div>
 
-            <button class="btn-icon" @click="openImportModal" title="Import from URL">
+            <button class="btn-icon" @click="openImportModal" title="Import Models">
                 <span v-html="ICONS.link"></span>
             </button>
             <button class="btn-icon" :class="{ active: selectionMode }" @click="toggleSelectionMode" title="Selection mode">
@@ -3131,46 +3185,78 @@ const app = createApp({
     <div v-if="showImportModal" class="detail-overlay" @click.self="closeImportModal">
         <div class="settings-panel" style="max-width:560px">
             <div class="detail-header">
-                <div class="detail-title">Import from URL</div>
+                <div class="detail-title">Import Models</div>
                 <button class="close-btn" @click="closeImportModal" title="Close">&times;</button>
             </div>
             <div class="settings-content">
-                <!-- URL Input -->
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <span v-html="ICONS.link"></span>
-                        URLs
-                    </div>
-                    <div class="settings-section-desc">
-                        Paste one or more URLs (one per line). Supports Thingiverse, MakerWorld, Printables, MyMiniFactory, Cults3D, Thangs, or direct download links.
-                    </div>
-                    <div class="form-row">
-                        <textarea class="form-input import-textarea"
-                                  v-model="importUrls"
-                                  placeholder="https://www.thingiverse.com/thing/12345&#10;https://example.com/model.stl"
-                                  rows="4"
-                                  @blur="previewImportUrl"></textarea>
-                    </div>
+                <!-- Mode tabs -->
+                <div class="import-tabs">
+                    <button class="import-tab" :class="{ active: importMode === 'url' }" @click="importMode = 'url'">
+                        <span v-html="ICONS.link"></span> From URL
+                    </button>
+                    <button class="import-tab" :class="{ active: importMode === 'file' }" @click="importMode = 'file'">
+                        <span v-html="ICONS.download"></span> Upload Files
+                    </button>
                 </div>
 
-                <!-- Preview -->
-                <div v-if="importPreview.loading" class="text-muted text-sm" style="padding:8px 0;display:flex;align-items:center;gap:8px">
-                    <div class="spinner spinner-sm"></div> Fetching preview...
-                </div>
-                <div v-else-if="importPreview.data" class="import-preview-card">
-                    <div v-if="importPreview.data.error" class="text-sm text-danger" style="padding:4px 0 8px">
-                        {{ importPreview.data.error }}
+                <!-- URL mode -->
+                <template v-if="importMode === 'url'">
+                    <div class="settings-section">
+                        <div class="settings-section-desc">
+                            Paste one or more URLs (one per line). Supports Thingiverse, MakerWorld, Printables, MyMiniFactory, Cults3D, Thangs, or direct download links.
+                        </div>
+                        <div class="form-row">
+                            <textarea class="form-input import-textarea"
+                                      v-model="importUrls"
+                                      placeholder="https://www.thingiverse.com/thing/12345&#10;https://example.com/model.stl"
+                                      rows="4"
+                                      @blur="previewImportUrl"></textarea>
+                        </div>
                     </div>
-                    <div v-if="importPreview.data.title" style="font-weight:600;margin-bottom:4px">{{ importPreview.data.title }}</div>
-                    <div v-if="importPreview.data.source_site" class="text-muted text-sm" style="margin-bottom:4px;text-transform:capitalize">{{ importPreview.data.source_site }}</div>
-                    <div v-if="importPreview.data.file_count" class="text-sm">{{ importPreview.data.file_count }} downloadable file(s)</div>
-                    <div v-if="importPreview.data.tags && importPreview.data.tags.length" class="tags-list" style="margin-top:6px">
-                        <span v-for="t in importPreview.data.tags.slice(0, 8)" :key="t" class="tag-chip">{{ t }}</span>
-                        <span v-if="importPreview.data.tags.length > 8" class="tag-chip" style="opacity:0.7">+{{ importPreview.data.tags.length - 8 }}</span>
-                    </div>
-                </div>
 
-                <!-- Library + Subfolder -->
+                    <!-- Preview -->
+                    <div v-if="importPreview.loading" class="text-muted text-sm" style="padding:8px 0;display:flex;align-items:center;gap:8px">
+                        <div class="spinner spinner-sm"></div> Fetching preview...
+                    </div>
+                    <div v-else-if="importPreview.data" class="import-preview-card">
+                        <div v-if="importPreview.data.error" class="text-sm text-danger" style="padding:4px 0 8px">
+                            {{ importPreview.data.error }}
+                        </div>
+                        <div v-if="importPreview.data.title" style="font-weight:600;margin-bottom:4px">{{ importPreview.data.title }}</div>
+                        <div v-if="importPreview.data.source_site" class="text-muted text-sm" style="margin-bottom:4px;text-transform:capitalize">{{ importPreview.data.source_site }}</div>
+                        <div v-if="importPreview.data.file_count" class="text-sm">{{ importPreview.data.file_count }} downloadable file(s)</div>
+                        <div v-if="importPreview.data.tags && importPreview.data.tags.length" class="tags-list" style="margin-top:6px">
+                            <span v-for="t in importPreview.data.tags.slice(0, 8)" :key="t" class="tag-chip">{{ t }}</span>
+                            <span v-if="importPreview.data.tags.length > 8" class="tag-chip" style="opacity:0.7">+{{ importPreview.data.tags.length - 8 }}</span>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- File upload mode -->
+                <template v-if="importMode === 'file'">
+                    <div class="settings-section">
+                        <div class="settings-section-desc">
+                            Select 3D model files to upload (.stl, .obj, .3mf, .step, .gltf, .glb, .ply, .zip).
+                        </div>
+                        <div class="form-row">
+                            <label class="file-upload-area" :class="{ 'has-files': uploadFiles.length }">
+                                <input type="file" multiple
+                                       accept=".stl,.obj,.gltf,.glb,.3mf,.ply,.dae,.off,.step,.stp,.fbx,.zip"
+                                       @change="onFilesSelected"
+                                       style="display:none">
+                                <div v-if="!uploadFiles.length" class="file-upload-placeholder">
+                                    <span v-html="ICONS.download"></span>
+                                    <span>Click to select files or drag &amp; drop</span>
+                                </div>
+                                <div v-else class="file-upload-list">
+                                    <div v-for="(f, i) in uploadFiles" :key="i" class="text-sm">{{ f.name }} ({{ formatFileSize(f.size) }})</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Library + Subfolder (shared) -->
                 <div class="settings-section" style="margin-top:16px">
                     <div class="settings-section-title">
                         <span v-html="ICONS.folder"></span>
@@ -3189,8 +3275,8 @@ const app = createApp({
                     </div>
                 </div>
 
-                <!-- Progress -->
-                <div v-if="importRunning && importProgress.total > 0" style="margin-top:16px">
+                <!-- Progress (URL mode) -->
+                <div v-if="importRunning && importMode === 'url' && importProgress.total > 0" style="margin-top:16px">
                     <div class="regen-progress-bar">
                         <div class="regen-progress-fill" :style="{ width: Math.round((importProgress.completed / importProgress.total) * 100) + '%' }"></div>
                     </div>
@@ -3200,15 +3286,63 @@ const app = createApp({
                     </span>
                 </div>
 
+                <!-- Results (URL mode) -->
+                <div v-if="importDone && importMode === 'url' && importProgress.results.length" class="import-results" style="margin-top:16px">
+                    <div class="settings-section-title" style="margin-bottom:8px">Results</div>
+                    <div v-for="(r, i) in importProgress.results" :key="i" class="import-result-row">
+                        <span v-if="r.status === 'ok'" class="import-status-icon import-status-ok" title="Success">&#10003;</span>
+                        <span v-else class="import-status-icon import-status-error" title="Failed">&#10007;</span>
+                        <div class="import-result-detail">
+                            <div class="import-result-url">{{ r.url }}</div>
+                            <div v-if="r.status === 'ok'" class="text-sm" style="color:var(--color-success, #4caf50)">
+                                {{ r.models.length }} model(s) imported
+                            </div>
+                            <div v-else class="text-sm" style="color:var(--color-danger, #ef4444)">
+                                {{ r.error || 'Import failed' }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results (file upload mode) -->
+                <div v-if="importDone && importMode === 'file' && uploadResults.length" class="import-results" style="margin-top:16px">
+                    <div class="settings-section-title" style="margin-bottom:8px">Results</div>
+                    <div v-for="(r, i) in uploadResults" :key="i" class="import-result-row">
+                        <span v-if="r.status === 'ok'" class="import-status-icon import-status-ok" title="Success">&#10003;</span>
+                        <span v-else class="import-status-icon import-status-error" title="Failed">&#10007;</span>
+                        <div class="import-result-detail">
+                            <div class="import-result-url">{{ r.filename }}</div>
+                            <div v-if="r.status === 'ok'" class="text-sm" style="color:var(--color-success, #4caf50)">
+                                Imported successfully
+                            </div>
+                            <div v-else class="text-sm" style="color:var(--color-danger, #ef4444)">
+                                {{ r.error || 'Import failed' }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Actions -->
                 <div class="form-actions" style="margin-top:20px;display:flex;justify-content:flex-end;gap:8px">
-                    <button class="btn btn-secondary" @click="closeImportModal">Cancel</button>
-                    <button class="btn btn-primary"
-                            @click="startImport"
-                            :disabled="importRunning || !importUrls.trim() || !importLibraryId">
-                        <span v-html="ICONS.download"></span>
-                        {{ importRunning ? 'Importing...' : 'Import' }}
-                    </button>
+                    <button v-if="importDone" class="btn btn-primary" @click="closeImportModal">Done</button>
+                    <template v-else-if="importMode === 'url'">
+                        <button class="btn btn-secondary" @click="closeImportModal">Cancel</button>
+                        <button class="btn btn-primary"
+                                @click="startImport"
+                                :disabled="importRunning || !importUrls.trim() || !importLibraryId">
+                            <span v-html="ICONS.download"></span>
+                            {{ importRunning ? 'Importing...' : 'Import' }}
+                        </button>
+                    </template>
+                    <template v-else>
+                        <button class="btn btn-secondary" @click="closeImportModal">Cancel</button>
+                        <button class="btn btn-primary"
+                                @click="startUpload"
+                                :disabled="importRunning || !uploadFiles.length || !importLibraryId">
+                            <span v-html="ICONS.download"></span>
+                            {{ importRunning ? 'Uploading...' : 'Upload' }}
+                        </button>
+                    </template>
                 </div>
             </div>
         </div>
