@@ -209,6 +209,7 @@ const app = createApp({
         const uploadTags = ref('');
         const uploadTagSuggestions = ref([]);
         const uploadCollectionId = ref(null);
+        const uploadZipMeta = ref(null);  // { title, source_url, site, file_count }
         let importPollTimer = null;
 
         // Import credentials
@@ -636,6 +637,7 @@ const app = createApp({
             uploadTags.value = '';
             uploadTagSuggestions.value = [];
             uploadCollectionId.value = null;
+            uploadZipMeta.value = null;
             // Default to first library if available
             if (libraries.value.length > 0 && !importLibraryId.value) {
                 importLibraryId.value = libraries.value[0].id;
@@ -734,16 +736,38 @@ const app = createApp({
 
         function onFilesSelected(event) {
             uploadFiles.value = Array.from(event.target.files || []);
+            uploadZipMeta.value = null;
+
             // Generate tag suggestions from filenames
             const stopWords = new Set([
                 'a','an','the','and','or','but','in','on','at','to','for','of','is','it','by','as','with','from',
                 'file','model','stl','obj','gltf','glb','3mf','ply','step','stp','dae','off','fbx','print','3d',
-                'final','v1','v2','v3','copy','new','old','test','tmp','temp','zip',
+                'final','v1','v2','v3','copy','new','old','test','tmp','temp','zip','files',
             ]);
             const seen = new Set();
             const suggestions = [];
             for (const f of uploadFiles.value) {
                 const stem = f.name.replace(/\.[^.]+$/, '');
+
+                // Detect Thingiverse zip pattern: Name_12345_files.zip or Name-12345.zip
+                if (f.name.toLowerCase().endsWith('.zip')) {
+                    const tvMatch = stem.match(/[_-](\d{4,})(?:_files)?$/i);
+                    if (tvMatch) {
+                        const thingId = tvMatch[1];
+                        const titlePart = stem.slice(0, tvMatch.index).replace(/[_\-]+/g, ' ').trim();
+                        uploadZipMeta.value = {
+                            title: titlePart || stem,
+                            source_url: `https://www.thingiverse.com/thing:${thingId}`,
+                            site: 'thingiverse',
+                        };
+                        if (!seen.has('thingiverse')) { seen.add('thingiverse'); suggestions.push('thingiverse'); }
+                    } else {
+                        // Generic zip — show title from filename
+                        const cleaned = stem.replace(/[_\-]+/g, ' ').trim();
+                        uploadZipMeta.value = { title: cleaned, source_url: null, site: null };
+                    }
+                }
+
                 // Split on separators + camelCase
                 const words = stem
                     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -1954,6 +1978,7 @@ const app = createApp({
             uploadTags,
             uploadTagSuggestions,
             uploadCollectionId,
+            uploadZipMeta,
 
             // Computed
             scanProgress,
@@ -3297,6 +3322,20 @@ const app = createApp({
                                     <div v-for="(f, i) in uploadFiles" :key="i" class="text-sm">{{ f.name }} ({{ formatFileSize(f.size) }})</div>
                                 </div>
                             </label>
+                        </div>
+                    </div>
+
+                    <!-- Zip metadata preview -->
+                    <div v-if="uploadZipMeta" class="import-preview-card">
+                        <div v-if="uploadZipMeta.title" style="font-weight:600;margin-bottom:4px">{{ uploadZipMeta.title }}</div>
+                        <div v-if="uploadZipMeta.site" class="text-muted text-sm" style="margin-bottom:4px;text-transform:capitalize">
+                            {{ uploadZipMeta.site }}
+                        </div>
+                        <a v-if="uploadZipMeta.source_url"
+                           :href="uploadZipMeta.source_url" target="_blank" rel="noopener"
+                           class="text-sm" style="color:var(--color-primary, #4f8cff)">{{ uploadZipMeta.source_url }}</a>
+                        <div class="text-sm text-muted" style="margin-top:4px">
+                            Zip will be extracted &mdash; model files inside will be imported individually
                         </div>
                     </div>
 
