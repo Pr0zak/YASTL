@@ -9,6 +9,8 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "python-multipart>=0.0.18",
     "trimesh>=4.5.0",
+    "lxml>=5.0.0",
+    "networkx>=3.0",
     "numpy>=2.0.0",
     "numpy-stl>=3.1.0",
     "watchdog>=6.0.0",
@@ -24,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 step = [
+    "cascadio>=0.3.0",
     "gmsh>=4.12.0",
 ]
 dev = [
