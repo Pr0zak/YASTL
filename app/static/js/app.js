@@ -154,6 +154,9 @@ const app = createApp({
         });
         let statusPollTimer = null;
 
+        // Favorites count
+        const favoritesCount = ref(0);
+
         // Catalog system: Collections
         const collections = ref([]);
         const showCollectionModal = ref(false);
@@ -161,6 +164,8 @@ const app = createApp({
         const newCollectionColor = ref('#0f9b8e');
         const addToCollectionModelId = ref(null);
         const showAddToCollectionModal = ref(false);
+        const editingCollectionId = ref(null);
+        const editCollectionName = ref('');
 
         // Catalog system: Saved searches
         const savedSearches = ref([]);
@@ -1042,6 +1047,17 @@ const app = createApp({
             return f;
         }
 
+        // ---- Favorites count ----
+        async function fetchFavoritesCount() {
+            try {
+                const resp = await fetch('/api/favorites?limit=1&offset=0');
+                const data = await resp.json();
+                favoritesCount.value = data.total || 0;
+            } catch (e) {
+                console.error('Failed to fetch favorites count', e);
+            }
+        }
+
         // ---- Collections API ----
         async function fetchCollections() {
             try {
@@ -1087,6 +1103,27 @@ const app = createApp({
             }
         }
 
+        function startEditCollection(col) {
+            editingCollectionId.value = col.id;
+            editCollectionName.value = col.name;
+        }
+
+        async function saveCollectionName(col) {
+            const newName = editCollectionName.value.trim();
+            editingCollectionId.value = null;
+            if (!newName || newName === col.name) return;
+            try {
+                await fetch(`/api/collections/${col.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName }),
+                });
+                await fetchCollections();
+            } catch (e) {
+                showToast('Failed to rename collection', 'error');
+            }
+        }
+
         function openAddToCollection(modelId) {
             addToCollectionModelId.value = modelId;
             showAddToCollectionModal.value = true;
@@ -1105,11 +1142,43 @@ const app = createApp({
                     showAddToCollectionModal.value = false;
                     addToCollectionModelId.value = null;
                     await fetchCollections();
+                    // Refresh selected model to update collections list
+                    if (selectedModel.value && selectedModel.value.id === modelId) {
+                        await refreshSelectedModel();
+                    }
                     showToast('Added to collection', 'success');
                 }
             } catch (e) {
                 showToast('Failed to add to collection', 'error');
             }
+        }
+
+        async function removeModelFromCollection(collectionId, modelId) {
+            try {
+                const resp = await fetch(`/api/collections/${collectionId}/models/${modelId}`, {
+                    method: 'DELETE',
+                });
+                if (resp.ok) {
+                    await fetchCollections();
+                    if (selectedModel.value && selectedModel.value.id === modelId) {
+                        await refreshSelectedModel();
+                    }
+                    showToast('Removed from collection', 'success');
+                }
+            } catch (e) {
+                showToast('Failed to remove from collection', 'error');
+            }
+        }
+
+        async function refreshSelectedModel() {
+            if (!selectedModel.value) return;
+            try {
+                const resp = await fetch(`/api/models/${selectedModel.value.id}`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    selectedModel.value = data;
+                }
+            } catch { /* ignore */ }
         }
 
         function setCollectionFilter(collectionId) {
@@ -1199,6 +1268,8 @@ const app = createApp({
                 const resp = await fetch(`/api/models/${model.id}/favorite`, { method });
                 if (!resp.ok) {
                     model.is_favorite = wasFav;
+                } else {
+                    favoritesCount.value += wasFav ? -1 : 1;
                 }
             } catch {
                 model.is_favorite = wasFav;
@@ -1251,6 +1322,7 @@ const app = createApp({
                 selectedModels.clear();
                 selectionMode.value = false;
                 await fetchModels();
+                await fetchFavoritesCount();
                 showToast(`${ids.length} model(s) favorited`, 'success');
             } catch {
                 showToast('Bulk favorite failed', 'error');
@@ -1400,6 +1472,7 @@ const app = createApp({
             fetchScanStatus();
             fetchSystemStatus();
             fetchCollections();
+            fetchFavoritesCount();
             fetchSavedSearches();
             statusPollTimer = setInterval(fetchSystemStatus, 30000);
             document.addEventListener('keydown', onKeydown);
@@ -1444,12 +1517,15 @@ const app = createApp({
             regenProgress,
             showStatusMenu,
             systemStatus,
+            favoritesCount,
             collections,
             showCollectionModal,
             newCollectionName,
             newCollectionColor,
             addToCollectionModelId,
             showAddToCollectionModal,
+            editingCollectionId,
+            editCollectionName,
             savedSearches,
             showSaveSearchModal,
             saveSearchName,
@@ -1508,8 +1584,11 @@ const app = createApp({
             fetchCollections,
             createCollection,
             deleteCollection,
+            startEditCollection,
+            saveCollectionName,
             openAddToCollection,
             addModelToCollection,
+            removeModelFromCollection,
             setCollectionFilter,
             fetchSavedSearches,
             saveCurrentSearch,
@@ -1789,12 +1868,21 @@ const app = createApp({
                 <div class="sidebar-item" :class="{ active: filters.favoritesOnly }" @click="toggleFavoritesFilter">
                     <span v-html="ICONS.heart"></span>
                     <span>Favorites</span>
+                    <span v-if="favoritesCount > 0" class="item-count">{{ favoritesCount }}</span>
                 </div>
                 <div v-for="col in collections" :key="col.id"
                      class="sidebar-item" :class="{ active: filters.collection === col.id }"
                      @click="setCollectionFilter(col.id)">
                     <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
-                    <span class="truncate">{{ col.name }}</span>
+                    <template v-if="editingCollectionId === col.id">
+                        <input class="sidebar-edit-input" v-model="editCollectionName"
+                               @blur="saveCollectionName(col)"
+                               @keydown.enter="saveCollectionName(col)"
+                               @keydown.escape="editingCollectionId = null"
+                               @click.stop
+                               autofocus>
+                    </template>
+                    <span v-else class="truncate" @dblclick.stop="startEditCollection(col)">{{ col.name }}</span>
                     <span class="item-count">{{ col.model_count }}</span>
                     <button class="sidebar-item-delete" @click.stop="deleteCollection(col.id)">&times;</button>
                 </div>
@@ -1909,14 +1997,13 @@ const app = createApp({
                                 @click.stop="toggleModelSelection(model.id)">
                             <span v-html="ICONS.check"></span>
                         </button>
-                        <span class="thumb-status-dot" :class="thumbStatusClass(model)" :title="thumbStatusTitle(model)"></span>
                     </div>
                     <!-- Body -->
                     <div class="card-body">
                         <div class="card-name" :title="model.name">{{ model.name }}</div>
                         <div class="card-meta">
                             {{ formatFileSize(model.file_size) }}
-                            <span v-if="model.zip_path" class="zip-badge" :title="model.zip_path">ZIP: {{ zipName(model) }}</span>
+                            <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span>
                         </div>
                         <div class="card-tags" v-if="model.tags && model.tags.length">
                             <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
@@ -1937,7 +2024,6 @@ const app = createApp({
                         <tr>
                             <th v-if="selectionMode" class="col-select" style="width:32px"></th>
                             <th class="col-fav" style="width:32px"></th>
-                            <th class="col-thumb-status" style="width:24px" title="Thumbnail status"></th>
                             <th>Name</th>
                             <th class="col-format">Format</th>
                             <th class="col-vertices">Vertices</th>
@@ -1955,10 +2041,7 @@ const app = createApp({
                             <td class="col-fav" @click.stop="toggleFavorite(model, $event)" style="cursor:pointer;text-align:center">
                                 <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
                             </td>
-                            <td class="col-thumb-status" style="text-align:center">
-                                <span class="thumb-status-dot thumb-status-dot-inline" :class="thumbStatusClass(model)" :title="thumbStatusTitle(model)"></span>
-                            </td>
-                            <td class="col-name">{{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="model.zip_path">ZIP: {{ zipName(model) }}</span></td>
+                            <td class="col-name">{{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span></td>
                             <td class="col-format">
                                 <span class="format-badge" :class="formatClass(model.file_format)">
                                     {{ model.file_format }}
@@ -2023,6 +2106,10 @@ const app = createApp({
                 <button class="btn btn-sm btn-ghost" :class="{ 'text-danger': selectedModel.is_favorite }"
                         @click="toggleFavorite(selectedModel, $event)" title="Toggle favorite">
                     <span v-html="selectedModel.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
+                </button>
+                <button class="btn btn-sm btn-ghost"
+                        @click="openAddToCollection(selectedModel.id)" title="Add to collection">
+                    <span v-html="ICONS.collection"></span>
                 </button>
                 <button class="close-btn" @click="closeDetail" title="Close">&times;</button>
             </div>
@@ -2156,6 +2243,27 @@ const app = createApp({
                             </span>
                             <span v-if="!selectedModel.categories || !selectedModel.categories.length"
                                   class="text-muted text-sm">Uncategorized</span>
+                        </div>
+                    </div>
+
+                    <!-- Collections -->
+                    <div class="info-section">
+                        <div class="info-section-title" style="display:flex;align-items:center;justify-content:space-between">
+                            Collections
+                            <button class="btn-icon" style="width:20px;height:20px"
+                                    @click="openAddToCollection(selectedModel.id)" title="Add to collection">
+                                <span v-html="ICONS.plus"></span>
+                            </button>
+                        </div>
+                        <div class="tags-list">
+                            <span v-for="col in (selectedModel.collections || [])" :key="col.id"
+                                  class="tag-chip" :style="{ background: (col.color || '#666') + '22', color: col.color || '#666', border: '1px solid ' + (col.color || '#666') + '44' }">
+                                <span class="collection-dot" :style="{ background: col.color || '#666' }" style="width:8px;height:8px;margin-right:4px"></span>
+                                {{ col.name }}
+                                <button class="tag-remove" @click="removeModelFromCollection(col.id, selectedModel.id)" title="Remove from collection">&times;</button>
+                            </span>
+                            <span v-if="!selectedModel.collections || !selectedModel.collections.length"
+                                  class="text-muted text-sm">No collections</span>
                         </div>
                     </div>
 
