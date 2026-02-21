@@ -109,6 +109,8 @@ async def get_system_status(request: Request):
         health = "error"
     elif "unavailable" in statuses or "stopped" in statuses:
         health = "degraded"
+    elif "regenerating" in statuses or "scanning" in statuses:
+        health = "busy"
     else:
         health = "ok"
 

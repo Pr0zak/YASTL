@@ -404,6 +404,7 @@ const app = createApp({
         function statusLabel(status) {
             const labels = {
                 ok: 'Healthy',
+                busy: 'Busy',
                 idle: 'Idle',
                 scanning: 'Scanning',
                 watching: 'Watching',
@@ -419,7 +420,7 @@ const app = createApp({
 
         function statusDotClass(status) {
             if (['ok', 'idle', 'watching'].includes(status)) return 'status-dot-ok';
-            if (['scanning', 'degraded', 'regenerating'].includes(status)) return 'status-dot-warn';
+            if (['busy', 'scanning', 'degraded', 'regenerating'].includes(status)) return 'status-dot-warn';
             if (['error', 'stopped', 'unavailable'].includes(status)) return 'status-dot-error';
             return 'status-dot-unknown';
         }
