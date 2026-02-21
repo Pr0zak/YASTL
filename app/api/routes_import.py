@@ -10,11 +10,13 @@ from app.database import get_db
 from app.services.importer import (
     MODEL_EXTENSIONS,
     delete_credentials,
+    extract_zip_metadata,
     get_credentials,
     get_import_progress,
     import_urls_batch,
     mask_credentials,
     process_imported_file,
+    process_uploaded_zip,
     scrape_metadata,
     set_credentials,
     _deduplicate_path,
@@ -179,18 +181,32 @@ async def upload_files(
             with open(dest, "wb") as f:
                 f.write(content)
 
-            model_id = await process_imported_file(
-                file_path=dest,
-                library_id=library_id,
-                scraped_tags=tag_list or None,
-                subfolder=subfolder,
-                library_path=library_path,
-            )
-            if model_id is not None:
-                results.append({"filename": fname, "status": "ok", "model_id": model_id})
-                model_ids.append(model_id)
+            if ext == ".zip":
+                # Extract zip and process each model file inside
+                zip_results = await process_uploaded_zip(
+                    zip_path=dest,
+                    library_id=library_id,
+                    library_path=library_path,
+                    subfolder=subfolder,
+                    extra_tags=tag_list or None,
+                )
+                for zr in zip_results:
+                    results.append(zr)
+                    if zr.get("model_id"):
+                        model_ids.append(zr["model_id"])
             else:
-                results.append({"filename": fname, "status": "error", "error": "Processing failed or duplicate"})
+                model_id = await process_imported_file(
+                    file_path=dest,
+                    library_id=library_id,
+                    scraped_tags=tag_list or None,
+                    subfolder=subfolder,
+                    library_path=library_path,
+                )
+                if model_id is not None:
+                    results.append({"filename": fname, "status": "ok", "model_id": model_id})
+                    model_ids.append(model_id)
+                else:
+                    results.append({"filename": fname, "status": "error", "error": "Processing failed or duplicate"})
         except Exception as e:
             logger.warning("Upload processing failed for %s: %s", fname, e)
             results.append({"filename": fname, "status": "error", "error": str(e)})

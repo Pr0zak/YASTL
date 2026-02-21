@@ -12,7 +12,8 @@ import logging
 import os
 import re
 import urllib.request
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse, unquote
 
 import httpx
@@ -666,6 +667,253 @@ async def process_imported_file(
 
     logger.info("Imported model id=%d  %s", model_id, file_path_str)
     return model_id
+
+
+# ---------------------------------------------------------------------------
+# Zip upload processing
+# ---------------------------------------------------------------------------
+
+# 3D model extensions to extract from zips (no .zip — no nested zips)
+_ZIP_MODEL_EXTENSIONS: set[str] = {
+    ".stl", ".obj", ".gltf", ".glb", ".3mf",
+    ".ply", ".dae", ".off", ".step", ".stp", ".fbx",
+}
+
+
+def extract_zip_metadata(zip_path: Path) -> dict:
+    """Extract metadata from a zip file based on its name and contents.
+
+    Detects Thingiverse zips (filenames like ``Model_Name_12345_files.zip``
+    or containing ``Attribution`` / ``license`` text files) and builds a
+    source URL.  Parses the zip name and any attribution/readme files
+    for tags, title, and source URL.
+
+    Returns dict with keys: title, source_url, tags, model_files, site.
+    """
+    meta: dict = {
+        "title": None,
+        "source_url": None,
+        "tags": [],
+        "model_files": [],
+        "site": None,
+    }
+
+    stem = zip_path.stem
+
+    # Detect Thingiverse zip patterns
+    # Pattern 1: "ModelName_12345_files" or "ModelName_12345"
+    tv_match = re.search(r"[_-](\d{4,})(?:_files)?$", stem)
+    if tv_match:
+        thing_id = tv_match.group(1)
+        meta["source_url"] = f"https://www.thingiverse.com/thing:{thing_id}"
+        meta["site"] = "thingiverse"
+        # Title: everything before the ID, cleaned up
+        title_part = stem[:tv_match.start()]
+        title_part = re.sub(r"[_\-]+", " ", title_part).strip()
+        if title_part:
+            meta["title"] = title_part
+
+    try:
+        with zipfile.ZipFile(str(zip_path), "r") as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = info.filename
+                # Skip macOS resource forks and hidden files
+                if name.startswith("__MACOSX/") or PurePosixPath(name).name.startswith("."):
+                    continue
+
+                ext = PurePosixPath(name).suffix.lower()
+                if ext in _ZIP_MODEL_EXTENSIONS:
+                    meta["model_files"].append(name)
+
+                # Look for attribution / readme / license files
+                basename_lower = PurePosixPath(name).name.lower()
+                if basename_lower in ("attribution.txt", "attribution_card.html", "readme.txt", "license.txt"):
+                    try:
+                        text = zf.read(name).decode("utf-8", errors="replace")
+                        _parse_attribution(text, meta)
+                    except Exception:
+                        pass
+    except zipfile.BadZipFile:
+        logger.warning("Corrupt zip: %s", zip_path)
+    except Exception:
+        logger.exception("Error reading zip: %s", zip_path)
+
+    # Fall back title from zip name
+    if not meta["title"]:
+        cleaned = re.sub(r"[_\-]+", " ", stem).strip()
+        if cleaned:
+            meta["title"] = cleaned
+
+    # Generate tags from zip name if none found
+    if not meta["tags"]:
+        from app.services.tagger import _split_filename
+        meta["tags"] = _split_filename(stem)
+
+    return meta
+
+
+def _parse_attribution(text: str, meta: dict) -> None:
+    """Parse Thingiverse attribution / readme text for metadata.
+
+    Typical Thingiverse ``Attribution_card.html`` or ``attribution.txt``
+    contains lines like:
+        Title: Model Name
+        URL: https://www.thingiverse.com/thing:12345
+        Creator: username
+        Tags: tag1, tag2, tag3
+    """
+    for line in text.split("\n"):
+        line = line.strip()
+        # Strip HTML tags
+        clean = re.sub(r"<[^>]+>", "", line).strip()
+        if not clean:
+            continue
+
+        # Look for key: value patterns
+        kv = re.match(r"^(Title|URL|Creator|Tags|Description)\s*:\s*(.+)", clean, re.IGNORECASE)
+        if not kv:
+            # Also try "thing:12345" URLs embedded anywhere
+            url_match = re.search(r"(https?://(?:www\.)?thingiverse\.com/thing[:/]\d+)", clean)
+            if url_match and not meta["source_url"]:
+                meta["source_url"] = url_match.group(1)
+                meta["site"] = "thingiverse"
+            # Check for printables URLs
+            url_match = re.search(r"(https?://(?:www\.)?printables\.com/model/\d+)", clean)
+            if url_match and not meta["source_url"]:
+                meta["source_url"] = url_match.group(1)
+                meta["site"] = "printables"
+            # Check for MakerWorld URLs
+            url_match = re.search(r"(https?://(?:www\.)?makerworld\.com/\S*models/\d+)", clean)
+            if url_match and not meta["source_url"]:
+                meta["source_url"] = url_match.group(1)
+                meta["site"] = "makerworld"
+            continue
+
+        key = kv.group(1).lower()
+        val = kv.group(2).strip()
+        if key == "title" and not meta["title"]:
+            meta["title"] = val
+        elif key == "url" and not meta["source_url"]:
+            meta["source_url"] = val
+            if "thingiverse" in val:
+                meta["site"] = "thingiverse"
+            elif "printables" in val:
+                meta["site"] = "printables"
+            elif "makerworld" in val:
+                meta["site"] = "makerworld"
+        elif key == "tags":
+            parsed = [t.strip() for t in val.split(",") if t.strip()]
+            meta["tags"].extend(parsed)
+        elif key == "creator":
+            meta["tags"].append(val)
+
+
+async def process_uploaded_zip(
+    zip_path: Path,
+    library_id: int,
+    library_path: str,
+    subfolder: str | None = None,
+    extra_tags: list[str] | None = None,
+) -> list[dict]:
+    """Extract model files from an uploaded zip and process each one.
+
+    Parses zip metadata (title, source URL, tags) from filename and
+    attribution files.  Returns a list of per-file result dicts.
+    """
+    meta = extract_zip_metadata(zip_path)
+    all_tags = list(meta["tags"])
+    if extra_tags:
+        for t in extra_tags:
+            if t not in all_tags:
+                all_tags.append(t)
+    if meta["site"]:
+        if meta["site"] not in all_tags:
+            all_tags.append(meta["site"])
+
+    results: list[dict] = []
+    if not meta["model_files"]:
+        results.append({
+            "filename": zip_path.name,
+            "status": "error",
+            "error": "No 3D model files found in zip",
+        })
+        return results
+
+    dest_dir = Path(library_path)
+    if subfolder:
+        dest_dir = dest_dir / subfolder
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(str(zip_path), "r") as zf:
+            for entry_name in meta["model_files"]:
+                entry_basename = PurePosixPath(entry_name).name
+                fname = _sanitize_filename(entry_basename)
+                dest = _deduplicate_path(dest_dir / fname)
+                try:
+                    data = zf.read(entry_name)
+                    with open(dest, "wb") as f:
+                        f.write(data)
+
+                    # Use zip title for single-file zips, filename for multi
+                    title = meta["title"] if len(meta["model_files"]) == 1 else None
+
+                    model_id = await process_imported_file(
+                        file_path=dest,
+                        library_id=library_id,
+                        source_url=meta["source_url"],
+                        scraped_title=title,
+                        scraped_tags=all_tags or None,
+                        subfolder=subfolder,
+                        library_path=library_path,
+                    )
+                    if model_id is not None:
+                        results.append({
+                            "filename": fname,
+                            "status": "ok",
+                            "model_id": model_id,
+                        })
+                    else:
+                        results.append({
+                            "filename": fname,
+                            "status": "error",
+                            "error": "Processing failed or duplicate",
+                        })
+                except Exception as e:
+                    logger.warning("Failed to process %s from zip: %s", entry_name, e)
+                    results.append({
+                        "filename": fname,
+                        "status": "error",
+                        "error": str(e),
+                    })
+    except zipfile.BadZipFile:
+        results.append({
+            "filename": zip_path.name,
+            "status": "error",
+            "error": "Corrupt or invalid zip file",
+        })
+    except Exception as e:
+        logger.exception("Error processing zip: %s", zip_path)
+        results.append({
+            "filename": zip_path.name,
+            "status": "error",
+            "error": str(e),
+        })
+
+    # Clean up the uploaded zip after extracting
+    try:
+        zip_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    logger.info(
+        "Processed zip %s: %d model(s), meta=%s",
+        zip_path.name, len([r for r in results if r["status"] == "ok"]),
+        {k: v for k, v in meta.items() if k != "model_files"},
+    )
+    return results
 
 
 # ---------------------------------------------------------------------------
