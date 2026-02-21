@@ -2100,7 +2100,19 @@ const app = createApp({
                                 {{ formatDimensions(selectedModel.dimensions_x, selectedModel.dimensions_y, selectedModel.dimensions_z) }}
                             </span>
                         </div>
-                        <div class="info-field" style="margin-top:4px">
+                        <div v-if="selectedModel.zip_path" class="info-field" style="margin-top:4px">
+                            <span class="field-label">Zip Archive</span>
+                            <span class="field-value field-value-path">
+                                {{ selectedModel.zip_path }}
+                            </span>
+                        </div>
+                        <div v-if="selectedModel.zip_entry" class="info-field">
+                            <span class="field-label">Zip Entry</span>
+                            <span class="field-value field-value-path">
+                                {{ selectedModel.zip_entry }}
+                            </span>
+                        </div>
+                        <div class="info-field" :style="selectedModel.zip_path ? {} : { 'margin-top': '4px' }">
                             <span class="field-label">Path</span>
                             <span class="field-value field-value-path">
                                 {{ selectedModel.file_path }}
