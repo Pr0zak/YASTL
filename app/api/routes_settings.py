@@ -25,6 +25,13 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     },
 }
 
+# Module-level regeneration progress state
+_regen_progress: dict = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+}
+
 
 @router.get("")
 async def get_settings():
@@ -74,6 +81,12 @@ async def regenerate_thumbnails(request: Request, background_tasks: BackgroundTa
 
     Runs in the background and returns immediately.
     """
+    if _regen_progress["running"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Thumbnail regeneration is already in progress",
+        )
+
     thumbnail_path = str(app_settings.MODEL_LIBRARY_THUMBNAIL_PATH)
     mode = await get_setting("thumbnail_mode", "wireframe")
     quality = await get_setting("thumbnail_quality", "fast")
@@ -81,6 +94,16 @@ async def regenerate_thumbnails(request: Request, background_tasks: BackgroundTa
     background_tasks.add_task(_regenerate_all_thumbnails, thumbnail_path, mode, quality)
 
     return {"detail": "Thumbnail regeneration started in background"}
+
+
+@router.get("/regenerate-thumbnails/status")
+async def regenerate_thumbnails_status():
+    """Return the current progress of thumbnail regeneration."""
+    return {
+        "running": _regen_progress["running"],
+        "total": _regen_progress["total"],
+        "completed": _regen_progress["completed"],
+    }
 
 
 async def _regenerate_all_thumbnails(
@@ -92,34 +115,43 @@ async def _regenerate_all_thumbnails(
         cursor = await db.execute("SELECT id, file_path FROM models")
         rows = await cursor.fetchall()
 
+    _regen_progress["running"] = True
+    _regen_progress["total"] = len(rows)
+    _regen_progress["completed"] = 0
+
     logger.info(
         "Regenerating thumbnails for %d models (mode=%s, quality=%s)",
         len(rows), mode, quality,
     )
 
-    for row in rows:
-        model_id = row["id"]
-        file_path = row["file_path"]
-        try:
-            thumb_filename: str | None = await loop.run_in_executor(
-                None,
-                thumbnail.generate_thumbnail,
-                file_path,
-                thumbnail_path,
-                model_id,
-                mode,
-                quality,
-            )
-            if thumb_filename is not None:
-                async with get_db() as db:
-                    await db.execute(
-                        "UPDATE models SET thumbnail_path = ? WHERE id = ?",
-                        (thumb_filename, model_id),
-                    )
-                    await db.commit()
-        except Exception as e:
-            logger.warning(
-                "Failed to regenerate thumbnail for model %d: %s", model_id, e
-            )
+    try:
+        for row in rows:
+            model_id = row["id"]
+            file_path = row["file_path"]
+            try:
+                thumb_filename: str | None = await loop.run_in_executor(
+                    None,
+                    thumbnail.generate_thumbnail,
+                    file_path,
+                    thumbnail_path,
+                    model_id,
+                    mode,
+                    quality,
+                )
+                if thumb_filename is not None:
+                    async with get_db() as db:
+                        await db.execute(
+                            "UPDATE models SET thumbnail_path = ?, thumbnail_mode = ?, thumbnail_quality = ?, thumbnail_generated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                            (thumb_filename, mode, quality, model_id),
+                        )
+                        await db.commit()
+            except Exception as e:
+                logger.warning(
+                    "Failed to regenerate thumbnail for model %d: %s", model_id, e
+                )
+            finally:
+                _regen_progress["completed"] += 1
+    finally:
+        _regen_progress["running"] = False
 
     logger.info("Thumbnail regeneration complete")

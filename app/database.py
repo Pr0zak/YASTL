@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS models (
     dimensions_y REAL,
     dimensions_z REAL,
     thumbnail_path TEXT,
+    thumbnail_mode TEXT,
+    thumbnail_quality TEXT,
+    thumbnail_generated_at TIMESTAMP,
     file_hash TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
@@ -209,6 +212,21 @@ async def init_db(db_path: str | Path | None = None) -> None:
                 )
             except Exception:
                 pass  # Column already exists or table just created with it
+
+        # Add thumbnail tracking columns
+        if "thumbnail_mode" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN thumbnail_mode TEXT"
+                )
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN thumbnail_quality TEXT"
+                )
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN thumbnail_generated_at TIMESTAMP"
+                )
+            except Exception:
+                pass  # Columns already exist or table just created with them
 
         # Create indexes on migrated columns (must run after migrations)
         for sql in _POST_MIGRATION_INDEXES:
