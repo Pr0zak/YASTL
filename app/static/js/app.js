@@ -70,6 +70,9 @@ const app = createApp({
         // Category expansion state (by category id)
         const expandedCategories = reactive({});
 
+        // Sidebar section collapse state (format starts collapsed)
+        const collapsedSections = reactive({ format: true });
+
         const filters = reactive({
             format: '',
             tag: '',
@@ -952,8 +955,9 @@ const app = createApp({
         /* ---- Click-outside handler for status menu ---- */
         function onDocumentClick(e) {
             if (showStatusMenu.value) {
-                const menu = document.querySelector('.status-wrapper');
-                if (menu && !menu.contains(e.target)) {
+                const wrapper = document.querySelector('.status-wrapper');
+                const menu = document.querySelector('.status-menu');
+                if (wrapper && !wrapper.contains(e.target) && (!menu || !menu.contains(e.target))) {
                     closeStatusMenu();
                 }
             }
@@ -995,6 +999,7 @@ const app = createApp({
             isEditingName,
             isEditingDesc,
             expandedCategories,
+            collapsedSections,
             filters,
             pagination,
             scanStatus,
@@ -1122,64 +1127,6 @@ const app = createApp({
                     <span v-html="ICONS.activity"></span>
                     <span class="status-dot" :class="statusDotClass(systemStatus.health)"></span>
                 </button>
-                <!-- Status Submenu -->
-                <div v-if="showStatusMenu" class="status-menu">
-                    <div class="status-menu-header">
-                        <span>System Status</span>
-                        <span class="status-badge" :class="statusDotClass(systemStatus.health)">
-                            {{ statusLabel(systemStatus.health) }}
-                        </span>
-                    </div>
-                    <div class="status-menu-items">
-                        <!-- Scanner -->
-                        <div class="status-menu-item">
-                            <span class="status-item-icon" v-html="ICONS.scan"></span>
-                            <span class="status-item-label">Scanner</span>
-                            <span class="status-item-value" :class="statusDotClass(systemStatus.scanner.status)">
-                                {{ statusLabel(systemStatus.scanner.status) }}
-                            </span>
-                        </div>
-                        <div v-if="systemStatus.scanner.is_scanning" class="status-menu-detail">
-                            {{ systemStatus.scanner.processed_files }} / {{ systemStatus.scanner.total_files }} files
-                        </div>
-
-                        <!-- File Watcher -->
-                        <div class="status-menu-item">
-                            <span class="status-item-icon" v-html="ICONS.eye"></span>
-                            <span class="status-item-label">File Watcher</span>
-                            <span class="status-item-value" :class="statusDotClass(systemStatus.watcher.status)">
-                                {{ statusLabel(systemStatus.watcher.status) }}
-                            </span>
-                        </div>
-                        <div v-if="systemStatus.watcher.watched_count" class="status-menu-detail">
-                            {{ systemStatus.watcher.watched_count }} path{{ systemStatus.watcher.watched_count !== 1 ? 's' : '' }} monitored
-                        </div>
-
-                        <!-- Database -->
-                        <div class="status-menu-item">
-                            <span class="status-item-icon" v-html="ICONS.database"></span>
-                            <span class="status-item-label">Database</span>
-                            <span class="status-item-value" :class="statusDotClass(systemStatus.database.status)">
-                                {{ statusLabel(systemStatus.database.status) }}
-                            </span>
-                        </div>
-                        <div v-if="systemStatus.database.total_models != null" class="status-menu-detail">
-                            {{ systemStatus.database.total_models }} models &middot; {{ systemStatus.database.total_libraries }} libraries
-                        </div>
-
-                        <!-- Thumbnails -->
-                        <div class="status-menu-item">
-                            <span class="status-item-icon" v-html="ICONS.image"></span>
-                            <span class="status-item-label">Thumbnails</span>
-                            <span class="status-item-value" :class="statusDotClass(systemStatus.thumbnails.status)">
-                                {{ statusLabel(systemStatus.thumbnails.status) }}
-                            </span>
-                        </div>
-                        <div v-if="systemStatus.thumbnails.total_cached != null" class="status-menu-detail">
-                            {{ systemStatus.thumbnails.total_cached }} cached
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <button class="btn-icon" @click="openSettings" title="Settings" v-html="ICONS.settings"></button>
@@ -1251,16 +1198,26 @@ const app = createApp({
                 </div>
             </div>
 
-            <!-- Format Filters -->
+            <!-- Format Filters (collapsible) -->
             <div class="sidebar-section">
-                <div class="sidebar-section-title">Format</div>
-                <label v-for="fmt in ['stl','obj','gltf','glb','3mf','step','stp','ply','fbx','dae','off']"
-                       :key="fmt"
-                       class="checkbox-item"
-                       @click.prevent="setFormatFilter(fmt)">
-                    <input type="checkbox" :checked="filters.format === fmt" readonly>
-                    <span class="format-badge" :class="formatClass(fmt)">{{ fmt.toUpperCase() }}</span>
-                </label>
+                <div class="sidebar-section-title sidebar-section-toggle"
+                     @click="collapsedSections.format = !collapsedSections.format">
+                    <span>Format</span>
+                    <span v-if="filters.format" class="sidebar-section-active-badge">
+                        {{ filters.format.toUpperCase() }}
+                    </span>
+                    <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.format }"
+                          v-html="ICONS.chevron"></span>
+                </div>
+                <template v-if="!collapsedSections.format">
+                    <label v-for="fmt in ['stl','obj','gltf','glb','3mf','step','stp','ply','fbx','dae','off']"
+                           :key="fmt"
+                           class="checkbox-item"
+                           @click.prevent="setFormatFilter(fmt)">
+                        <input type="checkbox" :checked="filters.format === fmt" readonly>
+                        <span class="format-badge" :class="formatClass(fmt)">{{ fmt.toUpperCase() }}</span>
+                    </label>
+                </template>
             </div>
 
             <!-- Tags -->
@@ -1886,6 +1843,70 @@ const app = createApp({
             </div>
         </div>
     </div>
+
+    <!-- ============================================================
+         Status Menu (teleported to body to avoid navbar stacking context)
+         ============================================================ -->
+    <teleport to="body">
+        <div v-if="showStatusMenu" class="status-menu-backdrop" @click="showStatusMenu = false"></div>
+        <div v-if="showStatusMenu" class="status-menu" @click.stop>
+            <div class="status-menu-header">
+                <span>System Status</span>
+                <span class="status-badge" :class="statusDotClass(systemStatus.health)">
+                    {{ statusLabel(systemStatus.health) }}
+                </span>
+            </div>
+            <div class="status-menu-items">
+                <!-- Scanner -->
+                <div class="status-menu-item">
+                    <span class="status-item-icon" v-html="ICONS.scan"></span>
+                    <span class="status-item-label">Scanner</span>
+                    <span class="status-item-value" :class="statusDotClass(systemStatus.scanner.status)">
+                        {{ statusLabel(systemStatus.scanner.status) }}
+                    </span>
+                </div>
+                <div v-if="systemStatus.scanner.is_scanning" class="status-menu-detail">
+                    {{ systemStatus.scanner.processed_files }} / {{ systemStatus.scanner.total_files }} files
+                </div>
+
+                <!-- File Watcher -->
+                <div class="status-menu-item">
+                    <span class="status-item-icon" v-html="ICONS.eye"></span>
+                    <span class="status-item-label">File Watcher</span>
+                    <span class="status-item-value" :class="statusDotClass(systemStatus.watcher.status)">
+                        {{ statusLabel(systemStatus.watcher.status) }}
+                    </span>
+                </div>
+                <div v-if="systemStatus.watcher.watched_count" class="status-menu-detail">
+                    {{ systemStatus.watcher.watched_count }} path{{ systemStatus.watcher.watched_count !== 1 ? 's' : '' }} monitored
+                </div>
+
+                <!-- Database -->
+                <div class="status-menu-item">
+                    <span class="status-item-icon" v-html="ICONS.database"></span>
+                    <span class="status-item-label">Database</span>
+                    <span class="status-item-value" :class="statusDotClass(systemStatus.database.status)">
+                        {{ statusLabel(systemStatus.database.status) }}
+                    </span>
+                </div>
+                <div v-if="systemStatus.database.total_models != null" class="status-menu-detail">
+                    {{ systemStatus.database.total_models }} models &middot; {{ systemStatus.database.total_libraries }} libraries
+                </div>
+
+                <!-- Thumbnails -->
+                <div class="status-menu-item">
+                    <span class="status-item-icon" v-html="ICONS.image"></span>
+                    <span class="status-item-label">Thumbnails</span>
+                    <span class="status-item-value" :class="statusDotClass(systemStatus.thumbnails.status)">
+                        {{ statusLabel(systemStatus.thumbnails.status) }}
+                    </span>
+                </div>
+                <div v-if="systemStatus.thumbnails.total_cached != null" class="status-menu-detail">
+                    {{ systemStatus.thumbnails.total_cached }} cached
+                </div>
+            </div>
+        </div>
+    </teleport>
 
     <!-- ============================================================
          Toast Notifications

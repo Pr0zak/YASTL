@@ -381,6 +381,40 @@ img {
     border-bottom: 1px solid var(--border);
 }
 
+.sidebar-section-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sidebar-section-toggle:hover {
+    color: var(--text-secondary);
+}
+
+.sidebar-section-chevron {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    width: 12px;
+    height: 12px;
+    transition: transform var(--transition);
+}
+
+.sidebar-section-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+.sidebar-section-active-badge {
+    margin-left: 6px;
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    letter-spacing: 0.3px;
+}
+
 .sidebar-item {
     display: flex;
     align-items: center;
@@ -1689,8 +1723,6 @@ img {
 
     /* Status menu full-width on mobile */
     .status-menu {
-        position: fixed;
-        top: 56px;
         left: 0;
         right: 0;
         width: auto;
@@ -1882,11 +1914,17 @@ img {
     background: var(--text-muted);
 }
 
-/* Status dropdown menu */
+/* Status dropdown menu (teleported to body) */
+.status-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1099;
+}
+
 .status-menu {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
+    position: fixed;
+    top: 56px;
+    right: 20px;
     width: 280px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -1895,6 +1933,8 @@ img {
     z-index: 1100;
     animation: fadeIn 0.15s ease;
     overflow: hidden;
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
 }
 
 .status-menu-header {
