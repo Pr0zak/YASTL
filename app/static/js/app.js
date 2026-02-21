@@ -206,6 +206,7 @@ const app = createApp({
 
         // Import credentials
         const importCredentials = ref({});
+        const credentialInputs = reactive({});
 
         /* ---- Computed ---- */
         const hasLibraries = computed(() => libraries.value.length > 0);
@@ -728,7 +729,12 @@ const app = createApp({
             }
         }
 
-        async function saveImportCredential(site, key, value) {
+        async function saveImportCredential(site, key) {
+            const value = (credentialInputs[site] || '').trim();
+            if (!value) {
+                showToast('Please enter a value first', 'error');
+                return;
+            }
             try {
                 const creds = {};
                 creds[key] = value;
@@ -739,6 +745,7 @@ const app = createApp({
                 });
                 if (res.ok) {
                     importCredentials.value = await res.json();
+                    credentialInputs[site] = '';
                     showToast(`${site} credentials saved`);
                 } else {
                     const data = await res.json();
@@ -1850,6 +1857,7 @@ const app = createApp({
             importPreview,
             importProgress,
             importCredentials,
+            credentialInputs,
 
             // Computed
             scanProgress,
@@ -2789,21 +2797,21 @@ const app = createApp({
                             <div v-if="site === 'thingiverse'" class="form-row">
                                 <label class="form-label">API Key</label>
                                 <div style="display:flex;gap:6px">
-                                    <input type="password" class="form-input" :placeholder="importCredentials.thingiverse ? importCredentials.thingiverse.api_key || 'Not set' : 'Not set'"
-                                           :id="'cred-' + site"
+                                    <input type="text" class="form-input" v-model="credentialInputs[site]"
+                                           :placeholder="importCredentials.thingiverse ? importCredentials.thingiverse.api_key || 'Not set' : 'Not set'"
                                            style="flex:1">
                                     <button class="btn btn-sm btn-primary"
-                                            @click="saveImportCredential(site, 'api_key', document.getElementById('cred-' + site).value)">Save</button>
+                                            @click="saveImportCredential(site, 'api_key')">Save</button>
                                 </div>
                             </div>
                             <div v-else class="form-row">
                                 <label class="form-label">Cookie</label>
                                 <div style="display:flex;gap:6px">
-                                    <input type="password" class="form-input" :placeholder="importCredentials[site] ? importCredentials[site].cookie || 'Not set' : 'Not set'"
-                                           :id="'cred-' + site"
+                                    <input type="text" class="form-input" v-model="credentialInputs[site]"
+                                           :placeholder="importCredentials[site] ? importCredentials[site].cookie || 'Not set' : 'Not set'"
                                            style="flex:1">
                                     <button class="btn btn-sm btn-primary"
-                                            @click="saveImportCredential(site, 'cookie', document.getElementById('cred-' + site).value)">Save</button>
+                                            @click="saveImportCredential(site, 'cookie')">Save</button>
                                 </div>
                                 <div v-if="site === 'makerworld'" class="text-muted" style="font-size:0.7rem;margin-top:4px">
                                     Required for MakerWorld (Cloudflare-protected). In your browser: log in, press F12 → Application → Cookies → copy all cookie values.
