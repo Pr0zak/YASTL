@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 import aiosqlite
 import os
+from pathlib import Path
 import trimesh
 
 from app.config import settings
@@ -478,6 +480,86 @@ async def update_model(request: Request, model_id: int):
 
         model = await _fetch_model_with_relations(db, model_id)
 
+    return model
+
+
+# ---------------------------------------------------------------------------
+# Rename file on disk
+# ---------------------------------------------------------------------------
+
+
+def _sanitize_filename(name: str) -> str:
+    """Clean a string for use as a filename."""
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
+    name = name.strip(". ")
+    return name or "model"
+
+
+@router.post("/{model_id}/rename-file")
+async def rename_model_file(request: Request, model_id: int):
+    """Rename the actual file on disk based on the model's display name.
+
+    Preserves the original file extension. Updates file_path in the database.
+    Does not work for zip-embedded models.
+    """
+    db_path = _get_db_path(request)
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys=ON")
+
+        model = await _fetch_model_with_relations(db, model_id)
+        if model is None:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+        if model.get("zip_path"):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot rename files inside zip archives",
+            )
+
+        old_path = Path(model["file_path"])
+        if not old_path.exists():
+            raise HTTPException(status_code=404, detail="File not found on disk")
+
+        # Build new filename from model name
+        new_stem = _sanitize_filename(model["name"])
+        ext = old_path.suffix  # preserve original extension
+        new_name = f"{new_stem}{ext}"
+        new_path = old_path.parent / new_name
+
+        # Avoid overwriting existing files
+        if new_path != old_path and new_path.exists():
+            counter = 1
+            while True:
+                candidate = old_path.parent / f"{new_stem}_{counter}{ext}"
+                if not candidate.exists():
+                    new_path = candidate
+                    break
+                counter += 1
+
+        if new_path == old_path:
+            return {**model, "detail": "File already has this name"}
+
+        # Rename on disk
+        try:
+            old_path.rename(new_path)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Rename failed: {e}")
+
+        # Update database
+        await db.execute(
+            "UPDATE models SET file_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (str(new_path), model_id),
+        )
+
+        from app.database import update_fts_for_model
+        await update_fts_for_model(db, model_id)
+        await db.commit()
+
+        model = await _fetch_model_with_relations(db, model_id)
+
+    logger.info("Renamed file: %s -> %s", old_path, new_path)
     return model
 
 

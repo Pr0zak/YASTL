@@ -2087,6 +2087,17 @@ img {
     box-shadow: 0 0 0 2px var(--bg-primary);
 }
 
+.color-swatch-sm {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+}
+
+.inline-new-collection {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+}
+
 .collection-dot {
     width: 10px;
     height: 10px;
