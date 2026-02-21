@@ -9,7 +9,7 @@ import aiosqlite
 
 from app.config import settings as app_settings
 from app.database import get_db, get_setting, update_fts_for_model
-from app.services import hasher, processor, thumbnail
+from app.services import hasher, processor, thumbnail, zip_handler
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ async def _repair_incomplete_models() -> None:
 
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT id, file_path FROM models "
+            "SELECT id, file_path, zip_path, zip_entry FROM models "
             "WHERE vertex_count IS NULL OR thumbnail_path IS NULL"
         )
         rows = await cursor.fetchall()
@@ -179,28 +179,57 @@ async def _repair_incomplete_models() -> None:
     for row in rows:
         model_id = row["id"]
         file_path = row["file_path"]
+        zip_path_val = row.get("zip_path")
+        zip_entry_val = row.get("zip_entry")
 
-        if not os.path.exists(file_path):
-            logger.warning("Repair: file missing for model %d: %s", model_id, file_path)
-            errors += 1
-            continue
+        # Determine the actual file to process
+        tmp_path = None
+        if zip_path_val and zip_entry_val:
+            if not os.path.exists(zip_path_val):
+                logger.warning(
+                    "Repair: zip missing for model %d: %s", model_id, zip_path_val
+                )
+                errors += 1
+                continue
+            try:
+                tmp_path = await loop.run_in_executor(
+                    None,
+                    zip_handler.extract_entry_to_temp,
+                    zip_path_val,
+                    zip_entry_val,
+                )
+                actual_path = str(tmp_path)
+            except Exception:
+                logger.exception(
+                    "Repair: failed to extract zip entry for model %d", model_id
+                )
+                errors += 1
+                continue
+        else:
+            if not os.path.exists(file_path):
+                logger.warning(
+                    "Repair: file missing for model %d: %s", model_id, file_path
+                )
+                errors += 1
+                continue
+            actual_path = file_path
 
         try:
             # Re-extract metadata
             metadata = await loop.run_in_executor(
-                None, processor.extract_metadata, file_path
+                None, processor.extract_metadata, actual_path
             )
 
             # Re-compute file hash
             file_hash = await loop.run_in_executor(
-                None, hasher.compute_file_hash, file_path
+                None, hasher.compute_file_hash, actual_path
             )
 
             # Re-generate thumbnail
             thumb_filename = await loop.run_in_executor(
                 None,
                 thumbnail.generate_thumbnail,
-                file_path,
+                actual_path,
                 thumbnail_path,
                 model_id,
                 thumb_mode,
@@ -239,6 +268,13 @@ async def _repair_incomplete_models() -> None:
         except Exception:
             logger.exception("Repair: failed to reprocess model %d", model_id)
             errors += 1
+        finally:
+            # Clean up temp file from zip extraction
+            if tmp_path is not None and tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
 
     logger.info(
         "Repair complete: %d repaired, %d errors out of %d total",

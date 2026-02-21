@@ -20,7 +20,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from app.database import get_setting, update_fts_for_model
-from app.services import hasher, processor, thumbnail
+from app.services import hasher, processor, thumbnail, zip_handler
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,8 @@ class _DebouncedHandler(FileSystemEventHandler):
     # ---- internal ------------------------------------------------------
 
     def _is_supported(self, path: str) -> bool:
-        return Path(path).suffix.lower() in self._supported_extensions
+        suffix = Path(path).suffix.lower()
+        return suffix in self._supported_extensions or suffix == ".zip"
 
     def _enqueue(self, event: FileSystemEvent) -> None:
         src = event.src_path
@@ -114,9 +115,7 @@ class _DebouncedHandler(FileSystemEventHandler):
                 try:
                     self._callback(event)
                 except Exception:
-                    logger.exception(
-                        "Error dispatching watcher event %s", event
-                    )
+                    logger.exception("Error dispatching watcher event %s", event)
 
     def stop(self) -> None:
         """Signal the debounce timer thread to exit."""
@@ -201,9 +200,7 @@ class ModelFileWatcher:
             logger.warning("Cannot watch non-existent directory: %s", path_str)
             return
 
-        watch = self._observer.schedule(
-            self._handler, path=path_str, recursive=True
-        )
+        watch = self._observer.schedule(self._handler, path=path_str, recursive=True)
         self._watched_paths.add(path_str)
         self._watches[path_str] = watch
         logger.info("File watcher watching: %s", path_str)
@@ -250,7 +247,9 @@ class ModelFileWatcher:
             "Watcher event: %s  src=%s%s",
             event_type,
             event.src_path,
-            f"  dest={event.dest_path}" if hasattr(event, "dest_path") and event.event_type == "moved" else "",
+            f"  dest={event.dest_path}"
+            if hasattr(event, "dest_path") and event.event_type == "moved"
+            else "",
         )
 
         coro = self._handle_event(event)
@@ -309,6 +308,11 @@ class ModelFileWatcher:
 
     async def _on_created(self, src_path: str) -> None:
         """A new supported file appeared -- extract metadata and insert."""
+        # Delegate to zip handler if this is a zip archive
+        if Path(src_path).suffix.lower() == ".zip":
+            await self._on_zip_created(src_path)
+            return
+
         logger.info("New file detected: %s", src_path)
 
         db = await self._get_db()
@@ -413,6 +417,10 @@ class ModelFileWatcher:
 
     async def _on_modified(self, src_path: str) -> None:
         """An existing file was modified -- refresh its metadata."""
+        if Path(src_path).suffix.lower() == ".zip":
+            await self._on_zip_modified(src_path)
+            return
+
         logger.info("File modified: %s", src_path)
 
         db = await self._get_db()
@@ -487,7 +495,9 @@ class ModelFileWatcher:
             await update_fts_for_model(db, model_id)
 
             await db.commit()
-            logger.info("Updated metadata for modified file: id=%d  %s", model_id, src_path)
+            logger.info(
+                "Updated metadata for modified file: id=%d  %s", model_id, src_path
+            )
         finally:
             await db.close()
 
@@ -495,6 +505,10 @@ class ModelFileWatcher:
 
     async def _on_deleted(self, src_path: str) -> None:
         """A tracked file was deleted -- remove from DB and clean up thumbnail."""
+        if Path(src_path).suffix.lower() == ".zip":
+            await self._on_zip_deleted(src_path)
+            return
+
         logger.info("File deleted: %s", src_path)
 
         db = await self._get_db()
@@ -509,7 +523,9 @@ class ModelFileWatcher:
                 return
 
             model_id = row[0] if not isinstance(row, dict) else row["id"]
-            thumb_path = row[1] if not isinstance(row, dict) else row.get("thumbnail_path")
+            thumb_path = (
+                row[1] if not isinstance(row, dict) else row.get("thumbnail_path")
+            )
 
             # Delete thumbnail file if it exists
             if thumb_path:
@@ -524,9 +540,7 @@ class ModelFileWatcher:
                         )
 
             # Remove FTS entry
-            await db.execute(
-                "DELETE FROM models_fts WHERE rowid = ?", (model_id,)
-            )
+            await db.execute("DELETE FROM models_fts WHERE rowid = ?", (model_id,))
 
             # Remove model (cascades to model_categories and model_tags)
             await db.execute("DELETE FROM models WHERE id = ?", (model_id,))
@@ -545,6 +559,14 @@ class ModelFileWatcher:
             return
 
         logger.info("File moved: %s -> %s", src_path, dest_path)
+
+        # Handle zip moves
+        if (
+            Path(src_path).suffix.lower() == ".zip"
+            or Path(dest_path).suffix.lower() == ".zip"
+        ):
+            await self._on_zip_moved(src_path, dest_path)
+            return
 
         # If destination extension is not supported, treat as deletion
         if Path(dest_path).suffix.lower() not in self.supported_extensions:
@@ -591,6 +613,262 @@ class ModelFileWatcher:
             )
         finally:
             await db.close()
+
+    # ------------------------------------------------------------------
+    # Zip archive handlers
+    # ------------------------------------------------------------------
+
+    async def _on_zip_created(self, zip_path: str) -> None:
+        """A new zip file appeared -- scan for model entries and index them."""
+        logger.info("New zip file detected: %s", zip_path)
+
+        loop = asyncio.get_running_loop()
+        entries = await loop.run_in_executor(
+            None,
+            zip_handler.list_models_in_zip,
+            zip_path,
+            self.supported_extensions,
+        )
+
+        if not entries:
+            logger.debug("No model files found in zip: %s", zip_path)
+            return
+
+        library_id = None
+        library_root = self._find_library_root(zip_path)
+
+        db = await self._get_db()
+        try:
+            if library_root:
+                cursor = await db.execute(
+                    "SELECT id FROM libraries WHERE path = ?", (library_root,)
+                )
+                lib_row = await cursor.fetchone()
+                if lib_row:
+                    library_id = dict(lib_row)["id"]
+
+            for entry_name in entries:
+                try:
+                    await self._process_zip_entry(
+                        db, zip_path, entry_name, loop, library_id, library_root
+                    )
+                except Exception:
+                    logger.exception(
+                        "Error processing zip entry %s in %s", entry_name, zip_path
+                    )
+
+            await db.commit()
+            logger.info(
+                "Indexed %d entries from zip via watcher: %s", len(entries), zip_path
+            )
+        finally:
+            await db.close()
+
+    async def _on_zip_modified(self, zip_path: str) -> None:
+        """A zip file was modified -- remove old entries and re-scan."""
+        logger.info("Zip file modified: %s", zip_path)
+        # Simple approach: delete all entries for this zip and re-index
+        await self._on_zip_deleted(zip_path)
+        if os.path.exists(zip_path):
+            await self._on_zip_created(zip_path)
+
+    async def _on_zip_deleted(self, zip_path: str) -> None:
+        """A zip file was deleted -- remove all models from this zip."""
+        logger.info("Zip file deleted: %s", zip_path)
+
+        db = await self._get_db()
+        try:
+            cursor = await db.execute(
+                "SELECT id, thumbnail_path FROM models WHERE zip_path = ?",
+                (zip_path,),
+            )
+            rows = await cursor.fetchall()
+
+            if not rows:
+                logger.debug("No models in database for zip: %s", zip_path)
+                return
+
+            for row in rows:
+                model_id = row[0] if not isinstance(row, dict) else row["id"]
+                thumb_path = (
+                    row[1] if not isinstance(row, dict) else row.get("thumbnail_path")
+                )
+
+                # Delete thumbnail
+                if thumb_path:
+                    full_thumb = Path(self.thumbnail_path) / thumb_path
+                    if full_thumb.exists():
+                        try:
+                            full_thumb.unlink()
+                        except OSError:
+                            pass
+
+                # Clean up zip cache
+                zip_handler.cleanup_zip_cache(self.thumbnail_path, model_id)
+
+                # Remove FTS entry
+                await db.execute("DELETE FROM models_fts WHERE rowid = ?", (model_id,))
+
+                # Remove model
+                await db.execute("DELETE FROM models WHERE id = ?", (model_id,))
+
+            await db.commit()
+            logger.info("Removed %d models from deleted zip: %s", len(rows), zip_path)
+        finally:
+            await db.close()
+
+    async def _on_zip_moved(self, src_path: str, dest_path: str) -> None:
+        """A zip file was moved -- update zip_path and file_path for all entries."""
+        logger.info("Zip file moved: %s -> %s", src_path, dest_path)
+
+        # If destination is not a zip, treat as deletion
+        if Path(dest_path).suffix.lower() != ".zip":
+            await self._on_zip_deleted(src_path)
+            return
+
+        db = await self._get_db()
+        try:
+            cursor = await db.execute(
+                "SELECT id, zip_entry FROM models WHERE zip_path = ?",
+                (src_path,),
+            )
+            rows = await cursor.fetchall()
+
+            if not rows:
+                # Not tracked -- treat as new
+                await db.close()
+                await self._on_zip_created(dest_path)
+                return
+
+            for row in rows:
+                model_id = row[0] if not isinstance(row, dict) else row["id"]
+                entry_name = row[1] if not isinstance(row, dict) else row["zip_entry"]
+                new_file_path = zip_handler.make_zip_file_path(dest_path, entry_name)
+
+                await db.execute(
+                    """
+                    UPDATE models SET
+                        zip_path = ?,
+                        file_path = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (dest_path, new_file_path, model_id),
+                )
+
+            await db.commit()
+            logger.info(
+                "Updated %d models for moved zip: %s -> %s",
+                len(rows),
+                src_path,
+                dest_path,
+            )
+        finally:
+            await db.close()
+
+    async def _process_zip_entry(
+        self,
+        db: aiosqlite.Connection,
+        zip_path: str,
+        entry_name: str,
+        loop: asyncio.AbstractEventLoop,
+        library_id: int | None,
+        library_root: str | None,
+    ) -> bool:
+        """Process a single model entry inside a zip archive for the watcher."""
+        synthetic_path = zip_handler.make_zip_file_path(zip_path, entry_name)
+
+        # Skip if already indexed
+        cursor = await db.execute(
+            "SELECT id FROM models WHERE file_path = ?", (synthetic_path,)
+        )
+        if await cursor.fetchone() is not None:
+            return False
+
+        # Extract to temp file
+        tmp_path: Path | None = None
+        try:
+            tmp_path = await loop.run_in_executor(
+                None, zip_handler.extract_entry_to_temp, zip_path, entry_name
+            )
+            tmp_path_str = str(tmp_path)
+
+            metadata: dict = await loop.run_in_executor(
+                None, processor.extract_metadata, tmp_path_str
+            )
+            file_hash: str = await loop.run_in_executor(
+                None, hasher.compute_file_hash, tmp_path_str
+            )
+
+            from pathlib import PurePosixPath
+
+            entry_p = PurePosixPath(entry_name)
+            name = entry_p.stem
+            file_format = metadata.get(
+                "file_format",
+                entry_p.suffix.lower().lstrip(".").upper(),
+            )
+            file_size = metadata.get("file_size") or os.path.getsize(tmp_path)
+
+            cursor = await db.execute(
+                """
+                INSERT INTO models (
+                    name, description, file_path, file_format, file_size,
+                    file_hash, vertex_count, face_count,
+                    dimensions_x, dimensions_y, dimensions_z,
+                    thumbnail_path, library_id, zip_path, zip_entry
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    "",
+                    synthetic_path,
+                    file_format,
+                    file_size,
+                    file_hash,
+                    metadata.get("vertex_count"),
+                    metadata.get("face_count"),
+                    metadata.get("dimensions_x"),
+                    metadata.get("dimensions_y"),
+                    metadata.get("dimensions_z"),
+                    None,
+                    library_id,
+                    zip_path,
+                    entry_name,
+                ),
+            )
+            model_id = cursor.lastrowid
+
+            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+            thumb_filename: str | None = await loop.run_in_executor(
+                None,
+                thumbnail.generate_thumbnail,
+                tmp_path_str,
+                self.thumbnail_path,
+                model_id,
+                thumb_mode,
+            )
+            if thumb_filename is not None:
+                await db.execute(
+                    "UPDATE models SET thumbnail_path = ? WHERE id = ?",
+                    (thumb_filename, model_id),
+                )
+
+            await update_fts_for_model(db, model_id)
+
+            logger.debug(
+                "Indexed zip entry via watcher id=%d  %s::%s",
+                model_id,
+                zip_path,
+                entry_name,
+            )
+            return True
+        finally:
+            if tmp_path is not None and tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
 
     # ------------------------------------------------------------------
     # Category helpers (mirrors Scanner._create_categories_from_path)
