@@ -2692,4 +2692,65 @@ img {
         max-width: none;
         flex: 1;
     }
+
+    .col-thumb-status {
+        display: none;
+    }
+}
+
+/* ============================================================
+   Thumbnail Status Dots
+   ============================================================ */
+
+.thumb-status-dot {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0, 0, 0, 0.3);
+    z-index: 2;
+    pointer-events: auto;
+    cursor: help;
+}
+
+.thumb-status-dot-inline {
+    position: static;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.thumb-status-current {
+    background: var(--success);
+    box-shadow: 0 0 4px var(--success);
+}
+
+.thumb-status-stale {
+    background: var(--warning);
+    box-shadow: 0 0 4px var(--warning);
+}
+
+.thumb-status-missing {
+    background: var(--danger);
+    box-shadow: 0 0 4px var(--danger);
+}
+
+/* ============================================================
+   Regeneration Progress Bar
+   ============================================================ */
+
+.regen-progress-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--bg-primary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.regen-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.4s ease;
 }

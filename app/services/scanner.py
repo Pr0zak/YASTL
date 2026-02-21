@@ -460,6 +460,7 @@ class Scanner:
 
         # Generate thumbnail (CPU-bound -- run in executor)
         thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+        thumb_quality = await get_setting("thumbnail_quality", "fast")
         thumb_filename: str | None = await loop.run_in_executor(
             None,
             thumbnail.generate_thumbnail,
@@ -467,13 +468,14 @@ class Scanner:
             self.thumbnail_path,
             model_id,
             thumb_mode,
+            thumb_quality,
         )
 
-        # Update the model row with the thumbnail path
+        # Update the model row with the thumbnail path and tracking columns
         if thumb_filename is not None:
             await db.execute(
-                "UPDATE models SET thumbnail_path = ? WHERE id = ?",
-                (thumb_filename, model_id),
+                "UPDATE models SET thumbnail_path = ?, thumbnail_mode = ?, thumbnail_quality = ?, thumbnail_generated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (thumb_filename, thumb_mode, thumb_quality, model_id),
             )
 
         # Auto-create categories from directory structure
@@ -578,6 +580,7 @@ class Scanner:
 
             # Generate thumbnail
             thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+            thumb_quality = await get_setting("thumbnail_quality", "fast")
             thumb_filename: str | None = await loop.run_in_executor(
                 None,
                 thumbnail.generate_thumbnail,
@@ -585,12 +588,13 @@ class Scanner:
                 self.thumbnail_path,
                 model_id,
                 thumb_mode,
+                thumb_quality,
             )
 
             if thumb_filename is not None:
                 await db.execute(
-                    "UPDATE models SET thumbnail_path = ? WHERE id = ?",
-                    (thumb_filename, model_id),
+                    "UPDATE models SET thumbnail_path = ?, thumbnail_mode = ?, thumbnail_quality = ?, thumbnail_generated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (thumb_filename, thumb_mode, thumb_quality, model_id),
                 )
 
             # Categories: use zip file's directory + entry's internal path

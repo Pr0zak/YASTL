@@ -118,6 +118,14 @@ const app = createApp({
         const thumbnailQuality = ref('fast');
         const regeneratingThumbnails = ref(false);
 
+        // Thumbnail regeneration progress
+        const regenProgress = reactive({
+            running: false,
+            total: 0,
+            completed: 0,
+        });
+        let regenPollTimer = null;
+
         // Update system
         const updateInfo = reactive({
             checked: false,
@@ -532,16 +540,40 @@ const app = createApp({
                 const res = await fetch('/api/settings/regenerate-thumbnails', { method: 'POST' });
                 if (res.ok) {
                     showToast('Thumbnail regeneration started', 'info');
+                    startRegenPolling();
                 } else {
                     const data = await res.json();
                     showToast(data.detail || 'Failed to start regeneration', 'error');
+                    regeneratingThumbnails.value = false;
                 }
             } catch (err) {
                 showToast('Failed to start thumbnail regeneration', 'error');
                 console.error('regenerateThumbnails error:', err);
-            } finally {
                 regeneratingThumbnails.value = false;
             }
+        }
+
+        function startRegenPolling() {
+            if (regenPollTimer) clearInterval(regenPollTimer);
+            regenPollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/settings/regenerate-thumbnails/status');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    regenProgress.running = data.running;
+                    regenProgress.total = data.total;
+                    regenProgress.completed = data.completed;
+                    if (!data.running) {
+                        clearInterval(regenPollTimer);
+                        regenPollTimer = null;
+                        regeneratingThumbnails.value = false;
+                        showToast('Thumbnail regeneration complete');
+                        fetchModels();
+                    }
+                } catch (err) {
+                    console.error('regenPoll error:', err);
+                }
+            }, 2000);
         }
 
         function openSettings() {
@@ -986,6 +1018,28 @@ const app = createApp({
             if (fallback) fallback.style.display = 'flex';
         }
 
+        function thumbnailStatus(model) {
+            if (!model.thumbnail_path) return 'missing';
+            if (!model.thumbnail_mode && !model.thumbnail_quality) return 'stale';
+            if (model.thumbnail_mode !== thumbnailMode.value ||
+                model.thumbnail_quality !== thumbnailQuality.value) return 'stale';
+            return 'current';
+        }
+
+        function thumbStatusClass(model) {
+            const s = thumbnailStatus(model);
+            if (s === 'current') return 'thumb-status-current';
+            if (s === 'stale') return 'thumb-status-stale';
+            return 'thumb-status-missing';
+        }
+
+        function thumbStatusTitle(model) {
+            const s = thumbnailStatus(model);
+            if (s === 'current') return 'Thumbnail is up to date';
+            if (s === 'stale') return 'Thumbnail was generated with different settings';
+            return 'No thumbnail';
+        }
+
         /* ---- Toast notifications ---- */
         function showToast(message, type = 'success') {
             const id = Date.now() + Math.random();
@@ -1403,6 +1457,7 @@ const app = createApp({
             thumbnailMode,
             thumbnailQuality,
             regeneratingThumbnails,
+            regenProgress,
             showStatusMenu,
             systemStatus,
             collections,
@@ -1457,6 +1512,9 @@ const app = createApp({
             setThumbnailMode,
             setThumbnailQuality,
             regenerateThumbnails,
+            thumbnailStatus,
+            thumbStatusClass,
+            thumbStatusTitle,
             checkForUpdates,
             applyUpdate,
             toggleStatusMenu,
@@ -1867,6 +1925,7 @@ const app = createApp({
                                 @click.stop="toggleModelSelection(model.id)">
                             <span v-html="ICONS.check"></span>
                         </button>
+                        <span class="thumb-status-dot" :class="thumbStatusClass(model)" :title="thumbStatusTitle(model)"></span>
                     </div>
                     <!-- Body -->
                     <div class="card-body">
@@ -1891,6 +1950,7 @@ const app = createApp({
                         <tr>
                             <th v-if="selectionMode" class="col-select" style="width:32px"></th>
                             <th class="col-fav" style="width:32px"></th>
+                            <th class="col-thumb-status" style="width:24px" title="Thumbnail status"></th>
                             <th>Name</th>
                             <th class="col-format">Format</th>
                             <th class="col-vertices">Vertices</th>
@@ -1907,6 +1967,9 @@ const app = createApp({
                             </td>
                             <td class="col-fav" @click.stop="toggleFavorite(model, $event)" style="cursor:pointer;text-align:center">
                                 <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
+                            </td>
+                            <td class="col-thumb-status" style="text-align:center">
+                                <span class="thumb-status-dot thumb-status-dot-inline" :class="thumbStatusClass(model)" :title="thumbStatusTitle(model)"></span>
                             </td>
                             <td class="col-name">{{ model.name }}</td>
                             <td class="col-format">
@@ -2249,6 +2312,14 @@ const app = createApp({
                             Regenerate All Thumbnails
                         </button>
                         <span class="text-muted text-sm">Re-render existing thumbnails with the current mode and quality</span>
+                    </div>
+                    <div v-if="regeneratingThumbnails && regenProgress.total > 0" class="regen-progress" style="margin-top:12px">
+                        <div class="regen-progress-bar">
+                            <div class="regen-progress-fill" :style="{ width: Math.round((regenProgress.completed / regenProgress.total) * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                            {{ regenProgress.completed }} / {{ regenProgress.total }} models
+                        </span>
                     </div>
                 </div>
 

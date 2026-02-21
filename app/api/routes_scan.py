@@ -248,6 +248,9 @@ async def _repair_incomplete_models() -> None:
                         dimensions_z = ?,
                         file_hash = COALESCE(?, file_hash),
                         thumbnail_path = COALESCE(?, thumbnail_path),
+                        thumbnail_mode = CASE WHEN ? IS NOT NULL THEN ? ELSE thumbnail_mode END,
+                        thumbnail_quality = CASE WHEN ? IS NOT NULL THEN ? ELSE thumbnail_quality END,
+                        thumbnail_generated_at = CASE WHEN ? IS NOT NULL THEN CURRENT_TIMESTAMP ELSE thumbnail_generated_at END,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?""",
                     (
@@ -257,6 +260,9 @@ async def _repair_incomplete_models() -> None:
                         metadata.get("dimensions_y"),
                         metadata.get("dimensions_z"),
                         file_hash,
+                        thumb_filename,
+                        thumb_filename, thumb_mode,
+                        thumb_filename, thumb_quality,
                         thumb_filename,
                         model_id,
                     ),
