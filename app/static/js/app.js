@@ -5,7 +5,6 @@
 import { initViewer, loadModel, disposeViewer, resetCamera } from './viewer.js';
 import {
     debounce,
-    highlightMatch,
     formatFileSize,
     formatDate,
     formatNumber,
@@ -1289,7 +1288,6 @@ const app = createApp({
             formatDate,
             formatNumber,
             formatDimensions,
-            highlightMatch,
 
             // Icons
             ICONS,
