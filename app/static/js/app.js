@@ -2797,13 +2797,16 @@ const app = createApp({
                                 </div>
                             </div>
                             <div v-else class="form-row">
-                                <label class="form-label">Cookie / Token</label>
+                                <label class="form-label">Cookie</label>
                                 <div style="display:flex;gap:6px">
                                     <input type="password" class="form-input" :placeholder="importCredentials[site] ? importCredentials[site].cookie || 'Not set' : 'Not set'"
                                            :id="'cred-' + site"
                                            style="flex:1">
                                     <button class="btn btn-sm btn-primary"
                                             @click="saveImportCredential(site, 'cookie', document.getElementById('cred-' + site).value)">Save</button>
+                                </div>
+                                <div v-if="site === 'makerworld'" class="text-muted" style="font-size:0.7rem;margin-top:4px">
+                                    Required for MakerWorld (Cloudflare-protected). In your browser: log in, press F12 → Application → Cookies → copy all cookie values.
                                 </div>
                             </div>
                         </div>
@@ -3136,7 +3139,10 @@ const app = createApp({
                 <div v-if="importPreview.loading" class="text-muted text-sm" style="padding:8px 0;display:flex;align-items:center;gap:8px">
                     <div class="spinner spinner-sm"></div> Fetching preview...
                 </div>
-                <div v-else-if="importPreview.data && !importPreview.data.error" class="import-preview-card">
+                <div v-else-if="importPreview.data" class="import-preview-card">
+                    <div v-if="importPreview.data.error" class="text-sm text-danger" style="padding:4px 0 8px">
+                        {{ importPreview.data.error }}
+                    </div>
                     <div v-if="importPreview.data.title" style="font-weight:600;margin-bottom:4px">{{ importPreview.data.title }}</div>
                     <div v-if="importPreview.data.source_site" class="text-muted text-sm" style="margin-bottom:4px;text-transform:capitalize">{{ importPreview.data.source_site }}</div>
                     <div v-if="importPreview.data.file_count" class="text-sm">{{ importPreview.data.file_count }} downloadable file(s)</div>
@@ -3144,9 +3150,6 @@ const app = createApp({
                         <span v-for="t in importPreview.data.tags.slice(0, 8)" :key="t" class="tag-chip">{{ t }}</span>
                         <span v-if="importPreview.data.tags.length > 8" class="tag-chip" style="opacity:0.7">+{{ importPreview.data.tags.length - 8 }}</span>
                     </div>
-                </div>
-                <div v-else-if="importPreview.data && importPreview.data.error" class="text-sm text-danger" style="padding:8px 0">
-                    {{ importPreview.data.error }}
                 </div>
 
                 <!-- Library + Subfolder -->
