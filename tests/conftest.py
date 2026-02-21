@@ -1,6 +1,7 @@
 """Shared fixtures for YASTL test suite."""
 
 import os
+import zipfile
 from pathlib import Path
 
 import aiosqlite
@@ -143,6 +144,8 @@ async def insert_test_model(
     file_size: int = 1024,
     file_hash: str = "abc123",
     description: str = "",
+    zip_path: str | None = None,
+    zip_entry: str | None = None,
 ) -> int:
     """Insert a test model into the database and return its ID."""
     async with aiosqlite.connect(db_path) as conn:
@@ -151,11 +154,25 @@ async def insert_test_model(
             INSERT INTO models (
                 name, description, file_path, file_format, file_size,
                 file_hash, vertex_count, face_count,
-                dimensions_x, dimensions_y, dimensions_z
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                dimensions_x, dimensions_y, dimensions_z,
+                zip_path, zip_entry
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (name, description, file_path, file_format, file_size, file_hash,
-             100, 50, 10.0, 20.0, 30.0),
+            (
+                name,
+                description,
+                file_path,
+                file_format,
+                file_size,
+                file_hash,
+                100,
+                50,
+                10.0,
+                20.0,
+                30.0,
+                zip_path,
+                zip_entry,
+            ),
         )
         model_id = cursor.lastrowid
         # Add FTS entry
@@ -165,3 +182,46 @@ async def insert_test_model(
         )
         await conn.commit()
         return model_id
+
+
+def create_test_zip(
+    zip_path: Path,
+    entries: dict[str, bytes | None] = None,
+    create_stl_entries: list[str] | None = None,
+) -> Path:
+    """Create a zip file with the given entries for testing.
+
+    Args:
+        zip_path: Where to write the zip file.
+        entries: Dict of {entry_name: content_bytes}. If content is None,
+            a minimal STL file is generated.
+        create_stl_entries: List of entry names that should contain STL data.
+            Shorthand for entries with auto-generated STL content.
+
+    Returns:
+        The path to the created zip file.
+    """
+    import struct
+
+    def _stl_bytes() -> bytes:
+        header = b"\x00" * 80
+        normal = struct.pack("<fff", 0.0, 0.0, 1.0)
+        v1 = struct.pack("<fff", 0.0, 0.0, 0.0)
+        v2 = struct.pack("<fff", 1.0, 0.0, 0.0)
+        v3 = struct.pack("<fff", 0.0, 1.0, 0.0)
+        attr = struct.pack("<H", 0)
+        return header + struct.pack("<I", 1) + normal + v1 + v2 + v3 + attr
+
+    all_entries: dict[str, bytes] = {}
+    if entries:
+        for name, data in entries.items():
+            all_entries[name] = data if data is not None else _stl_bytes()
+    if create_stl_entries:
+        for name in create_stl_entries:
+            all_entries[name] = _stl_bytes()
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in all_entries.items():
+            zf.writestr(name, data)
+
+    return zip_path

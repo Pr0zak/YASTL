@@ -11,6 +11,7 @@ def set_db_path(path: str | Path) -> None:
     global DB_PATH
     DB_PATH = Path(path)
 
+
 # ---------------------------------------------------------------------------
 # Schema definitions
 # ---------------------------------------------------------------------------
@@ -38,6 +39,8 @@ CREATE TABLE IF NOT EXISTS models (
     thumbnail_path TEXT,
     file_hash TEXT,
     library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
+    zip_path TEXT,
+    zip_entry TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -76,6 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);
 CREATE INDEX IF NOT EXISTS idx_models_library_id ON models(library_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path);
 """
 
 MIGRATION_SQL = """
@@ -149,6 +153,14 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass  # Column already exists or table just created with it
 
+        # Add zip_path and zip_entry columns for zip archive support
+        if "zip_path" not in columns:
+            try:
+                await db.execute("ALTER TABLE models ADD COLUMN zip_path TEXT")
+                await db.execute("ALTER TABLE models ADD COLUMN zip_entry TEXT")
+            except Exception:
+                pass  # Columns already exist or table just created with them
+
         await db.commit()
 
 
@@ -172,9 +184,7 @@ async def rebuild_fts() -> None:
 async def get_setting(key: str, default: str | None = None) -> str | None:
     """Retrieve a setting value by key, returning *default* if not set."""
     async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT value FROM settings WHERE key = ?", (key,)
-        )
+        cursor = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row = await cursor.fetchone()
         if row is not None:
             return row["value"]
@@ -205,9 +215,12 @@ async def update_fts_for_model(db: aiosqlite.Connection, model_id: int) -> None:
     # Remove old entry
     await db.execute("DELETE FROM models_fts WHERE rowid = ?", (model_id,))
     # Insert updated entry
-    await db.execute("""
+    await db.execute(
+        """
         INSERT INTO models_fts(rowid, name, description)
         SELECT m.id, m.name, m.description
         FROM models m
         WHERE m.id = ?
-    """, (model_id,))
+    """,
+        (model_id,),
+    )

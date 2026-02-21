@@ -14,6 +14,7 @@ from pathlib import Path
 import aiosqlite
 
 from app.services import hasher, processor, thumbnail
+from app.services import zip_handler
 from app.database import get_setting, update_fts_for_model
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,9 @@ class Scanner:
 
         # 1. Discover files across all libraries
         loop = asyncio.get_running_loop()
-        all_items: list[tuple[Path, int, Path]] = []  # (file_path, library_id, scan_root)
+        all_items: list[
+            tuple[Path, int, Path]
+        ] = []  # (file_path, library_id, scan_root)
 
         for lib in libraries:
             scan_root = Path(lib["path"])
@@ -138,9 +141,30 @@ class Scanner:
             for f in files:
                 all_items.append((f, library_id, scan_root))
 
-        self.total_files = len(all_items)
-        stats["total_files"] = self.total_files
-        logger.info("Found %d supported files across all libraries.", self.total_files)
+        # Expand zip files: list model entries inside each zip and add
+        # them as additional items to process.
+        zip_entries: list[
+            tuple[Path, str, int, Path]
+        ] = []  # (zip_path, entry, lib_id, root)
+        regular_items: list[tuple[Path, int, Path]] = []
+
+        for file_path, library_id, scan_root in all_items:
+            if file_path.suffix.lower() == ".zip":
+                entries = await loop.run_in_executor(
+                    None,
+                    zip_handler.list_models_in_zip,
+                    str(file_path),
+                    self.supported_extensions,
+                )
+                for entry in entries:
+                    zip_entries.append((file_path, entry, library_id, scan_root))
+            else:
+                regular_items.append((file_path, library_id, scan_root))
+
+        total = len(regular_items) + len(zip_entries)
+        self.total_files = total
+        stats["total_files"] = total
+        logger.info("Found %d supported files across all libraries.", total)
 
         # 2. Process each file inside a single database connection
         db = await aiosqlite.connect(self.db_path)
@@ -149,7 +173,8 @@ class Scanner:
         await db.execute("PRAGMA foreign_keys=ON")
 
         try:
-            for file_path, library_id, scan_root in all_items:
+            # Process regular (non-zip) model files
+            for file_path, library_id, scan_root in regular_items:
                 try:
                     added = await self._process_file(
                         db, file_path, loop, library_id, scan_root
@@ -160,6 +185,22 @@ class Scanner:
                         stats["skipped_files"] += 1
                 except Exception:
                     logger.exception("Error processing %s", file_path)
+                    stats["errors"] += 1
+                finally:
+                    self.processed_files += 1
+
+            # Process model entries inside zip archives
+            for zip_path, entry_name, library_id, scan_root in zip_entries:
+                try:
+                    added = await self._process_zip_entry(
+                        db, zip_path, entry_name, loop, library_id, scan_root
+                    )
+                    if added:
+                        stats["new_files"] += 1
+                    else:
+                        stats["skipped_files"] += 1
+                except Exception:
+                    logger.exception("Error processing %s in %s", entry_name, zip_path)
                     stats["errors"] += 1
                 finally:
                     self.processed_files += 1
@@ -183,11 +224,16 @@ class Scanner:
     # ------------------------------------------------------------------
 
     def _discover_files(self, scan_path: Path) -> list[Path]:
-        """Synchronously walk the scan_path and return all matching file paths."""
+        """Synchronously walk the scan_path and return all matching file paths.
+
+        Also discovers ``.zip`` files so that their contents can be
+        scanned for models.
+        """
         matches: list[Path] = []
         for dirpath, _dirnames, filenames in os.walk(scan_path):
             for fname in filenames:
-                if Path(fname).suffix.lower() in self.supported_extensions:
+                suffix = Path(fname).suffix.lower()
+                if suffix in self.supported_extensions or suffix == ".zip":
                     matches.append(Path(dirpath) / fname)
         return matches
 
@@ -297,6 +343,190 @@ class Scanner:
 
         logger.debug("Indexed new model id=%d  %s", model_id, file_path_str)
         return True
+
+    # ------------------------------------------------------------------
+    # Zip entry processing
+    # ------------------------------------------------------------------
+
+    async def _process_zip_entry(
+        self,
+        db: aiosqlite.Connection,
+        zip_path: Path,
+        entry_name: str,
+        loop: asyncio.AbstractEventLoop,
+        library_id: int,
+        scan_root: Path,
+    ) -> bool:
+        """Process a single model entry inside a zip archive.
+
+        Extracts the entry to a temporary file, runs metadata extraction,
+        hashing, and thumbnail generation against it, then cleans up.
+
+        Returns:
+            True if the entry was newly inserted, False if skipped.
+        """
+        zip_path_str = str(zip_path)
+        synthetic_path = zip_handler.make_zip_file_path(zip_path_str, entry_name)
+
+        # Skip if already indexed
+        cursor = await db.execute(
+            "SELECT id FROM models WHERE file_path = ?", (synthetic_path,)
+        )
+        if await cursor.fetchone() is not None:
+            logger.debug("Skipping already-indexed zip entry: %s", synthetic_path)
+            return False
+
+        # Extract to temp file for processing
+        tmp_path: Path | None = None
+        try:
+            tmp_path = await loop.run_in_executor(
+                None, zip_handler.extract_entry_to_temp, zip_path_str, entry_name
+            )
+            tmp_path_str = str(tmp_path)
+
+            # Extract metadata
+            metadata: dict = await loop.run_in_executor(
+                None, processor.extract_metadata, tmp_path_str
+            )
+
+            # Compute hash of the entry content
+            file_hash: str = await loop.run_in_executor(
+                None, hasher.compute_file_hash, tmp_path_str
+            )
+
+            # Derive fields from the entry name
+            from pathlib import PurePosixPath
+
+            entry_p = PurePosixPath(entry_name)
+            name = entry_p.stem
+            file_format = metadata.get(
+                "file_format",
+                entry_p.suffix.lower().lstrip(".").upper(),
+            )
+            file_size = metadata.get("file_size") or os.path.getsize(tmp_path)
+
+            # Insert model row
+            cursor = await db.execute(
+                """
+                INSERT INTO models (
+                    name, description, file_path, file_format, file_size,
+                    file_hash, vertex_count, face_count,
+                    dimensions_x, dimensions_y, dimensions_z,
+                    thumbnail_path, library_id, zip_path, zip_entry
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    "",
+                    synthetic_path,
+                    file_format,
+                    file_size,
+                    file_hash,
+                    metadata.get("vertex_count"),
+                    metadata.get("face_count"),
+                    metadata.get("dimensions_x"),
+                    metadata.get("dimensions_y"),
+                    metadata.get("dimensions_z"),
+                    None,
+                    library_id,
+                    zip_path_str,
+                    entry_name,
+                ),
+            )
+            model_id = cursor.lastrowid
+
+            # Generate thumbnail
+            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+            thumb_filename: str | None = await loop.run_in_executor(
+                None,
+                thumbnail.generate_thumbnail,
+                tmp_path_str,
+                self.thumbnail_path,
+                model_id,
+                thumb_mode,
+            )
+
+            if thumb_filename is not None:
+                await db.execute(
+                    "UPDATE models SET thumbnail_path = ? WHERE id = ?",
+                    (thumb_filename, model_id),
+                )
+
+            # Categories: use zip file's directory + entry's internal path
+            await self._create_categories_for_zip_entry(
+                db, zip_path, entry_name, model_id, scan_root
+            )
+
+            await update_fts_for_model(db, model_id)
+
+            logger.debug(
+                "Indexed zip entry id=%d  %s::%s", model_id, zip_path_str, entry_name
+            )
+            return True
+        finally:
+            # Clean up temp file
+            if tmp_path is not None and tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+
+    async def _create_categories_for_zip_entry(
+        self,
+        db: aiosqlite.Connection,
+        zip_path: Path,
+        entry_name: str,
+        model_id: int,
+        scan_root: Path,
+    ) -> None:
+        """Create categories from both the zip file's directory and the entry's internal path."""
+        from pathlib import PurePosixPath
+
+        # Build combined parts: zip directory relative to scan root + entry directories
+        try:
+            rel_zip = zip_path.parent.relative_to(scan_root)
+        except ValueError:
+            rel_zip = Path()
+
+        # Add zip filename (without extension) as a category
+        zip_stem = zip_path.stem
+
+        # Entry may have subdirectories (e.g., "Models/dragon.stl")
+        entry_parent = PurePosixPath(entry_name).parent
+        entry_parts = entry_parent.parts if str(entry_parent) != "." else ()
+
+        parts = list(rel_zip.parts) + [zip_stem] + list(entry_parts)
+        if not parts:
+            return
+
+        parent_id: int | None = None
+        for part in parts:
+            cursor = await db.execute(
+                """
+                SELECT id FROM categories
+                WHERE name = ? AND (parent_id IS ? OR parent_id = ?)
+                """,
+                (part, parent_id, parent_id),
+            )
+            row = await cursor.fetchone()
+
+            if row is not None:
+                category_id = row[0] if not isinstance(row, dict) else row["id"]
+            else:
+                cursor = await db.execute(
+                    "INSERT INTO categories (name, parent_id) VALUES (?, ?)",
+                    (part, parent_id),
+                )
+                category_id = cursor.lastrowid
+
+            await db.execute(
+                """
+                INSERT OR IGNORE INTO model_categories (model_id, category_id)
+                VALUES (?, ?)
+                """,
+                (model_id, category_id),
+            )
+            parent_id = category_id
 
     # ------------------------------------------------------------------
     # Category helpers

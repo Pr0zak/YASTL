@@ -10,6 +10,7 @@ import os
 import trimesh
 
 from app.config import settings
+from app.services import zip_handler
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,37 @@ MIME_TYPES: dict[str, str] = {
 def _get_db_path(request: Request) -> str:
     """Retrieve the database path from FastAPI app state."""
     return request.app.state.db_path
+
+
+def _resolve_model_file(model: dict) -> str | None:
+    """Resolve the on-disk path for a model, extracting from zip if needed.
+
+    For regular files, returns the ``file_path`` directly.
+    For zip-contained models, ensures the entry is extracted to the
+    persistent cache and returns the cached path.
+
+    Returns ``None`` if the file cannot be found.
+    """
+    zip_path = model.get("zip_path")
+    if zip_path:
+        # Model lives inside a zip archive
+        if not os.path.exists(zip_path):
+            return None
+        entry_name = model.get("zip_entry", "")
+        cache_dir = str(settings.MODEL_LIBRARY_THUMBNAIL_PATH)
+        model_id = model["id"]
+        try:
+            return zip_handler.ensure_cached(zip_path, entry_name, cache_dir, model_id)
+        except Exception:
+            logger.exception(
+                "Failed to extract zip entry %s from %s", entry_name, zip_path
+            )
+            return None
+    else:
+        file_path = model["file_path"]
+        if os.path.exists(file_path):
+            return file_path
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -326,9 +358,10 @@ async def delete_model(request: Request, model_id: int):
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
-        # Fetch model to get thumbnail path before deletion
+        # Fetch model to get thumbnail path and zip info before deletion
         cursor = await db.execute(
-            "SELECT id, thumbnail_path FROM models WHERE id = ?", (model_id,)
+            "SELECT id, thumbnail_path, zip_path, zip_entry FROM models WHERE id = ?",
+            (model_id,),
         )
         row = await cursor.fetchone()
         if row is None:
@@ -361,6 +394,12 @@ async def delete_model(request: Request, model_id: int):
         except OSError:
             pass
 
+    # Remove cached zip extraction if it exists
+    if model_dict.get("zip_path"):
+        zip_handler.cleanup_zip_cache(
+            str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), model_id
+        )
+
     return {"detail": f"Model {model_id} deleted"}
 
 
@@ -378,7 +417,8 @@ async def serve_model_file(request: Request, model_id: int):
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            "SELECT file_path, name FROM models WHERE id = ?", (model_id,)
+            "SELECT id, file_path, name, zip_path, zip_entry FROM models WHERE id = ?",
+            (model_id,),
         )
         row = await cursor.fetchone()
 
@@ -386,19 +426,19 @@ async def serve_model_file(request: Request, model_id: int):
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
     model = dict(row)
-    file_path = model["file_path"]
+    resolved_path = _resolve_model_file(model)
 
-    if not os.path.exists(file_path):
+    if resolved_path is None:
         raise HTTPException(status_code=404, detail="Model file not found on disk")
 
     # Determine content type from extension
-    ext = os.path.splitext(file_path)[1].lower()
+    ext = os.path.splitext(resolved_path)[1].lower()
     media_type = MIME_TYPES.get(ext, "application/octet-stream")
 
-    filename = os.path.basename(file_path)
+    filename = os.path.basename(resolved_path)
 
     return FileResponse(
-        path=file_path,
+        path=resolved_path,
         media_type=media_type,
         filename=filename,
     )
@@ -418,7 +458,7 @@ async def download_model_file(request: Request, model_id: int):
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            "SELECT file_path, name, file_format FROM models WHERE id = ?",
+            "SELECT id, file_path, name, file_format, zip_path, zip_entry FROM models WHERE id = ?",
             (model_id,),
         )
         row = await cursor.fetchone()
@@ -427,13 +467,13 @@ async def download_model_file(request: Request, model_id: int):
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
     model = dict(row)
-    file_path = model["file_path"]
+    resolved_path = _resolve_model_file(model)
 
-    if not os.path.exists(file_path):
+    if resolved_path is None:
         raise HTTPException(status_code=404, detail="Model file not found on disk")
 
     # Build a download filename from the model name + original extension
-    ext = os.path.splitext(file_path)[1].lower()
+    ext = os.path.splitext(resolved_path)[1].lower()
     model_name = model["name"]
     # Ensure the filename has the correct extension
     if not model_name.lower().endswith(ext):
@@ -444,7 +484,7 @@ async def download_model_file(request: Request, model_id: int):
     media_type = MIME_TYPES.get(ext, "application/octet-stream")
 
     return FileResponse(
-        path=file_path,
+        path=resolved_path,
         media_type=media_type,
         filename=download_name,
         content_disposition_type="attachment",
@@ -470,7 +510,8 @@ async def serve_model_glb(request: Request, model_id: int):
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            "SELECT file_path, name FROM models WHERE id = ?", (model_id,)
+            "SELECT id, file_path, name, zip_path, zip_entry FROM models WHERE id = ?",
+            (model_id,),
         )
         row = await cursor.fetchone()
 
@@ -478,9 +519,9 @@ async def serve_model_glb(request: Request, model_id: int):
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
     model = dict(row)
-    file_path = model["file_path"]
+    file_path = _resolve_model_file(model)
 
-    if not os.path.exists(file_path):
+    if file_path is None:
         raise HTTPException(status_code=404, detail="Model file not found on disk")
 
     # Check cache
