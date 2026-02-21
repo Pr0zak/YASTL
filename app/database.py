@@ -111,12 +111,8 @@ CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);
 CREATE INDEX IF NOT EXISTS idx_models_library_id ON models(library_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
-<<<<<<< HEAD
-CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path);
-=======
 CREATE INDEX IF NOT EXISTS idx_collection_models_model ON collection_models(model_id);
 CREATE INDEX IF NOT EXISTS idx_collection_models_position ON collection_models(collection_id, position);
->>>>>>> 8087397 (Add robust catalog system backend: favorites, collections, bulk ops, advanced filtering)
 """
 
 MIGRATION_SQL = """
@@ -197,6 +193,14 @@ async def init_db(db_path: str | Path | None = None) -> None:
                 await db.execute("ALTER TABLE models ADD COLUMN zip_entry TEXT")
             except Exception:
                 pass  # Columns already exist or table just created with them
+
+        # Create zip_path index (after migration ensures column exists)
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path)"
+            )
+        except Exception:
+            pass
 
         await db.commit()
 
