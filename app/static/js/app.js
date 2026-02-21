@@ -636,9 +636,13 @@ const app = createApp({
 
         async function renameModelFile() {
             if (!selectedModel.value) return;
-            const id = selectedModel.value.id;
+            const model = selectedModel.value;
+            const oldName = model.file_path?.split('/').pop() || '';
+            const ext = oldName.includes('.') ? oldName.slice(oldName.lastIndexOf('.')) : '';
+            const newName = model.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_') + ext;
+            if (!confirm(`Rename file on disk?\n\n"${oldName}"\n→ "${newName}"`)) return;
             try {
-                const updated = await apiRenameModelFile(id);
+                const updated = await apiRenameModelFile(model.id);
                 selectedModel.value = updated;
                 updateModelInList(updated);
                 showToast('File renamed');
