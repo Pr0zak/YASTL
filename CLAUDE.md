@@ -32,8 +32,10 @@ app/                    # Main application package
     routes_tags.py      # Tag management
     routes_categories.py # Category management
     routes_libraries.py # Library management
-    routes_settings.py  # Settings API, thumbnail regeneration
+    routes_settings.py  # Settings API, thumbnail regeneration + progress tracking
+    routes_status.py    # System health status (scanner, watcher, DB, thumbnails)
     routes_catalog.py   # Favorites, collections, bulk ops, saved searches
+    routes_update.py    # Git-based update check and apply
   models/schemas.py     # Pydantic request/response schemas
   services/             # Business logic
     scanner.py          # Directory scanning, auto-categories from dir structure
@@ -47,6 +49,7 @@ app/                    # Main application package
     index.html          # Main page
     js/app.js           # Vue 3 app, API calls, state management
     js/viewer.js        # Three.js viewer (STL/OBJ/glTF/PLY/3MF loaders)
+    js/search.js        # Debounce, highlight, formatting utilities
     css/style.css       # CSS custom properties theming
 tests/                  # pytest test suite
   conftest.py           # Shared fixtures (temp dirs, temp DB, async client)
@@ -102,7 +105,9 @@ docker compose up -d
 - **Background tasks** — directory scanning and file watching run off the request/response thread
 - **Server-side thumbnails** — trimesh rendering with Pillow wireframe fallback (256x256 PNG)
 - **GLB conversion** — server-side trimesh conversion for formats Three.js can't load natively (3MF, STEP)
-- **Zip archive support** — models inside zip files are extracted on demand and cached
+- **Zip archive support** — models inside zip files are extracted on demand and cached; shown with purple ZIP badge in UI
+- **Thumbnail tracking** — `thumbnail_mode`, `thumbnail_quality`, `thumbnail_generated_at` columns track generation settings per model; UI shows colored status dots (green=current, amber=stale, red=missing)
+- **System status** — `/api/status` aggregates health of scanner, watcher, database, and thumbnails; navbar dot turns amber during scanning or thumbnail regeneration
 
 ## Database Migrations
 
@@ -118,6 +123,15 @@ The `models` table has a `status` column:
 - `'missing'` — file no longer found on disk (set by scanner during re-scan)
 
 All listing/search API endpoints filter `WHERE status = 'active'` so missing models don't appear in the UI. The scanner marks files as missing on re-scan and reactivates them if they reappear.
+
+## Thumbnail Tracking
+
+The `models` table has thumbnail tracking columns:
+- `thumbnail_mode` — rendering mode used (`wireframe` or `solid`)
+- `thumbnail_quality` — rendering quality used (always `fast` — quality option removed from UI)
+- `thumbnail_generated_at` — timestamp of last generation
+
+The frontend compares `thumbnail_mode` against the current setting to show status dots on model cards. Bulk regeneration via `POST /api/settings/regenerate-thumbnails` tracks progress in a module-level dict, exposed via `GET /api/settings/regenerate-thumbnails/status`.
 
 ## Environment Variables
 
