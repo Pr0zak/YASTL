@@ -178,6 +178,9 @@ async def list_models(
         where_clauses: list[str] = []
         params: list[str | int] = []
 
+        # Only show active models by default (exclude missing/deleted)
+        where_clauses.append("m.status = 'active'")
+
         if format is not None:
             where_clauses.append("m.file_format = ?")
             params.append(format.lower())
@@ -310,6 +313,7 @@ async def find_duplicates(request: Request):
             SELECT file_hash, COUNT(*) as count
             FROM models
             WHERE file_hash IS NOT NULL AND file_hash != ''
+              AND status = 'active'
             GROUP BY file_hash
             HAVING COUNT(*) > 1
             ORDER BY count DESC

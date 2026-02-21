@@ -159,6 +159,7 @@ async def _repair_incomplete_models() -> None:
     loop = asyncio.get_running_loop()
     thumbnail_path = str(app_settings.MODEL_LIBRARY_THUMBNAIL_PATH)
     thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+    thumb_quality = await get_setting("thumbnail_quality", "fast")
 
     async with get_db() as db:
         cursor = await db.execute(
@@ -233,6 +234,7 @@ async def _repair_incomplete_models() -> None:
                 thumbnail_path,
                 model_id,
                 thumb_mode,
+                thumb_quality,
             )
 
             # Update the database record
