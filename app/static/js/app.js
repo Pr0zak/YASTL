@@ -167,6 +167,12 @@ const app = createApp({
 
         // Catalog system: Collections
         const collections = ref([]);
+        const COLLECTION_COLORS = [
+            '#0f9b8e', '#e06c75', '#61afef', '#e5c07b', '#c678dd',
+            '#56b6c2', '#d19a66', '#98c379', '#be5046', '#7c8fa6',
+            '#e06898', '#36b37e', '#6c5ce7', '#f39c12', '#00b894',
+        ];
+
         const showCollectionModal = ref(false);
         const newCollectionName = ref('');
         const newCollectionColor = ref('#0f9b8e');
@@ -1352,6 +1358,17 @@ const app = createApp({
             }
         }
 
+        function pickNextCollectionColor() {
+            const used = new Set(collections.value.map(c => (c.color || '').toLowerCase()));
+            return COLLECTION_COLORS.find(c => !used.has(c.toLowerCase())) || COLLECTION_COLORS[0];
+        }
+
+        function openCollectionModal() {
+            newCollectionName.value = '';
+            newCollectionColor.value = pickNextCollectionColor();
+            showCollectionModal.value = true;
+        }
+
         async function createCollection() {
             const name = newCollectionName.value.trim();
             if (!name) return;
@@ -1814,6 +1831,8 @@ const app = createApp({
             showCollectionModal,
             newCollectionName,
             newCollectionColor,
+            COLLECTION_COLORS,
+            openCollectionModal,
             addToCollectionModelId,
             showAddToCollectionModal,
             editingCollectionId,
@@ -2179,7 +2198,7 @@ const app = createApp({
             <div class="sidebar-section">
                 <div class="sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between">
                     Collections
-                    <button class="btn-icon" style="width:20px;height:20px" @click="showCollectionModal = true"
+                    <button class="btn-icon" style="width:20px;height:20px" @click="openCollectionModal()"
                             title="New collection"><span v-html="ICONS.plus"></span></button>
                 </div>
                 <div class="sidebar-item" :class="{ active: filters.favoritesOnly }" @click="toggleFavoritesFilter">
@@ -3028,7 +3047,13 @@ const app = createApp({
             </div>
             <div class="form-row">
                 <label class="form-label">Color</label>
-                <input type="color" v-model="newCollectionColor" style="width:48px;height:32px;border:none;cursor:pointer">
+                <div class="color-swatch-grid">
+                    <button v-for="c in COLLECTION_COLORS" :key="c"
+                            class="color-swatch" :class="{ active: newCollectionColor === c }"
+                            :style="{ background: c }"
+                            @click="newCollectionColor = c"
+                            type="button"></button>
+                </div>
             </div>
             <div class="form-actions">
                 <button class="btn btn-secondary" @click="showCollectionModal = false">Cancel</button>
