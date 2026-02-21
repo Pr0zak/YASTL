@@ -1,7 +1,9 @@
+<script setup>
 /**
  * YASTL - Yet Another STL Library
- * Main Vue 3 Application (CDN / no build step)
+ * Main Vue 3 Application (Vite SFC)
  */
+import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { initViewer, loadModel, disposeViewer, resetCamera } from './viewer.js';
 import {
     debounce,
@@ -12,7 +14,7 @@ import {
     formatDimensions,
 } from './search.js';
 import { ICONS } from './icons.js';
-import { useToast } from './toast.js';
+import { useToast } from './composables/useToast.js';
 import {
     apiGetModels,
     apiGetModel,
@@ -34,1239 +36,1043 @@ import {
     apiDeleteSavedSearch,
     apiGetSystemStatus,
 } from './api.js';
-import { useImport } from './use-import.js';
-import { useCollections } from './use-collections.js';
-import { useSelection } from './use-selection.js';
-import { useSettings } from './use-settings.js';
-import { useUpdates } from './use-updates.js';
+import { useImport } from './composables/useImport.js';
+import { useCollections } from './composables/useCollections.js';
+import { useSelection } from './composables/useSelection.js';
+import { useSettings } from './composables/useSettings.js';
+import { useUpdates } from './composables/useUpdates.js';
 
-const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+/* ---- Toast ---- */
+const { toasts, showToast } = useToast();
 
-/* ==================================================================
-   Application
-   ================================================================== */
+/* ---- Core reactive state ---- */
+const models = ref([]);
+const selectedModel = ref(null);
+const searchQuery = ref('');
+const viewMode = ref('grid');
+const loading = ref(false);
+const showDetail = ref(false);
+const allTags = ref([]);
+const allCategories = ref([]);
+const newTagInput = ref('');
+const tagSuggestions = ref([]);
+const tagSuggestionsLoading = ref(false);
+const sidebarOpen = ref(false);
+const viewerLoading = ref(false);
 
-const app = createApp({
-    setup() {
-        /* ---- Toast ---- */
-        const { toasts, showToast } = useToast();
+// Editable field state
+const editName = ref('');
+const editDesc = ref('');
+const isEditingName = ref(false);
+const isEditingDesc = ref(false);
 
-        /* ---- Core reactive state ---- */
-        const models = ref([]);
-        const selectedModel = ref(null);
-        const searchQuery = ref('');
-        const viewMode = ref('grid');
-        const loading = ref(false);
-        const showDetail = ref(false);
-        const allTags = ref([]);
-        const allCategories = ref([]);
-        const newTagInput = ref('');
-        const tagSuggestions = ref([]);
-        const tagSuggestionsLoading = ref(false);
-        const sidebarOpen = ref(false);
-        const viewerLoading = ref(false);
+// Category expansion state (by category id)
+const expandedCategories = reactive({});
 
-        // Editable field state
-        const editName = ref('');
-        const editDesc = ref('');
-        const isEditingName = ref(false);
-        const isEditingDesc = ref(false);
+// Sidebar section collapse state (format starts collapsed)
+const collapsedSections = reactive({ format: true, tags: true, categories: true });
 
-        // Category expansion state (by category id)
-        const expandedCategories = reactive({});
+const filters = reactive({
+    format: '',
+    tag: '',
+    tags: [],
+    category: '',
+    categories: [],
+    library_id: null,
+    favoritesOnly: false,
+    duplicatesOnly: false,
+    collection: null,
+    sortBy: 'updated_at',
+    sortOrder: 'desc',
+});
 
-        // Sidebar section collapse state (format starts collapsed)
-        const collapsedSections = reactive({ format: true, tags: true, categories: true });
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const savedPageSize = parseInt(localStorage.getItem('yastl_page_size')) || 50;
 
-        const filters = reactive({
-            format: '',
-            tag: '',
-            tags: [],
-            category: '',
-            categories: [],
-            library_id: null,
-            favoritesOnly: false,
-            duplicatesOnly: false,
-            collection: null,
-            sortBy: 'updated_at',
-            sortOrder: 'desc',
+const pagination = reactive({
+    limit: PAGE_SIZE_OPTIONS.includes(savedPageSize) ? savedPageSize : 50,
+    offset: 0,
+    total: 0,
+});
+
+const scanStatus = reactive({
+    scanning: false,
+    total_files: 0,
+    processed_files: 0,
+});
+
+let scanPollTimer = null;
+
+// Favorites count
+const favoritesCount = ref(0);
+
+// Saved searches
+const savedSearches = ref([]);
+const showSaveSearchModal = ref(false);
+const saveSearchName = ref('');
+
+// System status indicator
+const showStatusMenu = ref(false);
+const systemStatus = reactive({
+    health: 'unknown',
+    scanner: { status: 'unknown' },
+    watcher: { status: 'unknown' },
+    database: { status: 'unknown' },
+    thumbnails: { status: 'unknown' },
+});
+let statusPollTimer = null;
+
+/* ---- Composables ---- */
+const settingsComposable = useSettings(showToast, () => fetchModels());
+const {
+    showSettings, libraries, newLibName, newLibPath, addingLibrary,
+    thumbnailMode, regeneratingThumbnails, regenProgress,
+    fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
+    setThumbnailMode, regenerateThumbnails,
+} = settingsComposable;
+
+const updatesComposable = useUpdates(showToast);
+const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
+
+const collectionsComposable = useCollections(showToast);
+const {
+    collections, COLLECTION_COLORS,
+    showCollectionModal, newCollectionName, newCollectionColor,
+    addToCollectionModelId, showAddToCollectionModal,
+    editingCollectionId, editCollectionName, inlineNewCollection,
+    fetchCollections, openCollectionModal, createCollection,
+    startInlineNewCollection, cancelInlineNewCollection,
+    deleteCollection: _deleteCollection,
+    startEditCollection, saveCollectionName,
+    openAddToCollection,
+    addModelToCollection: _addModelToCollection,
+    removeModelFromCollection: _removeModelFromCollection,
+} = collectionsComposable;
+
+// Wrap collection functions that need extra context
+function deleteCollection(id) {
+    _deleteCollection(id, filters);
+}
+
+async function refreshSelectedModel(modelId) {
+    if (!selectedModel.value) return;
+    if (modelId && selectedModel.value.id !== modelId) return;
+    try {
+        const data = await apiGetModel(selectedModel.value.id);
+        selectedModel.value = data;
+    } catch { /* ignore */ }
+}
+
+function addModelToCollection(collectionId) {
+    _addModelToCollection(collectionId, refreshSelectedModel);
+}
+
+function removeModelFromCollection(collectionId, modelId) {
+    _removeModelFromCollection(collectionId, modelId, refreshSelectedModel);
+}
+
+const selectionComposable = useSelection(
+    showToast,
+    () => fetchModels(),
+    models,
+    () => fetchTags(),
+    () => fetchFavoritesCount(),
+    fetchCollections,
+);
+const {
+    selectionMode, selectedModels, showBulkTagModal, bulkTagInput,
+    toggleSelectionMode, toggleModelSelection, selectAll, deselectAll, isSelected,
+    bulkFavorite, bulkAutoTag, bulkAddTags,
+    bulkAddToCollection: _bulkAddToCollection,
+    bulkDelete,
+} = selectionComposable;
+
+function bulkAddToCollection(collectionId) {
+    _bulkAddToCollection(collectionId, showAddToCollectionModal);
+}
+
+function refreshImportData() {
+    fetchModels();
+    fetchTags();
+    fetchCategories();
+}
+
+const importComposable = useImport(
+    showToast, refreshImportData, libraries, collections, fetchCollections, startInlineNewCollection,
+);
+const {
+    showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
+    importRunning, importDone, importPreview, importProgress,
+    uploadFiles, uploadResults, uploadTags, uploadTagSuggestions,
+    uploadCollectionId, uploadZipMeta,
+    importCredentials, credentialInputs,
+    openImportModal: _openImportModal,
+    closeImportModal: _closeImportModal,
+    previewImportUrl, startImport, onFilesSelected, startUpload,
+    addUploadTagSuggestion, fetchImportCredentials,
+    saveImportCredential, deleteImportCredential,
+} = importComposable;
+
+function openImportModal() {
+    fetchLibraries();
+    _openImportModal();
+}
+
+function closeImportModal() {
+    _closeImportModal(showDetail.value, showSettings.value);
+}
+
+/* ---- Inline collection callback for upload/addToCollection contexts ---- */
+function confirmInlineNewCollection(context) {
+    collectionsComposable.confirmInlineNewCollection(context, (newId, ctx) => {
+        if (ctx === 'upload') {
+            uploadCollectionId.value = newId;
+        } else if (ctx === 'addToCollection') {
+            handleCollectionSelect(newId);
+        }
+    });
+}
+
+/* ---- Computed ---- */
+const hasLibraries = computed(() => libraries.value.length > 0);
+const scanProgress = computed(() => {
+    if (!scanStatus.total_files) return 0;
+    return Math.round(
+        (scanStatus.processed_files / scanStatus.total_files) * 100
+    );
+});
+
+const hasMore = computed(() => {
+    return pagination.offset + pagination.limit < pagination.total;
+});
+
+const shownCount = computed(() => {
+    return Math.min(pagination.offset + pagination.limit, pagination.total);
+});
+
+const hasActiveFilters = computed(() => {
+    return !!(filters.format || filters.tag || filters.category || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection);
+});
+
+// Find the library object for the currently selected library_id
+const selectedLibrary = computed(() => {
+    if (!filters.library_id) return null;
+    return libraries.value.find(l => l.id === filters.library_id) || null;
+});
+
+// Build breadcrumb trail from current filters
+const breadcrumbTrail = computed(() => {
+    const trail = [];
+    if (filters.library_id && selectedLibrary.value) {
+        trail.push({ type: 'library_id', label: selectedLibrary.value.name });
+    }
+    if (filters.category) {
+        trail.push({ type: 'category', label: filters.category });
+    }
+    if (filters.tag) {
+        trail.push({ type: 'tag', label: filters.tag });
+    }
+    if (filters.format) {
+        trail.push({ type: 'format', label: filters.format.toUpperCase() });
+    }
+    return trail;
+});
+
+/* ==============================================================
+   Core data fetching
+   ============================================================== */
+
+async function fetchModels(append = false) {
+    loading.value = true;
+    try {
+        const params = new URLSearchParams({
+            limit: String(pagination.limit),
+            offset: String(pagination.offset),
         });
+        if (filters.format) params.append('format', filters.format);
+        if (filters.tag) params.append('tag', filters.tag);
+        if (filters.category) params.append('category', filters.category);
+        if (filters.library_id) params.append('library_id', String(filters.library_id));
+        if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
+        if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
+        if (filters.favoritesOnly) params.append('favorites_only', 'true');
+        if (filters.duplicatesOnly) params.append('duplicates_only', 'true');
+        if (filters.collection) params.append('collection', filters.collection);
+        params.append('sort_by', filters.sortBy);
+        params.append('sort_order', filters.sortOrder);
 
-        const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
-        const savedPageSize = parseInt(localStorage.getItem('yastl_page_size')) || 50;
+        const data = await apiGetModels(params);
 
-        const pagination = reactive({
-            limit: PAGE_SIZE_OPTIONS.includes(savedPageSize) ? savedPageSize : 50,
-            offset: 0,
-            total: 0,
+        if (append) {
+            models.value = [...models.value, ...(data.models || [])];
+        } else {
+            models.value = data.models || [];
+        }
+        pagination.total = data.total || 0;
+    } catch (err) {
+        showToast('Failed to load models', 'error');
+        console.error('fetchModels error:', err);
+    } finally {
+        loading.value = false;
+    }
+}
+
+async function searchModels(append = false) {
+    if (!searchQuery.value.trim()) {
+        pagination.offset = 0;
+        return fetchModels();
+    }
+    loading.value = true;
+    try {
+        const params = new URLSearchParams({
+            q: searchQuery.value.trim(),
+            limit: String(pagination.limit),
+            offset: String(pagination.offset),
         });
+        if (filters.format) params.append('format', filters.format);
+        if (filters.tag) params.append('tags', filters.tag);
+        if (filters.category) params.append('categories', filters.category);
+        if (filters.library_id) params.append('library_id', String(filters.library_id));
 
-        const scanStatus = reactive({
-            scanning: false,
-            total_files: 0,
-            processed_files: 0,
-        });
+        const data = await apiSearchModels(params);
 
-        let scanPollTimer = null;
-
-        // Favorites count
-        const favoritesCount = ref(0);
-
-        // Saved searches
-        const savedSearches = ref([]);
-        const showSaveSearchModal = ref(false);
-        const saveSearchName = ref('');
-
-        // System status indicator
-        const showStatusMenu = ref(false);
-        const systemStatus = reactive({
-            health: 'unknown',
-            scanner: { status: 'unknown' },
-            watcher: { status: 'unknown' },
-            database: { status: 'unknown' },
-            thumbnails: { status: 'unknown' },
-        });
-        let statusPollTimer = null;
-
-        /* ---- Composables ---- */
-        const settingsComposable = useSettings(showToast, () => fetchModels());
-        const {
-            showSettings, libraries, newLibName, newLibPath, addingLibrary,
-            thumbnailMode, regeneratingThumbnails, regenProgress,
-            fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
-            setThumbnailMode, regenerateThumbnails,
-        } = settingsComposable;
-
-        const updatesComposable = useUpdates(showToast);
-        const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
-
-        const collectionsComposable = useCollections(showToast);
-        const {
-            collections, COLLECTION_COLORS,
-            showCollectionModal, newCollectionName, newCollectionColor,
-            addToCollectionModelId, showAddToCollectionModal,
-            editingCollectionId, editCollectionName, inlineNewCollection,
-            fetchCollections, openCollectionModal, createCollection,
-            startInlineNewCollection, cancelInlineNewCollection,
-            deleteCollection: _deleteCollection,
-            startEditCollection, saveCollectionName,
-            openAddToCollection,
-            addModelToCollection: _addModelToCollection,
-            removeModelFromCollection: _removeModelFromCollection,
-        } = collectionsComposable;
-
-        // Wrap collection functions that need extra context
-        function deleteCollection(id) {
-            _deleteCollection(id, filters);
+        if (append) {
+            models.value = [...models.value, ...(data.models || [])];
+        } else {
+            models.value = data.models || [];
         }
+        pagination.total = data.total || 0;
+    } catch (err) {
+        showToast('Search failed', 'error');
+        console.error('searchModels error:', err);
+    } finally {
+        loading.value = false;
+    }
+}
 
-        async function refreshSelectedModel(modelId) {
-            if (!selectedModel.value) return;
-            if (modelId && selectedModel.value.id !== modelId) return;
-            try {
-                const data = await apiGetModel(selectedModel.value.id);
-                selectedModel.value = data;
-            } catch { /* ignore */ }
-        }
+const debouncedSearch = debounce(() => {
+    pagination.offset = 0;
+    if (searchQuery.value.trim()) {
+        searchModels();
+    } else {
+        fetchModels();
+    }
+}, 300);
 
-        function addModelToCollection(collectionId) {
-            _addModelToCollection(collectionId, refreshSelectedModel);
-        }
+function onSearchInput(e) {
+    searchQuery.value = e.target.value;
+    debouncedSearch();
+}
 
-        function removeModelFromCollection(collectionId, modelId) {
-            _removeModelFromCollection(collectionId, modelId, refreshSelectedModel);
-        }
+function clearSearch() {
+    searchQuery.value = '';
+    pagination.offset = 0;
+    fetchModels();
+}
 
-        const selectionComposable = useSelection(
-            showToast,
-            () => fetchModels(),
-            models,
-            () => fetchTags(),
-            () => fetchFavoritesCount(),
-            fetchCollections,
-        );
-        const {
-            selectionMode, selectedModels, showBulkTagModal, bulkTagInput,
-            toggleSelectionMode, toggleModelSelection, selectAll, deselectAll, isSelected,
-            bulkFavorite, bulkAutoTag, bulkAddTags,
-            bulkAddToCollection: _bulkAddToCollection,
-            bulkDelete,
-        } = selectionComposable;
+async function fetchTags() {
+    try {
+        const data = await apiGetTags();
+        allTags.value = data.tags || [];
+    } catch (err) {
+        console.error('fetchTags error:', err);
+    }
+}
 
-        function bulkAddToCollection(collectionId) {
-            _bulkAddToCollection(collectionId, showAddToCollectionModal);
-        }
+async function fetchCategories() {
+    try {
+        const data = await apiGetCategories();
+        allCategories.value = data.categories || [];
+    } catch (err) {
+        console.error('fetchCategories error:', err);
+    }
+}
 
-        function refreshImportData() {
+async function fetchScanStatus() {
+    try {
+        const data = await apiGetScanStatus();
+        scanStatus.scanning = data.scanning;
+        scanStatus.total_files = data.total_files;
+        scanStatus.processed_files = data.processed_files;
+
+        if (data.scanning && !scanPollTimer) {
+            scanPollTimer = setInterval(fetchScanStatus, 2000);
+        } else if (!data.scanning && scanPollTimer) {
+            clearInterval(scanPollTimer);
+            scanPollTimer = null;
             fetchModels();
             fetchTags();
             fetchCategories();
+            showToast('Library scan complete');
         }
+    } catch (err) {
+        console.error('fetchScanStatus error:', err);
+    }
+}
 
-        const importComposable = useImport(
-            showToast, refreshImportData, libraries, collections, fetchCollections, startInlineNewCollection,
+/* ==============================================================
+   System Status
+   ============================================================== */
+
+async function fetchSystemStatus() {
+    try {
+        const data = await apiGetSystemStatus();
+        systemStatus.health = data.health || 'unknown';
+        systemStatus.scanner = data.scanner || { status: 'unknown' };
+        systemStatus.watcher = data.watcher || { status: 'unknown' };
+        systemStatus.database = data.database || { status: 'unknown' };
+        systemStatus.thumbnails = data.thumbnails || { status: 'unknown' };
+    } catch (err) {
+        systemStatus.health = 'error';
+        console.error('fetchSystemStatus error:', err);
+    }
+}
+
+function toggleStatusMenu() {
+    showStatusMenu.value = !showStatusMenu.value;
+}
+
+function closeStatusMenu() {
+    showStatusMenu.value = false;
+}
+
+function statusLabel(status) {
+    const labels = {
+        ok: 'Healthy',
+        busy: 'Busy',
+        idle: 'Idle',
+        scanning: 'Scanning',
+        watching: 'Watching',
+        regenerating: 'Regenerating',
+        stopped: 'Stopped',
+        degraded: 'Degraded',
+        error: 'Error',
+        unavailable: 'Unavailable',
+        unknown: 'Unknown',
+    };
+    return labels[status] || status;
+}
+
+function statusDotClass(status) {
+    if (['ok', 'idle', 'watching'].includes(status)) return 'status-dot-ok';
+    if (['busy', 'scanning', 'degraded', 'regenerating'].includes(status)) return 'status-dot-warn';
+    if (['error', 'stopped', 'unavailable'].includes(status)) return 'status-dot-error';
+    return 'status-dot-unknown';
+}
+
+/* ==============================================================
+   Tag Suggestions
+   ============================================================== */
+
+async function fetchTagSuggestions() {
+    if (!selectedModel.value) return;
+    tagSuggestionsLoading.value = true;
+    tagSuggestions.value = [];
+    try {
+        const data = await apiSuggestTags(selectedModel.value.id);
+        tagSuggestions.value = data.suggestions || [];
+    } catch (e) {
+        console.error('fetchTagSuggestions error:', e);
+    } finally {
+        tagSuggestionsLoading.value = false;
+    }
+}
+
+async function applyTagSuggestion(tag) {
+    newTagInput.value = tag;
+    await addTag();
+    tagSuggestions.value = tagSuggestions.value.filter(t => t !== tag);
+}
+
+/* ==============================================================
+   Duplicate filter toggle
+   ============================================================== */
+
+function toggleDuplicatesFilter() {
+    filters.duplicatesOnly = !filters.duplicatesOnly;
+    pagination.offset = 0;
+    fetchModels();
+}
+
+/* ==============================================================
+   Actions
+   ============================================================== */
+
+async function triggerScan() {
+    try {
+        const { ok, data } = await apiTriggerScan();
+        if (ok) {
+            showToast('Library scan started', 'info');
+            scanStatus.scanning = true;
+            if (!scanPollTimer) {
+                scanPollTimer = setInterval(fetchScanStatus, 2000);
+            }
+        } else {
+            showToast(data.detail || 'Could not start scan', 'error');
+        }
+    } catch (err) {
+        showToast('Failed to start scan', 'error');
+        console.error('triggerScan error:', err);
+    }
+}
+
+async function viewModel(model) {
+    try {
+        const data = await apiGetModel(model.id);
+        selectedModel.value = data;
+    } catch {
+        selectedModel.value = { ...model };
+    }
+
+    editName.value = selectedModel.value.name || '';
+    editDesc.value = selectedModel.value.description || '';
+    isEditingName.value = false;
+    isEditingDesc.value = false;
+    tagSuggestions.value = [];
+    showDetail.value = true;
+    document.body.classList.add('modal-open');
+
+    await nextTick();
+
+    viewerLoading.value = true;
+    initViewer('viewer-container');
+
+    const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
+    const fmt = (selectedModel.value.file_format || '').toLowerCase();
+    const glbUrl = `/api/models/${selectedModel.value.id}/file/glb`;
+
+    let loaded = false;
+
+    if (supportedViewerFormats.includes(fmt)) {
+        const fileUrl = `/api/models/${selectedModel.value.id}/file`;
+        try {
+            await loadModel(fileUrl, fmt);
+            loaded = true;
+        } catch (err) {
+            console.warn('Native loader failed for', fmt, '-- trying GLB fallback:', err);
+        }
+    }
+
+    if (!loaded && fmt) {
+        try {
+            await loadModel(glbUrl, 'glb');
+            loaded = true;
+        } catch (err) {
+            console.error('GLB fallback also failed:', err);
+        }
+    }
+    viewerLoading.value = false;
+}
+
+function closeDetail() {
+    showDetail.value = false;
+    disposeViewer();
+    selectedModel.value = null;
+    isEditingName.value = false;
+    isEditingDesc.value = false;
+    viewerLoading.value = false;
+    if (!showSettings.value) {
+        document.body.classList.remove('modal-open');
+    }
+}
+
+async function addTag() {
+    const tag = newTagInput.value.trim();
+    if (!tag || !selectedModel.value) return;
+    try {
+        const updated = await apiAddTagsToModel(selectedModel.value.id, [tag]);
+        selectedModel.value = updated;
+        updateModelInList(updated);
+        newTagInput.value = '';
+        fetchTags();
+        showToast(`Tag "${tag}" added`);
+    } catch (err) {
+        showToast(err.message || 'Failed to add tag', 'error');
+    }
+}
+
+async function removeTag(tagName) {
+    if (!selectedModel.value) return;
+    try {
+        await apiRemoveTagFromModel(selectedModel.value.id, tagName);
+        selectedModel.value.tags = (selectedModel.value.tags || []).filter(
+            (t) => t !== tagName
         );
-        const {
-            showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
-            importRunning, importDone, importPreview, importProgress,
-            uploadFiles, uploadResults, uploadTags, uploadTagSuggestions,
-            uploadCollectionId, uploadZipMeta,
-            importCredentials, credentialInputs,
-            openImportModal: _openImportModal,
-            closeImportModal: _closeImportModal,
-            previewImportUrl, startImport, onFilesSelected, startUpload,
-            addUploadTagSuggestion, fetchImportCredentials,
-            saveImportCredential, deleteImportCredential,
-        } = importComposable;
+        updateModelInList(selectedModel.value);
+        fetchTags();
+    } catch (err) {
+        showToast('Failed to remove tag', 'error');
+    }
+}
 
-        function openImportModal() {
-            fetchLibraries();
-            _openImportModal();
-        }
+async function updateModel(modelId, data) {
+    if (!modelId) return;
+    try {
+        const updated = await apiUpdateModel(modelId, data);
+        selectedModel.value = updated;
+        editName.value = updated.name || '';
+        editDesc.value = updated.description || '';
+        updateModelInList(updated);
+        showToast('Model updated');
+    } catch (err) {
+        showToast(err.message || 'Failed to update model', 'error');
+    }
+    isEditingName.value = false;
+    isEditingDesc.value = false;
+}
 
-        function closeImportModal() {
-            _closeImportModal(showDetail.value, showSettings.value);
-        }
+async function renameModelFile() {
+    if (!selectedModel.value) return;
+    const id = selectedModel.value.id;
+    try {
+        const updated = await apiRenameModelFile(id);
+        selectedModel.value = updated;
+        updateModelInList(updated);
+        showToast('File renamed');
+    } catch (e) {
+        showToast(e.message || 'Failed to rename file', 'error');
+    }
+}
 
-        /* ---- Inline collection callback for upload/addToCollection contexts ---- */
-        function confirmInlineNewCollection(context) {
-            collectionsComposable.confirmInlineNewCollection(context, (newId, ctx) => {
-                if (ctx === 'upload') {
-                    uploadCollectionId.value = newId;
-                } else if (ctx === 'addToCollection') {
-                    handleCollectionSelect(newId);
-                }
-            });
-        }
+async function deleteModel(model) {
+    if (
+        !confirm(
+            `Delete "${model.name}" from the library?\n\nThis removes it from the database but does NOT delete the file from disk.`
+        )
+    ) {
+        return;
+    }
+    try {
+        await apiDeleteModel(model.id);
+        models.value = models.value.filter((m) => m.id !== model.id);
+        pagination.total = Math.max(0, pagination.total - 1);
+        if (showDetail.value) closeDetail();
+        showToast('Model removed from library');
+    } catch (err) {
+        showToast(err.message || 'Failed to delete model', 'error');
+    }
+}
 
-        /* ---- Computed ---- */
-        const hasLibraries = computed(() => libraries.value.length > 0);
-        const scanProgress = computed(() => {
-            if (!scanStatus.total_files) return 0;
-            return Math.round(
-                (scanStatus.processed_files / scanStatus.total_files) * 100
-            );
+/* ---- Helpers ---- */
+
+function updateModelInList(updated) {
+    const idx = models.value.findIndex((m) => m.id === updated.id);
+    if (idx !== -1) {
+        models.value[idx] = { ...updated };
+    }
+}
+
+function closeSidebarIfMobile() {
+    if (window.innerWidth <= 768) {
+        sidebarOpen.value = false;
+    }
+}
+
+function setFormatFilter(fmt) {
+    filters.format = filters.format === fmt ? '' : fmt;
+    pagination.offset = 0;
+    refreshCurrentView();
+    closeSidebarIfMobile();
+}
+
+function setTagFilter(tagName) {
+    filters.tag = filters.tag === tagName ? '' : tagName;
+    pagination.offset = 0;
+    refreshCurrentView();
+    closeSidebarIfMobile();
+}
+
+function setCategoryFilter(catName) {
+    filters.category = filters.category === catName ? '' : catName;
+    pagination.offset = 0;
+    refreshCurrentView();
+    closeSidebarIfMobile();
+}
+
+function setLibraryFilter(libId) {
+    filters.library_id = filters.library_id === libId ? null : libId;
+    pagination.offset = 0;
+    refreshCurrentView();
+}
+
+function clearFilters() {
+    filters.format = '';
+    filters.tag = '';
+    filters.category = '';
+    filters.library_id = null;
+    filters.tags = [];
+    filters.categories = [];
+    filters.favoritesOnly = false;
+    filters.duplicatesOnly = false;
+    filters.collection = null;
+    filters.sortBy = 'updated_at';
+    filters.sortOrder = 'desc';
+    pagination.offset = 0;
+    refreshCurrentView();
+}
+
+function removeBreadcrumb(crumb) {
+    if (crumb.type === 'format') {
+        filters.format = '';
+    } else if (crumb.type === 'tag') {
+        filters.tag = '';
+    } else if (crumb.type === 'category') {
+        filters.category = '';
+    } else if (crumb.type === 'library_id') {
+        filters.library_id = null;
+    }
+    pagination.offset = 0;
+    refreshCurrentView();
+}
+
+function refreshCurrentView() {
+    if (searchQuery.value.trim()) {
+        searchModels();
+    } else {
+        fetchModels();
+    }
+}
+
+function loadMore() {
+    pagination.offset += pagination.limit;
+    if (searchQuery.value.trim()) {
+        searchModels(true);
+    } else {
+        fetchModels(true);
+    }
+}
+
+function setPageSize(size) {
+    const val = parseInt(size);
+    if (!PAGE_SIZE_OPTIONS.includes(val)) return;
+    pagination.limit = val;
+    pagination.offset = 0;
+    localStorage.setItem('yastl_page_size', String(val));
+    if (searchQuery.value.trim()) {
+        searchModels();
+    } else {
+        fetchModels();
+    }
+}
+
+function toggleCategory(catId) {
+    expandedCategories[catId] = !expandedCategories[catId];
+}
+
+function handleResetView() {
+    resetCamera();
+}
+
+function saveName() {
+    if (!selectedModel.value) return;
+    const val = editName.value.trim();
+    if (val && val !== selectedModel.value.name) {
+        updateModel(selectedModel.value.id, { name: val });
+    } else {
+        isEditingName.value = false;
+    }
+}
+
+function saveDesc() {
+    if (!selectedModel.value) return;
+    const val = editDesc.value;
+    if (val !== selectedModel.value.description) {
+        updateModel(selectedModel.value.id, { description: val });
+    } else {
+        isEditingDesc.value = false;
+    }
+}
+
+function startEditName() {
+    editName.value = selectedModel.value?.name || '';
+    isEditingName.value = true;
+}
+
+function startEditDesc() {
+    editDesc.value = selectedModel.value?.description || '';
+    isEditingDesc.value = true;
+}
+
+function zipName(model) {
+    if (!model.zip_path) return '';
+    const parts = model.zip_path.replace(/\\/g, '/').split('/');
+    const filename = parts[parts.length - 1] || '';
+    return filename.replace(/\.zip$/i, '');
+}
+
+/* ---- Thumbnail helpers ---- */
+function thumbUrl(model) {
+    if (model.thumbnail_path) {
+        return `/thumbnails/${model.thumbnail_path}`;
+    }
+    return `/api/models/${model.id}/thumbnail`;
+}
+
+function onThumbError(e) {
+    e.target.style.display = 'none';
+    const fallback = e.target.parentElement?.querySelector('.no-thumbnail');
+    if (fallback) fallback.style.display = 'flex';
+}
+
+function thumbnailStatus(model) {
+    if (!model.thumbnail_path) return 'missing';
+    if (!model.thumbnail_mode) return 'stale';
+    if (model.thumbnail_mode !== thumbnailMode.value) return 'stale';
+    return 'current';
+}
+
+function thumbStatusClass(model) {
+    const s = thumbnailStatus(model);
+    if (s === 'current') return 'thumb-status-current';
+    if (s === 'stale') return 'thumb-status-stale';
+    return 'thumb-status-missing';
+}
+
+function thumbStatusTitle(model) {
+    const s = thumbnailStatus(model);
+    if (s === 'current') return 'Thumbnail is up to date';
+    if (s === 'stale') return 'Thumbnail was generated with different settings';
+    return 'No thumbnail';
+}
+
+/* ---- Format badge CSS class ---- */
+function formatClass(fmt) {
+    if (!fmt) return '';
+    const f = fmt.toLowerCase().replace('.', '');
+    if (f === '3mf') return '_3mf';
+    return f;
+}
+
+// ---- Favorites count ----
+async function fetchFavoritesCount() {
+    try {
+        const data = await apiGetFavoritesCount();
+        favoritesCount.value = data.total || 0;
+    } catch (e) {
+        console.error('Failed to fetch favorites count', e);
+    }
+}
+
+function setCollectionFilter(collectionId) {
+    if (filters.collection === collectionId) {
+        filters.collection = null;
+    } else {
+        filters.collection = collectionId;
+    }
+    pagination.offset = 0;
+    fetchModels();
+}
+
+// ---- Saved Searches ----
+async function fetchSavedSearches() {
+    try {
+        const data = await apiGetSavedSearches();
+        savedSearches.value = data.saved_searches || [];
+    } catch (e) {
+        console.error('Failed to fetch saved searches', e);
+    }
+}
+
+async function saveCurrentSearch() {
+    const name = saveSearchName.value.trim();
+    if (!name) return;
+    try {
+        await apiSaveSearch({
+            name,
+            query: searchQuery.value,
+            filters: {
+                format: filters.format,
+                tags: filters.tags,
+                categories: filters.categories,
+                favoritesOnly: filters.favoritesOnly,
+                collection: filters.collection,
+            },
+            sort_by: filters.sortBy,
+            sort_order: filters.sortOrder,
         });
-
-        const hasMore = computed(() => {
-            return pagination.offset + pagination.limit < pagination.total;
-        });
-
-        const shownCount = computed(() => {
-            return Math.min(pagination.offset + pagination.limit, pagination.total);
-        });
-
-        const hasActiveFilters = computed(() => {
-            return !!(filters.format || filters.tag || filters.category || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection);
-        });
-
-        // Find the library object for the currently selected library_id
-        const selectedLibrary = computed(() => {
-            if (!filters.library_id) return null;
-            return libraries.value.find(l => l.id === filters.library_id) || null;
-        });
-
-        // Build breadcrumb trail from current filters
-        const breadcrumbTrail = computed(() => {
-            const trail = [];
-            if (filters.library_id && selectedLibrary.value) {
-                trail.push({ type: 'library_id', label: selectedLibrary.value.name });
-            }
-            if (filters.category) {
-                trail.push({ type: 'category', label: filters.category });
-            }
-            if (filters.tag) {
-                trail.push({ type: 'tag', label: filters.tag });
-            }
-            if (filters.format) {
-                trail.push({ type: 'format', label: filters.format.toUpperCase() });
-            }
-            return trail;
-        });
-
-        /* ==============================================================
-           Core data fetching
-           ============================================================== */
-
-        async function fetchModels(append = false) {
-            loading.value = true;
-            try {
-                const params = new URLSearchParams({
-                    limit: String(pagination.limit),
-                    offset: String(pagination.offset),
-                });
-                if (filters.format) params.append('format', filters.format);
-                if (filters.tag) params.append('tag', filters.tag);
-                if (filters.category) params.append('category', filters.category);
-                if (filters.library_id) params.append('library_id', String(filters.library_id));
-                if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
-                if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
-                if (filters.favoritesOnly) params.append('favorites_only', 'true');
-                if (filters.duplicatesOnly) params.append('duplicates_only', 'true');
-                if (filters.collection) params.append('collection', filters.collection);
-                params.append('sort_by', filters.sortBy);
-                params.append('sort_order', filters.sortOrder);
-
-                const data = await apiGetModels(params);
-
-                if (append) {
-                    models.value = [...models.value, ...(data.models || [])];
-                } else {
-                    models.value = data.models || [];
-                }
-                pagination.total = data.total || 0;
-            } catch (err) {
-                showToast('Failed to load models', 'error');
-                console.error('fetchModels error:', err);
-            } finally {
-                loading.value = false;
-            }
-        }
-
-        async function searchModels(append = false) {
-            if (!searchQuery.value.trim()) {
-                pagination.offset = 0;
-                return fetchModels();
-            }
-            loading.value = true;
-            try {
-                const params = new URLSearchParams({
-                    q: searchQuery.value.trim(),
-                    limit: String(pagination.limit),
-                    offset: String(pagination.offset),
-                });
-                if (filters.format) params.append('format', filters.format);
-                if (filters.tag) params.append('tags', filters.tag);
-                if (filters.category) params.append('categories', filters.category);
-                if (filters.library_id) params.append('library_id', String(filters.library_id));
-
-                const data = await apiSearchModels(params);
-
-                if (append) {
-                    models.value = [...models.value, ...(data.models || [])];
-                } else {
-                    models.value = data.models || [];
-                }
-                pagination.total = data.total || 0;
-            } catch (err) {
-                showToast('Search failed', 'error');
-                console.error('searchModels error:', err);
-            } finally {
-                loading.value = false;
-            }
-        }
-
-        const debouncedSearch = debounce(() => {
-            pagination.offset = 0;
-            if (searchQuery.value.trim()) {
-                searchModels();
-            } else {
-                fetchModels();
-            }
-        }, 300);
-
-        function onSearchInput(e) {
-            searchQuery.value = e.target.value;
-            debouncedSearch();
-        }
-
-        function clearSearch() {
-            searchQuery.value = '';
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        async function fetchTags() {
-            try {
-                const data = await apiGetTags();
-                allTags.value = data.tags || [];
-            } catch (err) {
-                console.error('fetchTags error:', err);
-            }
-        }
-
-        async function fetchCategories() {
-            try {
-                const data = await apiGetCategories();
-                allCategories.value = data.categories || [];
-            } catch (err) {
-                console.error('fetchCategories error:', err);
-            }
-        }
-
-        async function fetchScanStatus() {
-            try {
-                const data = await apiGetScanStatus();
-                scanStatus.scanning = data.scanning;
-                scanStatus.total_files = data.total_files;
-                scanStatus.processed_files = data.processed_files;
-
-                if (data.scanning && !scanPollTimer) {
-                    scanPollTimer = setInterval(fetchScanStatus, 2000);
-                } else if (!data.scanning && scanPollTimer) {
-                    clearInterval(scanPollTimer);
-                    scanPollTimer = null;
-                    fetchModels();
-                    fetchTags();
-                    fetchCategories();
-                    showToast('Library scan complete');
-                }
-            } catch (err) {
-                console.error('fetchScanStatus error:', err);
-            }
-        }
-
-        /* ==============================================================
-           System Status
-           ============================================================== */
-
-        async function fetchSystemStatus() {
-            try {
-                const data = await apiGetSystemStatus();
-                systemStatus.health = data.health || 'unknown';
-                systemStatus.scanner = data.scanner || { status: 'unknown' };
-                systemStatus.watcher = data.watcher || { status: 'unknown' };
-                systemStatus.database = data.database || { status: 'unknown' };
-                systemStatus.thumbnails = data.thumbnails || { status: 'unknown' };
-            } catch (err) {
-                systemStatus.health = 'error';
-                console.error('fetchSystemStatus error:', err);
-            }
-        }
-
-        function toggleStatusMenu() {
-            showStatusMenu.value = !showStatusMenu.value;
-        }
-
-        function closeStatusMenu() {
-            showStatusMenu.value = false;
-        }
-
-        function statusLabel(status) {
-            const labels = {
-                ok: 'Healthy',
-                busy: 'Busy',
-                idle: 'Idle',
-                scanning: 'Scanning',
-                watching: 'Watching',
-                regenerating: 'Regenerating',
-                stopped: 'Stopped',
-                degraded: 'Degraded',
-                error: 'Error',
-                unavailable: 'Unavailable',
-                unknown: 'Unknown',
-            };
-            return labels[status] || status;
-        }
-
-        function statusDotClass(status) {
-            if (['ok', 'idle', 'watching'].includes(status)) return 'status-dot-ok';
-            if (['busy', 'scanning', 'degraded', 'regenerating'].includes(status)) return 'status-dot-warn';
-            if (['error', 'stopped', 'unavailable'].includes(status)) return 'status-dot-error';
-            return 'status-dot-unknown';
-        }
-
-        /* ==============================================================
-           Tag Suggestions
-           ============================================================== */
-
-        async function fetchTagSuggestions() {
-            if (!selectedModel.value) return;
-            tagSuggestionsLoading.value = true;
-            tagSuggestions.value = [];
-            try {
-                const data = await apiSuggestTags(selectedModel.value.id);
-                tagSuggestions.value = data.suggestions || [];
-            } catch (e) {
-                console.error('fetchTagSuggestions error:', e);
-            } finally {
-                tagSuggestionsLoading.value = false;
-            }
-        }
-
-        async function applyTagSuggestion(tag) {
-            newTagInput.value = tag;
-            await addTag();
-            tagSuggestions.value = tagSuggestions.value.filter(t => t !== tag);
-        }
-
-        /* ==============================================================
-           Duplicate filter toggle
-           ============================================================== */
-
-        function toggleDuplicatesFilter() {
-            filters.duplicatesOnly = !filters.duplicatesOnly;
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        /* ==============================================================
-           Actions
-           ============================================================== */
-
-        async function triggerScan() {
-            try {
-                const { ok, data } = await apiTriggerScan();
-                if (ok) {
-                    showToast('Library scan started', 'info');
-                    scanStatus.scanning = true;
-                    if (!scanPollTimer) {
-                        scanPollTimer = setInterval(fetchScanStatus, 2000);
-                    }
-                } else {
-                    showToast(data.detail || 'Could not start scan', 'error');
-                }
-            } catch (err) {
-                showToast('Failed to start scan', 'error');
-                console.error('triggerScan error:', err);
-            }
-        }
-
-        async function viewModel(model) {
-            try {
-                const data = await apiGetModel(model.id);
-                selectedModel.value = data;
-            } catch {
-                selectedModel.value = { ...model };
-            }
-
-            editName.value = selectedModel.value.name || '';
-            editDesc.value = selectedModel.value.description || '';
-            isEditingName.value = false;
-            isEditingDesc.value = false;
-            tagSuggestions.value = [];
-            showDetail.value = true;
-            document.body.classList.add('modal-open');
-
-            await nextTick();
-
-            viewerLoading.value = true;
-            initViewer('viewer-container');
-
-            const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
-            const fmt = (selectedModel.value.file_format || '').toLowerCase();
-            const glbUrl = `/api/models/${selectedModel.value.id}/file/glb`;
-
-            let loaded = false;
-
-            if (supportedViewerFormats.includes(fmt)) {
-                const fileUrl = `/api/models/${selectedModel.value.id}/file`;
-                try {
-                    await loadModel(fileUrl, fmt);
-                    loaded = true;
-                } catch (err) {
-                    console.warn('Native loader failed for', fmt, '— trying GLB fallback:', err);
-                }
-            }
-
-            if (!loaded && fmt) {
-                try {
-                    await loadModel(glbUrl, 'glb');
-                    loaded = true;
-                } catch (err) {
-                    console.error('GLB fallback also failed:', err);
-                }
-            }
-            viewerLoading.value = false;
-        }
-
-        function closeDetail() {
-            showDetail.value = false;
-            disposeViewer();
-            selectedModel.value = null;
-            isEditingName.value = false;
-            isEditingDesc.value = false;
-            viewerLoading.value = false;
-            if (!showSettings.value) {
-                document.body.classList.remove('modal-open');
-            }
-        }
-
-        async function addTag() {
-            const tag = newTagInput.value.trim();
-            if (!tag || !selectedModel.value) return;
-            try {
-                const updated = await apiAddTagsToModel(selectedModel.value.id, [tag]);
-                selectedModel.value = updated;
-                updateModelInList(updated);
-                newTagInput.value = '';
-                fetchTags();
-                showToast(`Tag "${tag}" added`);
-            } catch (err) {
-                showToast(err.message || 'Failed to add tag', 'error');
-            }
-        }
-
-        async function removeTag(tagName) {
-            if (!selectedModel.value) return;
-            try {
-                await apiRemoveTagFromModel(selectedModel.value.id, tagName);
-                selectedModel.value.tags = (selectedModel.value.tags || []).filter(
-                    (t) => t !== tagName
-                );
-                updateModelInList(selectedModel.value);
-                fetchTags();
-            } catch (err) {
-                showToast('Failed to remove tag', 'error');
-            }
-        }
-
-        async function updateModel(modelId, data) {
-            if (!modelId) return;
-            try {
-                const updated = await apiUpdateModel(modelId, data);
-                selectedModel.value = updated;
-                editName.value = updated.name || '';
-                editDesc.value = updated.description || '';
-                updateModelInList(updated);
-                showToast('Model updated');
-            } catch (err) {
-                showToast(err.message || 'Failed to update model', 'error');
-            }
-            isEditingName.value = false;
-            isEditingDesc.value = false;
-        }
-
-        async function renameModelFile() {
-            if (!selectedModel.value) return;
-            const id = selectedModel.value.id;
-            try {
-                const updated = await apiRenameModelFile(id);
-                selectedModel.value = updated;
-                updateModelInList(updated);
-                showToast('File renamed');
-            } catch (e) {
-                showToast(e.message || 'Failed to rename file', 'error');
-            }
-        }
-
-        async function deleteModel(model) {
-            if (
-                !confirm(
-                    `Delete "${model.name}" from the library?\n\nThis removes it from the database but does NOT delete the file from disk.`
-                )
-            ) {
-                return;
-            }
-            try {
-                await apiDeleteModel(model.id);
-                models.value = models.value.filter((m) => m.id !== model.id);
-                pagination.total = Math.max(0, pagination.total - 1);
-                if (showDetail.value) closeDetail();
-                showToast('Model removed from library');
-            } catch (err) {
-                showToast(err.message || 'Failed to delete model', 'error');
-            }
-        }
-
-        /* ---- Helpers ---- */
-
-        function updateModelInList(updated) {
-            const idx = models.value.findIndex((m) => m.id === updated.id);
-            if (idx !== -1) {
-                models.value[idx] = { ...updated };
-            }
-        }
-
-        function closeSidebarIfMobile() {
-            if (window.innerWidth <= 768) {
-                sidebarOpen.value = false;
-            }
-        }
-
-        function setFormatFilter(fmt) {
-            filters.format = filters.format === fmt ? '' : fmt;
-            pagination.offset = 0;
-            refreshCurrentView();
-            closeSidebarIfMobile();
-        }
-
-        function setTagFilter(tagName) {
-            filters.tag = filters.tag === tagName ? '' : tagName;
-            pagination.offset = 0;
-            refreshCurrentView();
-            closeSidebarIfMobile();
-        }
-
-        function setCategoryFilter(catName) {
-            filters.category = filters.category === catName ? '' : catName;
-            pagination.offset = 0;
-            refreshCurrentView();
-            closeSidebarIfMobile();
-        }
-
-        function setLibraryFilter(libId) {
-            filters.library_id = filters.library_id === libId ? null : libId;
-            pagination.offset = 0;
-            refreshCurrentView();
-        }
-
-        function clearFilters() {
-            filters.format = '';
-            filters.tag = '';
-            filters.category = '';
-            filters.library_id = null;
-            filters.tags = [];
-            filters.categories = [];
-            filters.favoritesOnly = false;
-            filters.duplicatesOnly = false;
-            filters.collection = null;
-            filters.sortBy = 'updated_at';
-            filters.sortOrder = 'desc';
-            pagination.offset = 0;
-            refreshCurrentView();
-        }
-
-        function removeBreadcrumb(crumb) {
-            if (crumb.type === 'format') {
-                filters.format = '';
-            } else if (crumb.type === 'tag') {
-                filters.tag = '';
-            } else if (crumb.type === 'category') {
-                filters.category = '';
-            } else if (crumb.type === 'library_id') {
-                filters.library_id = null;
-            }
-            pagination.offset = 0;
-            refreshCurrentView();
-        }
-
-        function refreshCurrentView() {
-            if (searchQuery.value.trim()) {
-                searchModels();
-            } else {
-                fetchModels();
-            }
-        }
-
-        function loadMore() {
-            pagination.offset += pagination.limit;
-            if (searchQuery.value.trim()) {
-                searchModels(true);
-            } else {
-                fetchModels(true);
-            }
-        }
-
-        function setPageSize(size) {
-            const val = parseInt(size);
-            if (!PAGE_SIZE_OPTIONS.includes(val)) return;
-            pagination.limit = val;
-            pagination.offset = 0;
-            localStorage.setItem('yastl_page_size', String(val));
-            if (searchQuery.value.trim()) {
-                searchModels();
-            } else {
-                fetchModels();
-            }
-        }
-
-        function toggleCategory(catId) {
-            expandedCategories[catId] = !expandedCategories[catId];
-        }
-
-        function handleResetView() {
-            resetCamera();
-        }
-
-        function saveName() {
-            if (!selectedModel.value) return;
-            const val = editName.value.trim();
-            if (val && val !== selectedModel.value.name) {
-                updateModel(selectedModel.value.id, { name: val });
-            } else {
-                isEditingName.value = false;
-            }
-        }
-
-        function saveDesc() {
-            if (!selectedModel.value) return;
-            const val = editDesc.value;
-            if (val !== selectedModel.value.description) {
-                updateModel(selectedModel.value.id, { description: val });
-            } else {
-                isEditingDesc.value = false;
-            }
-        }
-
-        function startEditName() {
-            editName.value = selectedModel.value?.name || '';
-            isEditingName.value = true;
-        }
-
-        function startEditDesc() {
-            editDesc.value = selectedModel.value?.description || '';
-            isEditingDesc.value = true;
-        }
-
-        function zipName(model) {
-            if (!model.zip_path) return '';
-            const parts = model.zip_path.replace(/\\/g, '/').split('/');
-            const filename = parts[parts.length - 1] || '';
-            return filename.replace(/\.zip$/i, '');
-        }
-
-        /* ---- Thumbnail helpers ---- */
-        function thumbUrl(model) {
-            if (model.thumbnail_path) {
-                return `/thumbnails/${model.thumbnail_path}`;
-            }
-            return `/api/models/${model.id}/thumbnail`;
-        }
-
-        function onThumbError(e) {
-            e.target.style.display = 'none';
-            const fallback = e.target.parentElement?.querySelector('.no-thumbnail');
-            if (fallback) fallback.style.display = 'flex';
-        }
-
-        function thumbnailStatus(model) {
-            if (!model.thumbnail_path) return 'missing';
-            if (!model.thumbnail_mode) return 'stale';
-            if (model.thumbnail_mode !== thumbnailMode.value) return 'stale';
-            return 'current';
-        }
-
-        function thumbStatusClass(model) {
-            const s = thumbnailStatus(model);
-            if (s === 'current') return 'thumb-status-current';
-            if (s === 'stale') return 'thumb-status-stale';
-            return 'thumb-status-missing';
-        }
-
-        function thumbStatusTitle(model) {
-            const s = thumbnailStatus(model);
-            if (s === 'current') return 'Thumbnail is up to date';
-            if (s === 'stale') return 'Thumbnail was generated with different settings';
-            return 'No thumbnail';
-        }
-
-        /* ---- Format badge CSS class ---- */
-        function formatClass(fmt) {
-            if (!fmt) return '';
-            const f = fmt.toLowerCase().replace('.', '');
-            if (f === '3mf') return '_3mf';
-            return f;
-        }
-
-        // ---- Favorites count ----
-        async function fetchFavoritesCount() {
-            try {
-                const data = await apiGetFavoritesCount();
-                favoritesCount.value = data.total || 0;
-            } catch (e) {
-                console.error('Failed to fetch favorites count', e);
-            }
-        }
-
-        function setCollectionFilter(collectionId) {
-            if (filters.collection === collectionId) {
-                filters.collection = null;
-            } else {
-                filters.collection = collectionId;
-            }
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        // ---- Saved Searches ----
-        async function fetchSavedSearches() {
-            try {
-                const data = await apiGetSavedSearches();
-                savedSearches.value = data.saved_searches || [];
-            } catch (e) {
-                console.error('Failed to fetch saved searches', e);
-            }
-        }
-
-        async function saveCurrentSearch() {
-            const name = saveSearchName.value.trim();
-            if (!name) return;
-            try {
-                await apiSaveSearch({
-                    name,
-                    query: searchQuery.value,
-                    filters: {
-                        format: filters.format,
-                        tags: filters.tags,
-                        categories: filters.categories,
-                        favoritesOnly: filters.favoritesOnly,
-                        collection: filters.collection,
-                    },
-                    sort_by: filters.sortBy,
-                    sort_order: filters.sortOrder,
-                });
-                showSaveSearchModal.value = false;
-                saveSearchName.value = '';
-                await fetchSavedSearches();
-                showToast('Search saved', 'success');
-            } catch (e) {
-                showToast('Failed to save search', 'error');
-            }
-        }
-
-        function applySavedSearch(search) {
-            searchQuery.value = search.query || '';
-            const f = search.filters || {};
-            filters.format = f.format || '';
-            filters.tags = f.tags || [];
-            filters.categories = f.categories || [];
-            filters.favoritesOnly = f.favoritesOnly || false;
-            filters.collection = f.collection || null;
-            filters.sortBy = search.sort_by || 'updated_at';
-            filters.sortOrder = search.sort_order || 'desc';
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        async function deleteSavedSearch(id) {
-            try {
-                await apiDeleteSavedSearch(id);
-                await fetchSavedSearches();
-                showToast('Saved search deleted', 'success');
-            } catch (e) {
-                showToast('Failed to delete saved search', 'error');
-            }
-        }
-
-        // ---- Favorites ----
-        async function toggleFavorite(model, e) {
-            if (e) e.stopPropagation();
-            const wasFav = model.is_favorite;
-            model.is_favorite = !wasFav;
-            try {
-                await apiToggleFavorite(model.id, wasFav);
-                favoritesCount.value += wasFav ? -1 : 1;
-            } catch {
-                model.is_favorite = wasFav;
-            }
-        }
-
-        function toggleFavoritesFilter() {
-            filters.favoritesOnly = !filters.favoritesOnly;
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        function openBulkAddToCollection() {
-            addToCollectionModelId.value = null;
-            showAddToCollectionModal.value = true;
-        }
-
-        function handleCollectionSelect(collectionId) {
-            if (addToCollectionModelId.value) {
-                addModelToCollection(collectionId);
-            } else {
-                bulkAddToCollection(collectionId);
-            }
-        }
-
-        // ---- Sort / Filter helpers ----
-        function setSortBy(value) {
-            filters.sortBy = value;
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        function toggleSortOrder() {
-            filters.sortOrder = filters.sortOrder === 'asc' ? 'desc' : 'asc';
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        function toggleTagFilter(tagName) {
-            const idx = filters.tags.indexOf(tagName);
-            if (idx >= 0) {
-                filters.tags.splice(idx, 1);
-            } else {
-                filters.tags.push(tagName);
-            }
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        function toggleCategoryFilter(catName) {
-            const idx = filters.categories.indexOf(catName);
-            if (idx >= 0) {
-                filters.categories.splice(idx, 1);
-            } else {
-                filters.categories.push(catName);
-            }
-            pagination.offset = 0;
-            fetchModels();
-        }
-
-        function removeTagFilter(tagName) {
-            const idx = filters.tags.indexOf(tagName);
-            if (idx >= 0) {
-                filters.tags.splice(idx, 1);
-                pagination.offset = 0;
-                fetchModels();
-            }
-        }
-
-        function removeCategoryFilter(catName) {
-            const idx = filters.categories.indexOf(catName);
-            if (idx >= 0) {
-                filters.categories.splice(idx, 1);
-                pagination.offset = 0;
-                fetchModels();
-            }
-        }
-
-        // Settings wrappers
-        function openSettings() {
-            settingsComposable.openSettings(checkForUpdates, updateInfo);
-        }
-
-        function closeSettings() {
-            settingsComposable.closeSettings(showDetail.value);
-        }
-
-        /* ---- Keyboard handler for modals ---- */
-        function onKeydown(e) {
-            if (e.key === 'Escape') {
-                if (showBulkTagModal.value) {
-                    showBulkTagModal.value = false;
-                } else if (showImportModal.value) {
-                    closeImportModal();
-                } else if (showAddToCollectionModal.value) {
-                    showAddToCollectionModal.value = false;
-                } else if (showCollectionModal.value) {
-                    showCollectionModal.value = false;
-                } else if (showSaveSearchModal.value) {
-                    showSaveSearchModal.value = false;
-                } else if (showStatusMenu.value) {
-                    closeStatusMenu();
-                } else if (showSettings.value) {
-                    closeSettings();
-                } else if (showDetail.value) {
-                    closeDetail();
-                }
-            }
-        }
-
-        /* ---- Click-outside handler for status menu ---- */
-        function onDocumentClick(e) {
-            if (showStatusMenu.value) {
-                const wrapper = document.querySelector('.status-wrapper');
-                const menu = document.querySelector('.status-menu');
-                if (wrapper && !wrapper.contains(e.target) && (!menu || !menu.contains(e.target))) {
-                    closeStatusMenu();
-                }
-            }
-        }
-
-        /* ---- Lifecycle ---- */
-        onMounted(() => {
-            fetchLibraries();
-            fetchModels();
-            fetchTags();
-            fetchCategories();
-            fetchScanStatus();
-            fetchSystemStatus();
-            fetchCollections();
-            fetchFavoritesCount();
-            fetchSavedSearches();
-            fetchImportCredentials();
-            statusPollTimer = setInterval(fetchSystemStatus, 30000);
-            document.addEventListener('keydown', onKeydown);
-            document.addEventListener('click', onDocumentClick);
-        });
-
-        /* ---- Expose everything to the template ---- */
-        return {
-            // State
-            models,
-            selectedModel,
-            searchQuery,
-            viewMode,
-            loading,
-            showDetail,
-            allTags,
-            allCategories,
-            newTagInput,
-            tagSuggestions,
-            tagSuggestionsLoading,
-            showBulkTagModal,
-            bulkTagInput,
-            toasts,
-            sidebarOpen,
-            viewerLoading,
-            editName,
-            editDesc,
-            isEditingName,
-            isEditingDesc,
-            expandedCategories,
-            collapsedSections,
-            filters,
-            pagination,
-            scanStatus,
-            showSettings,
-            libraries,
-            newLibName,
-            newLibPath,
-            addingLibrary,
-            updateInfo,
-            thumbnailMode,
-            regeneratingThumbnails,
-            regenProgress,
-            showStatusMenu,
-            systemStatus,
-            favoritesCount,
-            collections,
-            showCollectionModal,
-            newCollectionName,
-            newCollectionColor,
-            COLLECTION_COLORS,
-            openCollectionModal,
-            addToCollectionModelId,
-            showAddToCollectionModal,
-            editingCollectionId,
-            inlineNewCollection,
-            editCollectionName,
-            savedSearches,
-            showSaveSearchModal,
-            saveSearchName,
-            selectionMode,
-            selectedModels,
-            showImportModal,
-            importMode,
-            importUrls,
-            importLibraryId,
-            importSubfolder,
-            importRunning,
-            importDone,
-            importPreview,
-            importProgress,
-            importCredentials,
-            credentialInputs,
-            uploadFiles,
-            uploadResults,
-            uploadTags,
-            uploadTagSuggestions,
-            uploadCollectionId,
-            uploadZipMeta,
-
-            // Computed
-            scanProgress,
-            hasMore,
-            shownCount,
-            hasActiveFilters,
-            hasLibraries,
-            breadcrumbTrail,
-            selectedLibrary,
-
-            // Actions
-            onSearchInput,
-            clearSearch,
-            fetchModels,
-            triggerScan,
-            viewModel,
-            closeDetail,
-            addTag,
-            removeTag,
-            updateModel,
-            renameModelFile,
-            deleteModel,
-            loadMore,
-            setPageSize,
-            PAGE_SIZE_OPTIONS,
-            handleResetView,
-            setFormatFilter,
-            setTagFilter,
-            setCategoryFilter,
-            clearFilters,
-            setLibraryFilter,
-            removeBreadcrumb,
-            toggleCategory,
-            saveName,
-            saveDesc,
-            startEditName,
-            startEditDesc,
-            openSettings,
-            closeSettings,
-            addLibrary,
-            deleteLibrary,
-            setThumbnailMode,
-            regenerateThumbnails,
-            thumbnailStatus,
-            thumbStatusClass,
-            thumbStatusTitle,
-            zipName,
-            checkForUpdates,
-            applyUpdate,
-            toggleStatusMenu,
-            closeStatusMenu,
-            statusLabel,
-            statusDotClass,
-            fetchCollections,
-            createCollection,
-            startInlineNewCollection,
-            confirmInlineNewCollection,
-            cancelInlineNewCollection,
-            deleteCollection,
-            startEditCollection,
-            saveCollectionName,
-            openAddToCollection,
-            addModelToCollection,
-            removeModelFromCollection,
-            setCollectionFilter,
-            fetchSavedSearches,
-            saveCurrentSearch,
-            applySavedSearch,
-            deleteSavedSearch,
-            toggleFavorite,
-            toggleFavoritesFilter,
-            toggleSelectionMode,
-            toggleModelSelection,
-            selectAll,
-            deselectAll,
-            isSelected,
-            bulkFavorite,
-            bulkAddToCollection,
-            bulkDelete,
-            openBulkAddToCollection,
-            handleCollectionSelect,
-            setSortBy,
-            toggleSortOrder,
-            toggleTagFilter,
-            toggleCategoryFilter,
-            removeTagFilter,
-            removeCategoryFilter,
-            openImportModal,
-            closeImportModal,
-            previewImportUrl,
-            startImport,
-            onFilesSelected,
-            startUpload,
-            addUploadTagSuggestion,
-            fetchImportCredentials,
-            saveImportCredential,
-            deleteImportCredential,
-            toggleDuplicatesFilter,
-            fetchTagSuggestions,
-            applyTagSuggestion,
-            bulkAutoTag,
-            bulkAddTags,
-
-            // Helpers
-            thumbUrl,
-            onThumbError,
-            showToast,
-            formatClass,
-            formatFileSize,
-            formatDate,
-            formatNumber,
-            formatDimensions,
-            highlightMatch,
-
-            // Icons
-            ICONS,
-        };
-    },
-
-    template: /* html */ `
+        showSaveSearchModal.value = false;
+        saveSearchName.value = '';
+        await fetchSavedSearches();
+        showToast('Search saved', 'success');
+    } catch (e) {
+        showToast('Failed to save search', 'error');
+    }
+}
+
+function applySavedSearch(search) {
+    searchQuery.value = search.query || '';
+    const f = search.filters || {};
+    filters.format = f.format || '';
+    filters.tags = f.tags || [];
+    filters.categories = f.categories || [];
+    filters.favoritesOnly = f.favoritesOnly || false;
+    filters.collection = f.collection || null;
+    filters.sortBy = search.sort_by || 'updated_at';
+    filters.sortOrder = search.sort_order || 'desc';
+    pagination.offset = 0;
+    fetchModels();
+}
+
+async function deleteSavedSearch(id) {
+    try {
+        await apiDeleteSavedSearch(id);
+        await fetchSavedSearches();
+        showToast('Saved search deleted', 'success');
+    } catch (e) {
+        showToast('Failed to delete saved search', 'error');
+    }
+}
+
+// ---- Favorites ----
+async function toggleFavorite(model, e) {
+    if (e) e.stopPropagation();
+    const wasFav = model.is_favorite;
+    model.is_favorite = !wasFav;
+    try {
+        await apiToggleFavorite(model.id, wasFav);
+        favoritesCount.value += wasFav ? -1 : 1;
+    } catch {
+        model.is_favorite = wasFav;
+    }
+}
+
+function toggleFavoritesFilter() {
+    filters.favoritesOnly = !filters.favoritesOnly;
+    pagination.offset = 0;
+    fetchModels();
+}
+
+function openBulkAddToCollection() {
+    addToCollectionModelId.value = null;
+    showAddToCollectionModal.value = true;
+}
+
+function handleCollectionSelect(collectionId) {
+    if (addToCollectionModelId.value) {
+        addModelToCollection(collectionId);
+    } else {
+        bulkAddToCollection(collectionId);
+    }
+}
+
+// ---- Sort / Filter helpers ----
+function setSortBy(value) {
+    filters.sortBy = value;
+    pagination.offset = 0;
+    fetchModels();
+}
+
+function toggleSortOrder() {
+    filters.sortOrder = filters.sortOrder === 'asc' ? 'desc' : 'asc';
+    pagination.offset = 0;
+    fetchModels();
+}
+
+function toggleTagFilter(tagName) {
+    const idx = filters.tags.indexOf(tagName);
+    if (idx >= 0) {
+        filters.tags.splice(idx, 1);
+    } else {
+        filters.tags.push(tagName);
+    }
+    pagination.offset = 0;
+    fetchModels();
+}
+
+function toggleCategoryFilter(catName) {
+    const idx = filters.categories.indexOf(catName);
+    if (idx >= 0) {
+        filters.categories.splice(idx, 1);
+    } else {
+        filters.categories.push(catName);
+    }
+    pagination.offset = 0;
+    fetchModels();
+}
+
+function removeTagFilter(tagName) {
+    const idx = filters.tags.indexOf(tagName);
+    if (idx >= 0) {
+        filters.tags.splice(idx, 1);
+        pagination.offset = 0;
+        fetchModels();
+    }
+}
+
+function removeCategoryFilter(catName) {
+    const idx = filters.categories.indexOf(catName);
+    if (idx >= 0) {
+        filters.categories.splice(idx, 1);
+        pagination.offset = 0;
+        fetchModels();
+    }
+}
+
+// Settings wrappers
+function openSettings() {
+    settingsComposable.openSettings(checkForUpdates, updateInfo);
+}
+
+function closeSettings() {
+    settingsComposable.closeSettings(showDetail.value);
+}
+
+/* ---- Keyboard handler for modals ---- */
+function onKeydown(e) {
+    if (e.key === 'Escape') {
+        if (showBulkTagModal.value) {
+            showBulkTagModal.value = false;
+        } else if (showImportModal.value) {
+            closeImportModal();
+        } else if (showAddToCollectionModal.value) {
+            showAddToCollectionModal.value = false;
+        } else if (showCollectionModal.value) {
+            showCollectionModal.value = false;
+        } else if (showSaveSearchModal.value) {
+            showSaveSearchModal.value = false;
+        } else if (showStatusMenu.value) {
+            closeStatusMenu();
+        } else if (showSettings.value) {
+            closeSettings();
+        } else if (showDetail.value) {
+            closeDetail();
+        }
+    }
+}
+
+/* ---- Click-outside handler for status menu ---- */
+function onDocumentClick(e) {
+    if (showStatusMenu.value) {
+        const wrapper = document.querySelector('.status-wrapper');
+        const menu = document.querySelector('.status-menu');
+        if (wrapper && !wrapper.contains(e.target) && (!menu || !menu.contains(e.target))) {
+            closeStatusMenu();
+        }
+    }
+}
+
+/* ---- Lifecycle ---- */
+onMounted(() => {
+    fetchLibraries();
+    fetchModels();
+    fetchTags();
+    fetchCategories();
+    fetchScanStatus();
+    fetchSystemStatus();
+    fetchCollections();
+    fetchFavoritesCount();
+    fetchSavedSearches();
+    fetchImportCredentials();
+    statusPollTimer = setInterval(fetchSystemStatus, 30000);
+    document.addEventListener('keydown', onKeydown);
+    document.addEventListener('click', onDocumentClick);
+});
+
+// pickNextCollectionColor is needed in template via collectionsComposable
+const { pickNextCollectionColor } = collectionsComposable;
+</script>
+
+<template>
 <div class="app-layout">
     <!-- ============================================================
          Navbar
@@ -1494,7 +1300,12 @@ const app = createApp({
                                     <div class="category-item"
                                          :class="{ active: filters.category === child.name || filters.categories.includes(child.name) }"
                                          @click="toggleCategoryFilter(child.name)">
-                                        <span style="width:16px;display:inline-block"></span>
+                                        <span v-if="child.children && child.children.length"
+                                              class="category-toggle"
+                                              :class="{ expanded: expandedCategories[child.id] }"
+                                              @click.stop="toggleCategory(child.id)"
+                                              v-html="ICONS.chevron"></span>
+                                        <span v-else style="width:16px;display:inline-block"></span>
                                         <span class="category-name">{{ child.name }}</span>
                                         <span v-if="child.model_count" class="category-count">({{ child.model_count }})</span>
                                     </div>
@@ -2145,7 +1956,7 @@ const app = createApp({
                                             @click="saveImportCredential(site, 'token')">Save</button>
                                 </div>
                                 <div class="text-muted" style="font-size:0.7rem;margin-top:4px">
-                                    In your browser on makerworld.com: press F12 → Application → Cookies → copy the <strong>token</strong> value (starts with AAB_). Valid for 90 days.
+                                    In your browser on makerworld.com: press F12 &rarr; Application &rarr; Cookies &rarr; copy the <strong>token</strong> value (starts with AAB_). Valid for 90 days.
                                 </div>
                             </div>
                             <div v-else class="form-row">
@@ -2738,7 +2549,14 @@ const app = createApp({
         </div>
     </div>
 </div>
-    `,
-});
+</template>
 
-app.mount('#app');
+<style>
+@import './styles/base.css';
+@import './styles/layout.css';
+@import './styles/components.css';
+@import './styles/cards.css';
+@import './styles/detail-panel.css';
+@import './styles/features.css';
+@import './styles/responsive.css';
+</style>

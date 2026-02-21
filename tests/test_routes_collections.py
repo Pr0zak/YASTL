@@ -1,7 +1,6 @@
 """Tests for app.api.routes_collections API endpoints."""
 
 import pytest
-import aiosqlite
 
 from tests.conftest import insert_test_model
 

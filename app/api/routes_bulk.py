@@ -71,7 +71,7 @@ async def bulk_add_tags(request: Request):
 
         await db.commit()
 
-    return {"detail": f"Tags applied to models", "affected": affected}
+    return {"detail": "Tags applied to models", "affected": affected}
 
 
 @router.post("/categories")

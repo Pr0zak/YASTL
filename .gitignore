@@ -26,6 +26,10 @@ data/thumbnails/
 .DS_Store
 Thumbs.db
 
+# Frontend build
+frontend/node_modules/
+app/static/dist/
+
 # Environment
 .env
 .env.local

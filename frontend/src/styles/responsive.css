@@ -1,0 +1,371 @@
+/* ============================================================
+   Responsive: All @media queries
+   ============================================================ */
+
+/* ---- Tablet: <= 1024px ---- */
+@media (max-width: 1024px) {
+    .detail-content {
+        flex-direction: column;
+    }
+
+    .detail-viewer {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .detail-info {
+        width: 100%;
+    }
+
+    #viewer-container {
+        height: 380px;
+    }
+}
+
+/* ---- Mobile: <= 768px ---- */
+@media (max-width: 768px) {
+    .sidebar-toggle {
+        display: flex;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 92px;
+        bottom: 0;
+        z-index: 500;
+        transform: translateX(-100%);
+        opacity: 0;
+        box-shadow: 4px 0 20px var(--shadow);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        top: 92px;
+        z-index: 499;
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .main-content {
+        padding: 12px;
+    }
+
+    .models-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px;
+    }
+
+    .model-card .card-thumbnail {
+        height: 120px;
+    }
+
+    .navbar-brand h1 {
+        display: none;
+    }
+
+    .navbar {
+        padding: 0 12px;
+        gap: 8px;
+    }
+
+    /* Hide navbar view toggle, show in breadcrumb bar instead */
+    .navbar-actions .view-toggle {
+        display: none;
+    }
+
+    .breadcrumb-view-toggle {
+        display: inline-flex;
+    }
+
+    .navbar-actions {
+        gap: 4px;
+    }
+
+    .breadcrumb-bar {
+        padding: 0 12px;
+    }
+
+    .breadcrumb-nav {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .breadcrumb-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    .breadcrumb-link {
+        padding: 4px 6px;
+        font-size: 0.75rem;
+    }
+
+    .breadcrumb-count {
+        display: none;
+    }
+
+    /* --- Detail modal: bottom sheet style --- */
+    .detail-overlay {
+        padding: 0;
+        align-items: flex-end;
+    }
+
+    .detail-panel {
+        max-width: 100%;
+        max-height: 92vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        animation: slideUpSheet 0.3s ease;
+    }
+
+    .detail-content {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #viewer-container {
+        height: 260px;
+    }
+
+    /* Table: hide less important columns */
+    .models-table .col-vertices,
+    .models-table .col-faces,
+    .models-table .col-tags {
+        display: none;
+    }
+
+    .models-table .col-date {
+        display: none;
+    }
+
+    /* Bigger touch targets for table rows */
+    .models-table tbody td {
+        padding: 12px 10px;
+    }
+
+    .models-table thead th {
+        padding: 10px;
+    }
+
+    /* Allow name column to wrap on mobile */
+    .models-table tbody td.col-name {
+        white-space: normal;
+        word-break: break-word;
+        min-width: 120px;
+    }
+
+    /* Detail panel info: stack on mobile */
+    .detail-info {
+        padding: 16px;
+    }
+
+    /* Close button bigger on touch devices */
+    .detail-header .close-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 22px;
+    }
+
+    /* Hide download label text on mobile, keep icon */
+    .detail-download-btn .download-label {
+        display: none;
+    }
+
+    .detail-download-btn {
+        padding: 6px 10px;
+    }
+
+    /* Search clear button bigger */
+    .search-container .search-clear {
+        padding: 8px;
+        font-size: 20px;
+    }
+
+    /* Toast at bottom-center on mobile */
+    .toast-container {
+        right: 12px;
+        left: 12px;
+        bottom: 12px;
+    }
+
+    .toast {
+        max-width: 100%;
+    }
+
+    /* Status menu full-width on mobile */
+    .status-menu {
+        left: 0;
+        right: 0;
+        width: auto;
+        border-radius: 0 0 var(--radius) var(--radius);
+    }
+
+    /* Settings: full-screen on mobile */
+    .settings-panel {
+        max-width: 100%;
+        max-height: 100vh;
+        height: 100vh;
+        border-radius: 0;
+    }
+
+    .detail-overlay:has(.settings-panel) {
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .settings-content {
+        padding: 16px;
+    }
+
+    /* Thumbnail mode options: stack vertically */
+    .thumbnail-mode-options {
+        flex-direction: column;
+    }
+
+    /* Thumbnail regen row: stack vertically */
+    .thumbnail-regen-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    /* Detail actions: stack vertically */
+    .detail-actions {
+        flex-direction: column;
+    }
+
+    .detail-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Info field: allow values to wrap */
+    .info-field {
+        flex-wrap: wrap;
+    }
+
+    .info-field .field-value {
+        max-width: 60%;
+        word-break: break-all;
+    }
+
+    /* Path/hash responsive max-width */
+    .info-field .field-value-path,
+    .info-field .field-value-hash {
+        max-width: none;
+        flex: 1;
+    }
+
+    .col-thumb-status {
+        display: none;
+    }
+}
+
+/* ---- Small phone: <= 480px ---- */
+@media (max-width: 480px) {
+    .models-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 8px;
+    }
+
+    .model-card .card-thumbnail {
+        height: 100px;
+    }
+
+    .model-card .card-body {
+        padding: 8px;
+    }
+
+    .model-card .card-name {
+        font-size: 0.8rem;
+    }
+
+    /* Search: let it shrink more but stay usable */
+    .search-container {
+        max-width: none;
+    }
+
+    .search-container input {
+        font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+
+    /* Navbar tighter */
+    .navbar {
+        padding: 0 8px;
+        gap: 6px;
+    }
+
+    .detail-header {
+        padding: 12px 16px;
+    }
+
+    .detail-header .detail-title {
+        font-size: 1rem;
+    }
+
+    #viewer-container {
+        height: 220px;
+    }
+
+    /* Info field: full-width stacking on very small screens */
+    .info-field .field-value {
+        max-width: 55%;
+    }
+
+    /* Scan banner column layout */
+    .scan-banner {
+        flex-wrap: wrap;
+    }
+
+    .scan-banner .scan-progress-bar {
+        max-width: 100%;
+        order: 3;
+        width: 100%;
+    }
+
+    /* Library items: ensure path text wraps */
+    .library-path {
+        font-size: 0.7rem;
+    }
+
+    /* Breadcrumb bar tighter */
+    .breadcrumb-actions {
+        gap: 4px;
+    }
+}
+
+/* ---- Small update commits: <= 640px ---- */
+@media (max-width: 640px) {
+    .update-commit {
+        flex-wrap: wrap;
+    }
+
+    .commit-meta {
+        width: 100%;
+        margin-top: 2px;
+    }
+}
+
+/* ---- Landscape phone: compact layout ---- */
+@media (max-height: 500px) and (orientation: landscape) {
+    #viewer-container {
+        height: 200px;
+    }
+
+    .detail-overlay {
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .detail-panel {
+        border-radius: 0;
+        max-height: 100vh;
+        height: 100vh;
+    }
+}

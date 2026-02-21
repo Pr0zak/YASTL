@@ -1,3 +1,12 @@
+# Frontend build stage
+FROM node:20-slim AS frontend
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+# Backend stage
 FROM python:3.12-slim
 
 # Install system dependencies for trimesh rendering
@@ -14,6 +23,9 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY app/ app/
 RUN pip install --no-cache-dir ".[step]"
+
+# Copy built frontend from the frontend stage
+COPY --from=frontend /app/app/static/dist ./app/static/dist
 
 # Create data directories
 RUN mkdir -p /data/thumbnails

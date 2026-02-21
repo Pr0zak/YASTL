@@ -1,0 +1,502 @@
+/* ============================================================
+   Components: Buttons, Tags, Badges, Modals, Inputs, Forms
+   ============================================================ */
+
+/* ---- Buttons ---- */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: background var(--transition), border-color var(--transition),
+        color var(--transition), box-shadow var(--transition);
+    white-space: nowrap;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-primary:hover,
+.btn-primary:active {
+    background: var(--accent-hover);
+    box-shadow: 0 2px 8px rgba(15, 155, 142, 0.3);
+}
+
+.btn-secondary {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border);
+}
+
+.btn-secondary:hover,
+.btn-secondary:active {
+    background: var(--bg-hover);
+    border-color: var(--border-light);
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: #fff;
+}
+
+.btn-danger:hover {
+    background: var(--danger-hover);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+}
+
+.btn-ghost:hover,
+.btn-ghost:active {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-ghost.active {
+    color: var(--accent);
+    background: var(--accent-dim);
+}
+
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    border-radius: var(--radius-sm);
+}
+
+.btn-icon {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: var(--radius);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition);
+    border: none;
+}
+
+.btn-icon:hover,
+.btn-icon:active {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-icon.active {
+    color: var(--accent);
+}
+
+.btn-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.btn-icon-danger:hover {
+    color: var(--danger) !important;
+    background: rgba(231, 76, 60, 0.1);
+}
+
+/* View toggle group */
+.view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.view-toggle .btn-ghost {
+    border-radius: 0;
+    border: none;
+    padding: 6px 12px;
+}
+
+.view-toggle .btn-ghost + .btn-ghost {
+    border-left: 1px solid var(--border);
+}
+
+/* ============================================================
+   Tags / Chips
+   ============================================================ */
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background var(--transition);
+    cursor: default;
+    border: 1px solid transparent;
+}
+
+.tag-chip:hover {
+    background: rgba(15, 155, 142, 0.25);
+}
+
+.tag-chip .tag-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: background var(--transition), color var(--transition);
+}
+
+.tag-chip .tag-remove:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* ---- Format badge ---- */
+.format-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.format-badge.stl { color: #3498db; border-color: #3498db44; background: #3498db15; }
+.format-badge.obj { color: #e67e22; border-color: #e67e2244; background: #e67e2215; }
+.format-badge.gltf,
+.format-badge.glb { color: #2ecc71; border-color: #2ecc7144; background: #2ecc7115; }
+.format-badge.fbx { color: #9b59b6; border-color: #9b59b644; background: #9b59b615; }
+.format-badge.ply { color: #f1c40f; border-color: #f1c40f44; background: #f1c40f15; }
+.format-badge.dae { color: #1abc9c; border-color: #1abc9c44; background: #1abc9c15; }
+.format-badge.threemf,
+.format-badge._3mf { color: #e74c3c; border-color: #e74c3c44; background: #e74c3c15; }
+.format-badge.step,
+.format-badge.stp { color: #95a5a6; border-color: #95a5a644; background: #95a5a615; }
+.format-badge.off { color: #fd79a8; border-color: #fd79a844; background: #fd79a815; }
+
+/* ---- Zip Archive Badge ---- */
+.zip-badge {
+    display: inline-block;
+    padding: 0 4px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-radius: 3px;
+    background: rgba(155, 89, 182, 0.15);
+    color: #9b59b6;
+    border: 1px solid rgba(155, 89, 182, 0.3);
+    white-space: nowrap;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+/* ---- Duplicate Badge ---- */
+.dup-badge {
+    display: inline-block;
+    padding: 0 4px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-radius: 3px;
+    background: rgba(243, 156, 18, 0.15);
+    color: #f39c12;
+    border: 1px solid rgba(243, 156, 18, 0.3);
+    white-space: nowrap;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+/* ============================================================
+   Loading Spinner
+   ============================================================ */
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.spinner-sm {
+    width: 18px;
+    height: 18px;
+    border-width: 2px;
+}
+
+.loading-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    gap: 16px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* ============================================================
+   Empty State
+   ============================================================ */
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px;
+    text-align: center;
+}
+
+.empty-state .empty-icon {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 20px;
+    color: var(--text-muted);
+    opacity: 0.4;
+}
+
+.empty-state .empty-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.empty-state .empty-message {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    max-width: 380px;
+    margin-bottom: 20px;
+}
+
+/* ============================================================
+   Checkbox & Radio
+   ============================================================ */
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: background var(--transition);
+    min-height: 44px;
+}
+
+.checkbox-item:hover,
+.checkbox-item:active {
+    background: var(--bg-hover);
+}
+
+.checkbox-item input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid var(--border-light);
+    border-radius: 3px;
+    background: var(--bg-input);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: all var(--transition);
+}
+
+.checkbox-item input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.checkbox-item input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 5px;
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.checkbox-item .item-count {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+/* ============================================================
+   Catalog System: Mini Modals
+   ============================================================ */
+
+.mini-modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    min-width: 340px;
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: slideUp 0.2s ease;
+}
+
+.mini-modal h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+}
+
+.mini-modal .form-row {
+    margin-bottom: 12px;
+}
+
+.mini-modal .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+/* ============================================================
+   Sort Controls
+   ============================================================ */
+
+.sort-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-select {
+    padding: 5px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: border-color var(--transition);
+    appearance: auto;
+}
+
+.sort-select:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.sort-dir-btn {
+    transition: transform var(--transition);
+}
+
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ============================================================
+   Form Elements
+   ============================================================ */
+
+.form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.form-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.form-input {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.form-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.form-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* ============================================================
+   Color Swatches
+   ============================================================ */
+
+.color-swatch-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.15s;
+}
+
+.color-swatch:hover {
+    transform: scale(1.15);
+}
+
+.color-swatch.active {
+    border-color: var(--text-primary);
+    box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
+.color-swatch-sm {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+}

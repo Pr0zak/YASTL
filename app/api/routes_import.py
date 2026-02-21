@@ -10,7 +10,6 @@ from app.database import get_db
 from app.services.importer import (
     MODEL_EXTENSIONS,
     delete_credentials,
-    extract_zip_metadata,
     get_credentials,
     get_import_progress,
     import_urls_batch,
