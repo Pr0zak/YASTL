@@ -180,14 +180,16 @@ async def _scrape_thingiverse(
 async def _scrape_makerworld(
     client: httpx.AsyncClient, url: str, credentials: dict | None = None,
 ) -> dict:
-    """Scrape MakerWorld metadata.
+    """Scrape MakerWorld metadata via the Bambu Lab API.
 
-    MakerWorld uses Cloudflare challenges that block unauthenticated requests.
-    A session cookie from credentials is required to access the site.
-    Configure the 'cookie' credential in Settings > Import Credentials > MakerWorld.
+    MakerWorld's website is behind Cloudflare challenges, but the Bambu Lab
+    API at api.bambulab.com is accessible with a Bearer token. The token
+    can be found in the browser cookies as 'token' on makerworld.com.
 
-    To get your cookie: log in to makerworld.com in your browser, open DevTools
-    (F12) > Application > Cookies, and copy the full cookie string.
+    Uses two API endpoints:
+    - GET /v1/design-service/design/{id} — metadata, tags, instances
+    - GET /v1/iot-service/api/user/profile/{profileId}?model_id={modelId}
+      — signed S3 download URLs for 3MF files
     """
     meta: dict = {
         "title": None,
@@ -198,59 +200,78 @@ async def _scrape_makerworld(
         "error": None,
     }
 
-    cookie = (credentials or {}).get("cookie", "")
-    if not cookie:
+    token = (credentials or {}).get("token", "")
+    if not token:
         meta["error"] = (
-            "MakerWorld requires a session cookie to access. "
-            "Add your cookie in Settings → Import Credentials → MakerWorld."
+            "MakerWorld requires your Bambu Lab token. "
+            "Add it in Settings → Import Credentials → MakerWorld."
         )
-        logger.warning("MakerWorld import attempted without cookie credential")
+        logger.warning("MakerWorld import attempted without token credential")
         return meta
 
     # Extract design ID from URL like /models/2397308-some-name
     match = re.search(r"/models/(\d+)", url)
     if not match:
-        logger.warning("Could not extract MakerWorld design ID from %s", url)
         meta["error"] = "Could not extract model ID from MakerWorld URL"
         return meta
 
     design_id = match.group(1)
-    headers = {"Cookie": cookie}
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    api_base = "https://api.bambulab.com/v1"
 
-    # Try the page first to get metadata
+    # Step 1: Fetch design metadata
     try:
-        resp = await client.get(url, headers=headers)
+        resp = await client.get(
+            f"{api_base}/design-service/design/{design_id}",
+            headers=auth_headers,
+        )
         resp.raise_for_status()
-        html = resp.text
-
-        if "Just a moment" in html[:500]:
-            meta["error"] = (
-                "MakerWorld cookie is expired or invalid. "
-                "Update it in Settings → Import Credentials → MakerWorld."
-            )
-            logger.warning("MakerWorld cookie expired/invalid (Cloudflare challenge)")
-            return meta
-
-        og_meta = _extract_og_metadata(html)
-        meta["title"] = og_meta.get("title")
-        meta["description"] = og_meta.get("description")
-        meta["tags"] = og_meta.get("tags", [])
-
-        # Find download links in the page
-        soup = BeautifulSoup(html, "html.parser")
-        for a_tag in soup.find_all("a", href=True):
-            href = a_tag["href"]
-            if any(href.lower().endswith(ext) for ext in MODEL_EXTENSIONS):
-                if href.startswith("/"):
-                    href = f"https://makerworld.com{href}"
-                meta["download_urls"].append(href)
-
+        data = resp.json()
     except httpx.HTTPStatusError as e:
-        logger.warning("MakerWorld page fetch failed (HTTP %s) for %s", e.response.status_code, url)
-        meta["error"] = f"MakerWorld returned HTTP {e.response.status_code}. Cookie may be expired."
+        if e.response.status_code == 401:
+            meta["error"] = "MakerWorld token is expired. Update it in Settings → Import Credentials."
+        else:
+            meta["error"] = f"Bambu Lab API returned HTTP {e.response.status_code}"
+        logger.warning("MakerWorld API failed for design %s: HTTP %s", design_id, e.response.status_code)
+        return meta
     except Exception as e:
-        logger.warning("MakerWorld scrape failed for %s: %s", url, e)
-        meta["error"] = str(e)
+        meta["error"] = f"API request failed: {e}"
+        logger.warning("MakerWorld API failed for design %s: %s", design_id, e)
+        return meta
+
+    meta["title"] = data.get("title")
+    meta["description"] = data.get("summary") or data.get("description") or ""
+    # Use translated tags if available (English), fall back to original
+    meta["tags"] = data.get("tagsTranslated") or data.get("tags") or []
+
+    # Step 2: Get download URLs from profile instances
+    model_id = data.get("modelId")
+    instances = data.get("instances") or []
+
+    for instance in instances:
+        profile_id = instance.get("profileId")
+        if not profile_id or not model_id:
+            continue
+        try:
+            prof_resp = await client.get(
+                f"{api_base}/iot-service/api/user/profile/{profile_id}",
+                params={"model_id": model_id},
+                headers=auth_headers,
+            )
+            prof_resp.raise_for_status()
+            prof_data = prof_resp.json()
+
+            dl_url = prof_data.get("url")
+            if dl_url:
+                meta["download_urls"].append(dl_url)
+                # Only need one profile's files
+                break
+        except Exception as e:
+            logger.debug("Failed to get profile %s download URL: %s", profile_id, e)
+            continue
+
+    if not meta["download_urls"]:
+        meta["error"] = "Metadata loaded but no downloadable files found"
 
     return meta
 
