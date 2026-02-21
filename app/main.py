@@ -9,9 +9,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+from app.api.routes_bulk import router as bulk_router
 from app.api.routes_categories import router as categories_router
+from app.api.routes_collections import router as collections_router
+from app.api.routes_favorites import router as favorites_router
 from app.api.routes_libraries import router as libraries_router
 from app.api.routes_models import router as models_router
+from app.api.routes_saved_searches import router as saved_searches_router
 from app.api.routes_scan import router as scan_router
 from app.api.routes_search import router as search_router
 from app.api.routes_settings import router as settings_router
@@ -132,6 +136,10 @@ app.include_router(search_router)
 app.include_router(settings_router)
 app.include_router(update_router)
 app.include_router(status_router)
+app.include_router(favorites_router)
+app.include_router(collections_router)
+app.include_router(saved_searches_router)
+app.include_router(bulk_router)
 
 # Serve static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")

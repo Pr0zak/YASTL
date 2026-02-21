@@ -74,12 +74,49 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS favorites (
+    model_id INTEGER PRIMARY KEY REFERENCES models(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    color TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS collection_models (
+    collection_id INTEGER REFERENCES collections(id) ON DELETE CASCADE,
+    model_id INTEGER REFERENCES models(id) ON DELETE CASCADE,
+    position INTEGER DEFAULT 0,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (collection_id, model_id)
+);
+
+CREATE TABLE IF NOT EXISTS saved_searches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    query TEXT DEFAULT '',
+    filters TEXT DEFAULT '{}',
+    sort_by TEXT DEFAULT 'created_at',
+    sort_order TEXT DEFAULT 'desc',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_models_file_path ON models(file_path);
 CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);
 CREATE INDEX IF NOT EXISTS idx_models_library_id ON models(library_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+<<<<<<< HEAD
 CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path);
+=======
+CREATE INDEX IF NOT EXISTS idx_collection_models_model ON collection_models(model_id);
+CREATE INDEX IF NOT EXISTS idx_collection_models_position ON collection_models(collection_id, position);
+>>>>>>> 8087397 (Add robust catalog system backend: favorites, collections, bulk ops, advanced filtering)
 """
 
 MIGRATION_SQL = """
