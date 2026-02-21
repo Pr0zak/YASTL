@@ -124,6 +124,7 @@ async def preview_url(body: PreviewRequest):
         "tags": meta.get("tags", []),
         "file_count": len(meta.get("download_urls", [])),
         "source_site": meta.get("source_site"),
+        "error": meta.get("error"),
     }
 
 

@@ -22,6 +22,17 @@ from app.services import hasher, processor, thumbnail
 
 logger = logging.getLogger(__name__)
 
+# Browser-like headers to avoid basic bot detection
+_DEFAULT_HEADERS: dict[str, str] = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 # ---------------------------------------------------------------------------
 # Site detection
 # ---------------------------------------------------------------------------
@@ -166,13 +177,150 @@ async def _scrape_thingiverse(
     return meta
 
 
+async def _scrape_makerworld(
+    client: httpx.AsyncClient, url: str, credentials: dict | None = None,
+) -> dict:
+    """Scrape MakerWorld metadata.
+
+    MakerWorld uses Cloudflare challenges that block unauthenticated requests.
+    A session cookie from credentials is required to access the site.
+    Configure the 'cookie' credential in Settings > Import Credentials > MakerWorld.
+
+    To get your cookie: log in to makerworld.com in your browser, open DevTools
+    (F12) > Application > Cookies, and copy the full cookie string.
+    """
+    meta: dict = {
+        "title": None,
+        "description": None,
+        "tags": [],
+        "download_urls": [],
+        "source_site": "makerworld",
+        "error": None,
+    }
+
+    cookie = (credentials or {}).get("cookie", "")
+    if not cookie:
+        meta["error"] = (
+            "MakerWorld requires a session cookie to access. "
+            "Add your cookie in Settings → Import Credentials → MakerWorld."
+        )
+        logger.warning("MakerWorld import attempted without cookie credential")
+        return meta
+
+    # Extract design ID from URL like /models/2397308-some-name
+    match = re.search(r"/models/(\d+)", url)
+    if not match:
+        logger.warning("Could not extract MakerWorld design ID from %s", url)
+        meta["error"] = "Could not extract model ID from MakerWorld URL"
+        return meta
+
+    design_id = match.group(1)
+    headers = {"Cookie": cookie}
+
+    # Try the page first to get metadata
+    try:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        html = resp.text
+
+        if "Just a moment" in html[:500]:
+            meta["error"] = (
+                "MakerWorld cookie is expired or invalid. "
+                "Update it in Settings → Import Credentials → MakerWorld."
+            )
+            logger.warning("MakerWorld cookie expired/invalid (Cloudflare challenge)")
+            return meta
+
+        og_meta = _extract_og_metadata(html)
+        meta["title"] = og_meta.get("title")
+        meta["description"] = og_meta.get("description")
+        meta["tags"] = og_meta.get("tags", [])
+
+        # Find download links in the page
+        soup = BeautifulSoup(html, "html.parser")
+        for a_tag in soup.find_all("a", href=True):
+            href = a_tag["href"]
+            if any(href.lower().endswith(ext) for ext in MODEL_EXTENSIONS):
+                if href.startswith("/"):
+                    href = f"https://makerworld.com{href}"
+                meta["download_urls"].append(href)
+
+    except httpx.HTTPStatusError as e:
+        logger.warning("MakerWorld page fetch failed (HTTP %s) for %s", e.response.status_code, url)
+        meta["error"] = f"MakerWorld returned HTTP {e.response.status_code}. Cookie may be expired."
+    except Exception as e:
+        logger.warning("MakerWorld scrape failed for %s: %s", url, e)
+        meta["error"] = str(e)
+
+    return meta
+
+
+async def _scrape_printables(
+    client: httpx.AsyncClient, url: str, _credentials: dict | None = None,
+) -> dict:
+    """Scrape Printables metadata via their GraphQL API."""
+    meta: dict = {
+        "title": None,
+        "description": None,
+        "tags": [],
+        "download_urls": [],
+        "source_site": "printables",
+    }
+
+    # Extract model ID from URL like /model/12345-some-name
+    match = re.search(r"/model/(\d+)", url)
+    if not match:
+        # Fall back to generic scraping
+        return await _scrape_generic(client, url, "printables", _credentials)
+
+    model_id = match.group(1)
+
+    try:
+        query = """
+        query PrintProfile($id: ID!) {
+            print(id: $id) {
+                name
+                description
+                tags { name }
+                stls { id name fileSize }
+                gcodes { id name fileSize }
+            }
+        }
+        """
+        resp = await client.post(
+            "https://api.printables.com/graphql/",
+            json={"query": query, "variables": {"id": model_id}},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        print_data = (data.get("data") or {}).get("print") or {}
+
+        meta["title"] = print_data.get("name")
+        meta["description"] = print_data.get("description", "")
+        meta["tags"] = [t["name"] for t in (print_data.get("tags") or []) if t.get("name")]
+
+        # Printables download URLs follow a pattern
+        for stl in (print_data.get("stls") or []):
+            stl_id = stl.get("id")
+            if stl_id:
+                meta["download_urls"].append(
+                    f"https://media.printables.com/media/prints/{model_id}/stls/{stl_id}/{stl.get('name', 'model.stl')}"
+                )
+    except Exception as e:
+        logger.warning("Printables GraphQL failed for model %s: %s, falling back to scrape", model_id, e)
+        return await _scrape_generic(client, url, "printables", _credentials)
+
+    return meta
+
+
 async def _scrape_generic(
     client: httpx.AsyncClient, url: str, site_name: str, _credentials: dict | None = None,
 ) -> dict:
     """Generic og: tag scraper for sites without specific API support."""
     try:
         html = await _fetch_page(client, url)
-    except httpx.HTTPStatusError:
+    except httpx.HTTPStatusError as e:
+        logger.warning("Failed to fetch %s (HTTP %s), metadata unavailable", url, e.response.status_code)
         return {
             "title": None,
             "description": None,
@@ -199,10 +347,12 @@ async def _scrape_generic(
 # Scraper registry: maps site key to async scraper function
 _SCRAPERS: dict[str, callable] = {
     "thingiverse": _scrape_thingiverse,
+    "makerworld": _scrape_makerworld,
+    "printables": _scrape_printables,
 }
 
 # Generic sites use the same og: scraper
-for _site in ("makerworld", "printables", "myminifactory", "cults3d", "thangs"):
+for _site in ("myminifactory", "cults3d", "thangs"):
     _SCRAPERS[_site] = lambda client, url, creds=None, s=_site: _scrape_generic(client, url, s, creds)
 
 
@@ -214,7 +364,7 @@ async def scrape_metadata(
     Returns dict with keys: title, description, tags, download_urls, source_site.
     """
     site = detect_site(url)
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=_DEFAULT_HEADERS) as client:
         if site and site in _SCRAPERS:
             site_creds = (credentials or {}).get(site)
             return await _SCRAPERS[site](client, url, site_creds)
@@ -495,7 +645,7 @@ async def import_from_url(
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         # Download and process each file
-        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True, headers=_DEFAULT_HEADERS) as client:
             for dl_url in download_urls:
                 try:
                     file_path = await download_file(dl_url, client, dest_dir)
