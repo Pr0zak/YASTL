@@ -92,6 +92,9 @@ async def search_models(
         where_clauses: list[str] = []
         params: list = []
 
+        # Only show active models by default (exclude missing/deleted)
+        where_clauses.append("m.status = 'active'")
+
         # FTS filter: join with the FTS table when a query is provided
         sanitized_q = _sanitize_fts_query(q) if q else ""
         use_fts = bool(sanitized_q)
