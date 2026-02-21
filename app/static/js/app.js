@@ -408,6 +408,7 @@ const app = createApp({
                 idle: 'Idle',
                 scanning: 'Scanning',
                 watching: 'Watching',
+                regenerating: 'Regenerating',
                 stopped: 'Stopped',
                 degraded: 'Degraded',
                 error: 'Error',
@@ -419,7 +420,7 @@ const app = createApp({
 
         function statusDotClass(status) {
             if (['ok', 'idle', 'watching'].includes(status)) return 'status-dot-ok';
-            if (['scanning', 'degraded'].includes(status)) return 'status-dot-warn';
+            if (['scanning', 'degraded', 'regenerating'].includes(status)) return 'status-dot-warn';
             if (['error', 'stopped', 'unavailable'].includes(status)) return 'status-dot-error';
             return 'status-dot-unknown';
         }
@@ -2503,10 +2504,13 @@ const app = createApp({
                     <span class="status-item-icon" v-html="ICONS.image"></span>
                     <span class="status-item-label">Thumbnails</span>
                     <span class="status-item-value" :class="statusDotClass(systemStatus.thumbnails.status)">
-                        {{ statusLabel(systemStatus.thumbnails.status) }}
+                        {{ systemStatus.thumbnails.regenerating ? 'regenerating' : statusLabel(systemStatus.thumbnails.status) }}
                     </span>
                 </div>
-                <div v-if="systemStatus.thumbnails.total_cached != null" class="status-menu-detail">
+                <div v-if="systemStatus.thumbnails.regenerating" class="status-menu-detail">
+                    Regenerating: {{ systemStatus.thumbnails.regen_completed }} / {{ systemStatus.thumbnails.regen_total }} models
+                </div>
+                <div v-else-if="systemStatus.thumbnails.total_cached != null" class="status-menu-detail">
                     {{ systemStatus.thumbnails.total_cached }} cached
                 </div>
             </div>
