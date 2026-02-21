@@ -16,6 +16,9 @@ from app.api.routes_collections import router as collections_router
 from app.api.routes_favorites import router as favorites_router
 from app.api.routes_libraries import router as libraries_router
 from app.api.routes_models import router as models_router
+from app.api.routes_model_files import router as model_files_router
+from app.api.routes_model_tags import router as model_tags_router
+from app.api.routes_model_categories import router as model_categories_router
 from app.api.routes_saved_searches import router as saved_searches_router
 from app.api.routes_scan import router as scan_router
 from app.api.routes_search import router as search_router
@@ -130,6 +133,9 @@ app = FastAPI(
 
 app.include_router(libraries_router)
 app.include_router(models_router)
+app.include_router(model_files_router)
+app.include_router(model_tags_router)
+app.include_router(model_categories_router)
 app.include_router(tags_router)
 app.include_router(categories_router)
 app.include_router(scan_router)
@@ -143,9 +149,17 @@ app.include_router(saved_searches_router)
 app.include_router(bulk_router)
 app.include_router(import_router)
 
-# Serve static files
+# Serve static files (legacy CDN frontend and favicon/assets)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
+dist_dir = os.path.join(static_dir, "dist")
+
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Serve Vite build assets when the dist directory exists
+if os.path.isdir(dist_dir):
+    _dist_assets = os.path.join(dist_dir, "assets")
+    if os.path.isdir(_dist_assets):
+        app.mount("/assets", StaticFiles(directory=_dist_assets), name="dist-assets")
 
 # Serve thumbnails as static files (avoids DB lookup per request)
 # check_dir=False because the directory is created in the lifespan handler.
@@ -158,7 +172,14 @@ app.mount(
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """Serve the main frontend page."""
+    """Serve the main frontend page.
+
+    Serves the Vite build output when available, otherwise falls back
+    to the legacy CDN-based frontend.
+    """
+    dist_index = os.path.join(dist_dir, "index.html")
+    if os.path.isfile(dist_index):
+        return FileResponse(dist_index)
     return FileResponse(os.path.join(static_dir, "index.html"))
 
 

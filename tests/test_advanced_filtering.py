@@ -96,7 +96,7 @@ class TestMultiTagFilter:
     async def test_single_tag_filter(self, client):
         """?tags=red should return models with tag 'red'."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?tags=red")
         assert resp.status_code == 200
@@ -108,7 +108,7 @@ class TestMultiTagFilter:
     async def test_multi_tag_and_filter(self, client):
         """?tags=red,blue should return models with BOTH tags (AND logic)."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?tags=red,blue")
         assert resp.status_code == 200
@@ -119,7 +119,7 @@ class TestMultiTagFilter:
     async def test_legacy_single_tag_param(self, client):
         """?tag=blue should still work (backwards compat)."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?tag=blue")
         assert resp.status_code == 200
@@ -134,7 +134,7 @@ class TestMultiCategoryFilter:
     async def test_single_category_filter(self, client):
         """?categories=Shapes should return models in Shapes category."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?categories=Shapes")
         assert resp.status_code == 200
@@ -146,7 +146,7 @@ class TestMultiCategoryFilter:
     async def test_multi_category_or_filter(self, client):
         """?categories=Shapes,Objects should return models in EITHER (OR logic)."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?categories=Shapes,Objects")
         assert resp.status_code == 200
@@ -159,7 +159,7 @@ class TestFavoritesFilter:
     async def test_favorites_only(self, client):
         """?favorites_only=true should return only favorited models."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?favorites_only=true")
         assert resp.status_code == 200
@@ -226,7 +226,7 @@ class TestSorting:
     async def test_is_favorite_in_model_list(self, client):
         """GET /api/models should include is_favorite field."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models")
         assert resp.status_code == 200
@@ -244,7 +244,7 @@ class TestCombinedFilters:
     async def test_tag_and_favorites(self, client):
         """?tags=red&favorites_only=true should combine filters."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?tags=red&favorites_only=true")
         assert resp.status_code == 200
@@ -256,7 +256,7 @@ class TestCombinedFilters:
     async def test_category_and_tag(self, client):
         """?tags=red&categories=Objects should combine tag AND category."""
         db_path = client._db_path
-        ids = await _setup_models_with_tags_and_categories(db_path)
+        await _setup_models_with_tags_and_categories(db_path)
 
         resp = await client.get("/api/models?tags=red&categories=Objects")
         assert resp.status_code == 200

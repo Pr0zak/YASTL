@@ -1,7 +1,5 @@
 """API routes for collection management."""
 
-import json
-
 from fastapi import APIRouter, HTTPException, Query, Request
 import aiosqlite
 

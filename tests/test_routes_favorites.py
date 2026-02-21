@@ -20,7 +20,7 @@ class TestListFavorites:
         """GET /api/favorites should return favorited models."""
         db_path = client._db_path
         m1 = await insert_test_model(db_path, name="fav_model", file_path="/tmp/f1.stl")
-        m2 = await insert_test_model(db_path, name="not_fav", file_path="/tmp/f2.stl")
+        await insert_test_model(db_path, name="not_fav", file_path="/tmp/f2.stl")
 
         async with aiosqlite.connect(db_path) as conn:
             await conn.execute(
