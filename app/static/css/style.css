@@ -2786,3 +2786,81 @@ img {
     vertical-align: middle;
     margin-left: 4px;
 }
+
+/* ============================================================
+   Duplicate Badge
+   ============================================================ */
+
+.dup-badge {
+    display: inline-block;
+    padding: 0 4px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-radius: 3px;
+    background: rgba(243, 156, 18, 0.15);
+    color: #f39c12;
+    border: 1px solid rgba(243, 156, 18, 0.3);
+    white-space: nowrap;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+/* ============================================================
+   Import Modal
+   ============================================================ */
+
+textarea.import-textarea {
+    resize: vertical;
+    min-height: 80px;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}
+
+.import-preview-card {
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin: 8px 0;
+}
+
+/* ============================================================
+   Import Credentials in Settings
+   ============================================================ */
+
+.import-cred-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.import-cred-item {
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+/* ============================================================
+   Tag Suggestions
+   ============================================================ */
+
+.tag-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.tag-suggestion {
+    background: rgba(52, 152, 219, 0.12);
+    color: #3498db;
+    border: 1px dashed rgba(52, 152, 219, 0.35);
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.tag-suggestion:hover {
+    background: rgba(52, 152, 219, 0.25);
+    border-color: #3498db;
+}

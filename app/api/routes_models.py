@@ -149,6 +149,7 @@ async def list_models(
     categories: str | None = Query(default=None),
     collection: int | None = Query(default=None),
     favorites_only: bool = Query(default=False),
+    duplicates_only: bool = Query(default=False),
     sort_by: str = Query(default="updated_at"),
     sort_order: str = Query(default="desc"),
     library_id: int | None = Query(default=None),
@@ -156,7 +157,8 @@ async def list_models(
     """List models with pagination and filters.
 
     Supports multi-tag (AND logic) and multi-category (OR logic) filtering,
-    collection membership, favorites, library, and configurable sorting.
+    collection membership, favorites, duplicates, library, and configurable
+    sorting.
     """
     db_path = _get_db_path(request)
 
@@ -239,6 +241,19 @@ async def list_models(
                 "m.id IN (SELECT f.model_id FROM favorites f)"
             )
 
+        # Duplicates filter — only show models whose hash appears more than once
+        if duplicates_only:
+            where_clauses.append(
+                """m.file_hash IS NOT NULL AND m.file_hash != ''
+                AND m.file_hash IN (
+                    SELECT file_hash FROM models
+                    WHERE file_hash IS NOT NULL AND file_hash != ''
+                      AND status = 'active'
+                    GROUP BY file_hash
+                    HAVING COUNT(*) > 1
+                )"""
+            )
+
         if library_id is not None:
             where_clauses.append("m.library_id = ?")
             params.append(library_id)
@@ -304,12 +319,49 @@ async def list_models(
 
             models.append(model)
 
+        # Mark duplicates: compute set of hashes that appear more than once
+        hashes_in_page = [m["file_hash"] for m in models if m.get("file_hash")]
+        dup_hashes: set[str] = set()
+        if hashes_in_page:
+            placeholders = ", ".join("?" for _ in hashes_in_page)
+            cursor = await db.execute(
+                f"""SELECT file_hash FROM models
+                    WHERE file_hash IN ({placeholders})
+                      AND file_hash IS NOT NULL AND file_hash != ''
+                      AND status = 'active'
+                    GROUP BY file_hash
+                    HAVING COUNT(*) > 1""",
+                hashes_in_page,
+            )
+            dup_hashes = {dict(r)["file_hash"] for r in await cursor.fetchall()}
+
+        for m in models:
+            m["is_duplicate"] = bool(m.get("file_hash") and m["file_hash"] in dup_hashes)
+
         return {"models": models, "total": total, "limit": limit, "offset": offset}
 
 
 # ---------------------------------------------------------------------------
 # Get single model
 # ---------------------------------------------------------------------------
+
+
+@router.get("/suggest-tags/{model_id}")
+async def suggest_tags_for_model(request: Request, model_id: int):
+    """Return tag suggestions for a model based on its metadata."""
+    from app.services.tagger import suggest_tags
+
+    db_path = _get_db_path(request)
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        model = await _fetch_model_with_relations(db, model_id)
+
+    if model is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    suggestions = suggest_tags(model)
+    return {"model_id": model_id, "suggestions": suggestions}
 
 
 @router.get("/duplicates")
