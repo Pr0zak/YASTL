@@ -19,6 +19,10 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["wireframe", "solid"],
         "default": "wireframe",
     },
+    "thumbnail_quality": {
+        "allowed": ["fast", "quality"],
+        "default": "fast",
+    },
 }
 
 
@@ -72,13 +76,16 @@ async def regenerate_thumbnails(request: Request, background_tasks: BackgroundTa
     """
     thumbnail_path = str(app_settings.MODEL_LIBRARY_THUMBNAIL_PATH)
     mode = await get_setting("thumbnail_mode", "wireframe")
+    quality = await get_setting("thumbnail_quality", "fast")
 
-    background_tasks.add_task(_regenerate_all_thumbnails, thumbnail_path, mode)
+    background_tasks.add_task(_regenerate_all_thumbnails, thumbnail_path, mode, quality)
 
     return {"detail": "Thumbnail regeneration started in background"}
 
 
-async def _regenerate_all_thumbnails(thumbnail_path: str, mode: str) -> None:
+async def _regenerate_all_thumbnails(
+    thumbnail_path: str, mode: str, quality: str = "fast"
+) -> None:
     """Walk all models and regenerate their thumbnails."""
     loop = asyncio.get_event_loop()
     async with get_db() as db:
@@ -86,7 +93,8 @@ async def _regenerate_all_thumbnails(thumbnail_path: str, mode: str) -> None:
         rows = await cursor.fetchall()
 
     logger.info(
-        "Regenerating thumbnails for %d models (mode=%s)", len(rows), mode
+        "Regenerating thumbnails for %d models (mode=%s, quality=%s)",
+        len(rows), mode, quality,
     )
 
     for row in rows:
@@ -100,6 +108,7 @@ async def _regenerate_all_thumbnails(thumbnail_path: str, mode: str) -> None:
                 thumbnail_path,
                 model_id,
                 mode,
+                quality,
             )
             if thumb_filename is not None:
                 async with get_db() as db:
