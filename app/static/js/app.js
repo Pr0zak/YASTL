@@ -982,6 +982,13 @@ const app = createApp({
             isEditingDesc.value = true;
         }
 
+        function zipName(model) {
+            if (!model.zip_path) return '';
+            const parts = model.zip_path.replace(/\\/g, '/').split('/');
+            const filename = parts[parts.length - 1] || '';
+            return filename.replace(/\.zip$/i, '');
+        }
+
         /* ---- Thumbnail helpers ---- */
         function thumbUrl(model) {
             if (model.thumbnail_path) {
@@ -1491,6 +1498,7 @@ const app = createApp({
             thumbnailStatus,
             thumbStatusClass,
             thumbStatusTitle,
+            zipName,
             checkForUpdates,
             applyUpdate,
             toggleStatusMenu,
@@ -1906,7 +1914,10 @@ const app = createApp({
                     <!-- Body -->
                     <div class="card-body">
                         <div class="card-name" :title="model.name">{{ model.name }}</div>
-                        <div class="card-meta">{{ formatFileSize(model.file_size) }}</div>
+                        <div class="card-meta">
+                            {{ formatFileSize(model.file_size) }}
+                            <span v-if="model.zip_path" class="zip-badge" :title="model.zip_path">ZIP: {{ zipName(model) }}</span>
+                        </div>
                         <div class="card-tags" v-if="model.tags && model.tags.length">
                             <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
                             <span v-if="model.tags.length > 3" class="tag-chip" style="opacity:0.7">
@@ -1947,7 +1958,7 @@ const app = createApp({
                             <td class="col-thumb-status" style="text-align:center">
                                 <span class="thumb-status-dot thumb-status-dot-inline" :class="thumbStatusClass(model)" :title="thumbStatusTitle(model)"></span>
                             </td>
-                            <td class="col-name">{{ model.name }}</td>
+                            <td class="col-name">{{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="model.zip_path">ZIP: {{ zipName(model) }}</span></td>
                             <td class="col-format">
                                 <span class="format-badge" :class="formatClass(model.file_format)">
                                     {{ model.file_format }}
