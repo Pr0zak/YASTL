@@ -67,16 +67,22 @@ async def get_system_status(request: Request):
         database_status = {"status": "error"}
 
     # --- Thumbnails ---
+    from app.api.routes_settings import _regen_progress
+
     thumb_path = str(settings.MODEL_LIBRARY_THUMBNAIL_PATH)
     if os.path.isdir(thumb_path):
         try:
             thumb_files = [
                 f for f in os.listdir(thumb_path) if f.endswith(".png")
             ]
+            thumb_status_label = "regenerating" if _regen_progress["running"] else "ok"
             thumbnail_status = {
-                "status": "ok",
+                "status": thumb_status_label,
                 "total_cached": len(thumb_files),
                 "path": thumb_path,
+                "regenerating": _regen_progress["running"],
+                "regen_total": _regen_progress["total"],
+                "regen_completed": _regen_progress["completed"],
             }
         except Exception:
             thumbnail_status = {"status": "error"}
