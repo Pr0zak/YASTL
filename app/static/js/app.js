@@ -63,7 +63,7 @@ const app = createApp({
         const newTagInput = ref('');
         const tagSuggestions = ref([]);
         const tagSuggestionsLoading = ref(false);
-        const sidebarOpen = ref(false);
+        const sidebarOpen = ref(window.innerWidth > 768);
         const viewerLoading = ref(false);
 
         // Editable field state
@@ -117,6 +117,7 @@ const app = createApp({
         // Saved searches
         const savedSearches = ref([]);
         const showSaveSearchModal = ref(false);
+        const showCredentials = ref(false);
         const saveSearchName = ref('');
 
         // System status indicator
@@ -206,7 +207,7 @@ const app = createApp({
         }
 
         const importComposable = useImport(
-            showToast, refreshImportData, libraries, collections, fetchCollections, startInlineNewCollection,
+            showToast, refreshImportData, libraries, collections, fetchCollections,
         );
         const {
             showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
@@ -1151,6 +1152,7 @@ const app = createApp({
             editCollectionName,
             savedSearches,
             showSaveSearchModal,
+            showCredentials,
             saveSearchName,
             selectionMode,
             selectedModels,
@@ -1378,19 +1380,6 @@ const app = createApp({
         </div>
         <!-- Right side: result count + actions -->
         <div class="breadcrumb-actions">
-            <!-- View toggle (shown on mobile, hidden on desktop) -->
-            <div class="view-toggle breadcrumb-view-toggle">
-                <button class="btn-ghost"
-                        :class="{ active: viewMode === 'grid' }"
-                        @click="viewMode = 'grid'"
-                        title="Grid view"
-                        v-html="ICONS.grid"></button>
-                <button class="btn-ghost"
-                        :class="{ active: viewMode === 'list' }"
-                        @click="viewMode = 'list'"
-                        title="List view"
-                        v-html="ICONS.list"></button>
-            </div>
             <button class="btn btn-sm btn-ghost" v-if="searchQuery || filters.tags.length || filters.categories.length || filters.favoritesOnly"
                     @click="showSaveSearchModal = true" title="Save this search">
                 <span v-html="ICONS.bookmark"></span> Save
@@ -1424,7 +1413,7 @@ const app = createApp({
         <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false"></div>
 
         <!-- Sidebar -->
-        <aside class="sidebar" :class="{ open: sidebarOpen }">
+        <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: !sidebarOpen }">
 
             <!-- Libraries -->
             <div class="sidebar-section" v-if="libraries.length > 0">
@@ -1792,6 +1781,9 @@ const app = createApp({
                         <span @dblclick="startEditName" title="Double-click to edit">
                             {{ selectedModel.name }}
                         </span>
+                        <button class="btn-icon btn-edit-inline" @click="startEditName" title="Rename model">
+                            <span v-html="ICONS.edit || '&#9998;'"></span>
+                        </button>
                     </template>
                     <template v-else>
                         <input type="text"
@@ -2160,12 +2152,15 @@ const app = createApp({
                     </div>
                 </div>
 
-                <!-- Import Credentials Section -->
+                <!-- Import Credentials Section (collapsible) -->
                 <div class="settings-section">
-                    <div class="settings-section-title">
+                    <div class="settings-section-title" style="cursor:pointer;user-select:none"
+                         @click="showCredentials = !showCredentials">
                         <span v-html="ICONS.link"></span>
                         Import Credentials
+                        <span style="margin-left:auto;font-size:0.75rem;opacity:0.5">{{ showCredentials ? '▼' : '▶' }}</span>
                     </div>
+                    <template v-if="showCredentials">
                     <div class="settings-section-desc">
                         Configure API keys or cookies for 3D model hosting sites to enable richer metadata extraction during URL import.
                     </div>
@@ -2212,6 +2207,7 @@ const app = createApp({
                             </div>
                         </div>
                     </div>
+                    </template>
                 </div>
 
                 <!-- Update Section -->

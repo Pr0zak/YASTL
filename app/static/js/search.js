@@ -26,23 +26,6 @@ export function debounce(fn, delay = 300) {
 }
 
 /**
- * Wrap matching portions of `text` in <mark> tags to highlight search matches.
- * Returns an HTML string safe for use with v-html.
- *
- * @param {string} text - The source text.
- * @param {string} query - The search query to highlight.
- * @returns {string} HTML string with matches wrapped in <mark>.
- */
-export function highlightMatch(text, query) {
-    if (!text || !query || !query.trim()) {
-        return escapeHtml(text || '');
-    }
-    const escaped = escapeRegExp(query.trim());
-    const regex = new RegExp(`(${escaped})`, 'gi');
-    return escapeHtml(text).replace(regex, '<mark>$1</mark>');
-}
-
-/**
  * Format a byte count into a human-readable file size string.
  *
  * @param {number} bytes - The file size in bytes.
@@ -115,31 +98,4 @@ export function formatDimensions(x, y, z) {
     if (x == null && y == null && z == null) return '--';
     const fmt = (v) => (v != null ? Number(v).toFixed(1) : '?');
     return `${fmt(x)} x ${fmt(y)} x ${fmt(z)}`;
-}
-
-/* ---- Internal helpers ---- */
-
-/**
- * Escape special regex characters in a string.
- * @param {string} str
- * @returns {string}
- */
-function escapeRegExp(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Escape HTML special characters to prevent XSS.
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;',
-    };
-    return str.replace(/[&<>"']/g, (c) => map[c]);
 }

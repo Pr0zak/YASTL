@@ -22,9 +22,8 @@ import { ref, reactive } from 'vue';
  * @param {import('vue').Ref} libraries - Reactive ref of libraries list
  * @param {import('vue').Ref} collections - Reactive ref of collections list
  * @param {Function} fetchCollectionsFn - Callback to refresh collections
- * @param {Function} startInlineNewCollectionFn - Callback to start inline new collection
  */
-export function useImport(showToast, refreshData, libraries, collections, fetchCollectionsFn, _startInlineNewCollectionFn) {
+export function useImport(showToast, refreshData, libraries, collections, fetchCollectionsFn) {
     // Modal state
     const showImportModal = ref(false);
     const importMode = ref('url');

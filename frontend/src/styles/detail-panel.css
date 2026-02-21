@@ -52,6 +52,22 @@
     white-space: nowrap;
     flex: 1;
     margin-right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-edit-inline {
+    opacity: 0.4;
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+    flex-shrink: 0;
+    transition: opacity var(--transition);
+}
+
+.btn-edit-inline:hover {
+    opacity: 1;
 }
 
 .detail-header .detail-download-btn {

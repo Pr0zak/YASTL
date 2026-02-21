@@ -439,16 +439,20 @@
 
 /* (content-toolbar and active-filters removed -- now in breadcrumb-bar) */
 
-/* ---- Mobile sidebar toggle ---- */
+/* ---- Sidebar toggle ---- */
 .sidebar-toggle {
-    display: none;
+    display: flex;
 }
 
 .sidebar-backdrop {
     display: none;
 }
 
-/* Breadcrumb view toggle: hidden on desktop (shown via navbar) */
-.breadcrumb-view-toggle {
-    display: none;
+/* Desktop: collapsed sidebar */
+.sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    border-right: none;
+    overflow: hidden;
 }

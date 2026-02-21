@@ -24,10 +24,6 @@
 
 /* ---- Mobile: <= 768px ---- */
 @media (max-width: 768px) {
-    .sidebar-toggle {
-        display: flex;
-    }
-
     .sidebar {
         position: fixed;
         left: 0;
@@ -73,15 +69,6 @@
     .navbar {
         padding: 0 12px;
         gap: 8px;
-    }
-
-    /* Hide navbar view toggle, show in breadcrumb bar instead */
-    .navbar-actions .view-toggle {
-        display: none;
-    }
-
-    .breadcrumb-view-toggle {
-        display: inline-flex;
     }
 
     .navbar-actions {

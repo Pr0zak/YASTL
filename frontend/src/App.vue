@@ -69,7 +69,7 @@ const allCategories = ref([]);
 const newTagInput = ref('');
 const tagSuggestions = ref([]);
 const tagSuggestionsLoading = ref(false);
-const sidebarOpen = ref(false);
+const sidebarOpen = ref(window.innerWidth > 768);
 
 // Editable field state
 const editName = ref('');
@@ -212,7 +212,7 @@ function refreshImportData() {
 }
 
 const importComposable = useImport(
-    showToast, refreshImportData, libraries, collections, fetchCollections, startInlineNewCollection,
+    showToast, refreshImportData, libraries, collections, fetchCollections,
 );
 const {
     showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
@@ -1087,19 +1087,6 @@ const { pickNextCollectionColor } = collectionsComposable;
         </div>
         <!-- Right side: result count + actions -->
         <div class="breadcrumb-actions">
-            <!-- View toggle (shown on mobile, hidden on desktop) -->
-            <div class="view-toggle breadcrumb-view-toggle">
-                <button class="btn-ghost"
-                        :class="{ active: viewMode === 'grid' }"
-                        @click="viewMode = 'grid'"
-                        title="Grid view"
-                        v-html="ICONS.grid"></button>
-                <button class="btn-ghost"
-                        :class="{ active: viewMode === 'list' }"
-                        @click="viewMode = 'list'"
-                        title="List view"
-                        v-html="ICONS.list"></button>
-            </div>
             <button class="btn btn-sm btn-ghost" v-if="searchQuery || filters.tags.length || filters.categories.length || filters.favoritesOnly"
                     @click="showSaveSearchModal = true" title="Save this search">
                 <span v-html="ICONS.bookmark"></span> Save

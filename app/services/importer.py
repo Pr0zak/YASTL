@@ -495,8 +495,13 @@ async def import_from_url(
         # Scrape metadata
         meta = await scrape_metadata(url, credentials)
         title = meta.get("title")
-        tags = meta.get("tags", [])
+        tags = list(meta.get("tags", []))
         download_urls = meta.get("download_urls", [])
+
+        # Auto-tag with source site name
+        source_site = meta.get("source_site")
+        if source_site and source_site not in tags:
+            tags.append(source_site)
 
         # If no download URLs found, try the URL itself as a direct download
         if not download_urls:

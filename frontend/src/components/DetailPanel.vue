@@ -67,6 +67,9 @@ function formatClass(fmt) {
                         <span @dblclick="emit('startEditName')" title="Double-click to edit">
                             {{ selectedModel.name }}
                         </span>
+                        <button class="btn-icon btn-edit-inline" @click="emit('startEditName')" title="Rename model">
+                            <span v-html="ICONS.edit || '&#9998;'"></span>
+                        </button>
                     </template>
                     <template v-else>
                         <input type="text"

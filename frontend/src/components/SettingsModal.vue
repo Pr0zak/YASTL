@@ -2,7 +2,10 @@
 /**
  * SettingsModal - Settings panel with libraries, thumbnails, import credentials, and updates.
  */
+import { ref } from 'vue';
 import { ICONS } from '../icons.js';
+
+const showCredentials = ref(false);
 
 defineProps({
     showSettings: { type: Boolean, default: false },
@@ -160,12 +163,15 @@ const emit = defineEmits([
                     </div>
                 </div>
 
-                <!-- Import Credentials Section -->
+                <!-- Import Credentials Section (collapsible) -->
                 <div class="settings-section">
-                    <div class="settings-section-title">
+                    <div class="settings-section-title" style="cursor:pointer;user-select:none"
+                         @click="showCredentials = !showCredentials">
                         <span v-html="ICONS.link"></span>
                         Import Credentials
+                        <span style="margin-left:auto;font-size:0.75rem;opacity:0.5">{{ showCredentials ? '&#x25BC;' : '&#x25B6;' }}</span>
                     </div>
+                    <template v-if="showCredentials">
                     <div class="settings-section-desc">
                         Configure API keys or cookies for 3D model hosting sites to enable richer metadata extraction during URL import.
                     </div>
@@ -215,6 +221,7 @@ const emit = defineEmits([
                             </div>
                         </div>
                     </div>
+                    </template>
                 </div>
 
                 <!-- Update Section -->

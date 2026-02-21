@@ -53,7 +53,7 @@ function formatClass(fmt) {
     <div v-if="sidebarOpen" class="sidebar-backdrop" @click="emit('update:sidebarOpen', false)"></div>
 
     <!-- Sidebar -->
-    <aside class="sidebar" :class="{ open: sidebarOpen }">
+    <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: !sidebarOpen }">
 
         <!-- Libraries -->
         <div class="sidebar-section" v-if="libraries.length > 0">

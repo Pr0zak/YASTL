@@ -464,7 +464,6 @@ export function useViewer() {
 
     return {
         viewerLoading,
-        viewerError,
         initViewer,
         loadModel,
         resetCamera,
