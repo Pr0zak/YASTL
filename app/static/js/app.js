@@ -69,8 +69,10 @@ const app = createApp({
         // Editable field state
         const editName = ref('');
         const editDesc = ref('');
+        const editSourceUrl = ref('');
         const isEditingName = ref(false);
         const isEditingDesc = ref(false);
+        const isEditingSourceUrl = ref(false);
 
         // Category expansion state (by category id)
         const expandedCategories = reactive({});
@@ -210,7 +212,7 @@ const app = createApp({
             showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
             importRunning, importDone, importPreview, importProgress,
             uploadFiles, uploadResults, uploadTags, uploadTagSuggestions,
-            uploadCollectionId, uploadZipMeta,
+            uploadCollectionId, uploadSourceUrl, uploadDescription, uploadZipMeta,
             importCredentials, credentialInputs,
             openImportModal: _openImportModal,
             closeImportModal: _closeImportModal,
@@ -532,8 +534,10 @@ const app = createApp({
 
             editName.value = selectedModel.value.name || '';
             editDesc.value = selectedModel.value.description || '';
+            editSourceUrl.value = selectedModel.value.source_url || '';
             isEditingName.value = false;
             isEditingDesc.value = false;
+            isEditingSourceUrl.value = false;
             tagSuggestions.value = [];
             showDetail.value = true;
             document.body.classList.add('modal-open');
@@ -576,6 +580,7 @@ const app = createApp({
             selectedModel.value = null;
             isEditingName.value = false;
             isEditingDesc.value = false;
+            isEditingSourceUrl.value = false;
             viewerLoading.value = false;
             if (!showSettings.value) {
                 document.body.classList.remove('modal-open');
@@ -618,6 +623,7 @@ const app = createApp({
                 selectedModel.value = updated;
                 editName.value = updated.name || '';
                 editDesc.value = updated.description || '';
+                editSourceUrl.value = updated.source_url || '';
                 updateModelInList(updated);
                 showToast('Model updated');
             } catch (err) {
@@ -625,6 +631,7 @@ const app = createApp({
             }
             isEditingName.value = false;
             isEditingDesc.value = false;
+            isEditingSourceUrl.value = false;
         }
 
         async function renameModelFile() {
@@ -797,6 +804,21 @@ const app = createApp({
         function startEditDesc() {
             editDesc.value = selectedModel.value?.description || '';
             isEditingDesc.value = true;
+        }
+
+        function saveSourceUrl() {
+            if (!selectedModel.value) return;
+            const val = editSourceUrl.value.trim();
+            if (val !== (selectedModel.value.source_url || '')) {
+                updateModel(selectedModel.value.id, { source_url: val || null });
+            } else {
+                isEditingSourceUrl.value = false;
+            }
+        }
+
+        function startEditSourceUrl() {
+            editSourceUrl.value = selectedModel.value?.source_url || '';
+            isEditingSourceUrl.value = true;
         }
 
         function zipName(model) {
@@ -1095,8 +1117,10 @@ const app = createApp({
             viewerLoading,
             editName,
             editDesc,
+            editSourceUrl,
             isEditingName,
             isEditingDesc,
+            isEditingSourceUrl,
             expandedCategories,
             collapsedSections,
             filters,
@@ -1147,6 +1171,8 @@ const app = createApp({
             uploadTagSuggestions,
             uploadCollectionId,
             uploadZipMeta,
+            uploadDescription,
+            uploadSourceUrl,
 
             // Computed
             scanProgress,
@@ -1182,8 +1208,10 @@ const app = createApp({
             toggleCategory,
             saveName,
             saveDesc,
+            saveSourceUrl,
             startEditName,
             startEditDesc,
+            startEditSourceUrl,
             openSettings,
             closeSettings,
             addLibrary,
@@ -1831,13 +1859,37 @@ const app = createApp({
                     </div>
 
                     <!-- Source Link -->
-                    <div v-if="selectedModel.source_url" class="info-section">
+                    <div class="info-section">
                         <div class="info-section-title">Source</div>
-                        <a :href="selectedModel.source_url" target="_blank" rel="noopener"
-                           class="source-link">
-                            <span v-html="ICONS.link || '&#128279;'"></span>
-                            {{ selectedModel.source_url }}
-                        </a>
+                        <template v-if="!isEditingSourceUrl">
+                            <div v-if="selectedModel.source_url"
+                                 style="display:flex;align-items:center;gap:6px">
+                                <a :href="selectedModel.source_url" target="_blank" rel="noopener"
+                                   class="source-link" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                                    <span v-html="ICONS.link || '&#128279;'"></span>
+                                    {{ selectedModel.source_url }}
+                                </a>
+                                <button class="btn-icon" style="width:20px;height:20px;flex-shrink:0"
+                                        @click="startEditSourceUrl" title="Edit source URL">
+                                    <span v-html="ICONS.edit || '&#9998;'"></span>
+                                </button>
+                            </div>
+                            <div v-else @dblclick="startEditSourceUrl"
+                                 style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);padding:4px 0">
+                                Double-click to add a source URL...
+                            </div>
+                        </template>
+                        <template v-else>
+                            <div class="editable-field">
+                                <input type="url" v-model="editSourceUrl"
+                                       @blur="saveSourceUrl"
+                                       @keydown.enter="saveSourceUrl"
+                                       @keydown.escape="isEditingSourceUrl = false"
+                                       placeholder="https://..."
+                                       style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:0.85rem"
+                                       autofocus>
+                            </div>
+                        </template>
                     </div>
 
                     <!-- File Information -->
@@ -2565,6 +2617,25 @@ const app = createApp({
                            class="text-sm" style="color:var(--color-primary, #4f8cff)">{{ uploadZipMeta.source_url }}</a>
                         <div class="text-sm text-muted" style="margin-top:4px">
                             Zip will be extracted &mdash; model files inside will be imported individually
+                        </div>
+                    </div>
+
+                    <!-- Source URL -->
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">Source URL</div>
+                        <div class="form-row">
+                            <input type="url" class="form-input" v-model="uploadSourceUrl"
+                                   placeholder="https://www.thingiverse.com/thing:12345">
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">Description</div>
+                        <div class="form-row">
+                            <textarea class="form-input" v-model="uploadDescription"
+                                      placeholder="Optional description for the uploaded model(s)"
+                                      rows="2"></textarea>
                         </div>
                     </div>
 

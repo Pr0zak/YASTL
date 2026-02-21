@@ -20,6 +20,8 @@ defineProps({
     uploadTags: { type: String, default: '' },
     uploadTagSuggestions: { type: Array, default: () => [] },
     uploadCollectionId: { default: null },
+    uploadSourceUrl: { type: String, default: '' },
+    uploadDescription: { type: String, default: '' },
     uploadZipMeta: { default: null },
     libraries: { type: Array, default: () => [] },
     collections: { type: Array, default: () => [] },
@@ -46,6 +48,8 @@ const emit = defineEmits([
     'update:importSubfolder',
     'update:uploadTags',
     'update:uploadCollectionId',
+    'update:uploadSourceUrl',
+    'update:uploadDescription',
     'previewImportUrl',
     'startImport',
     'onFilesSelected',
@@ -146,6 +150,27 @@ const emit = defineEmits([
                            class="text-sm" style="color:var(--color-primary, #4f8cff)">{{ uploadZipMeta.source_url }}</a>
                         <div class="text-sm text-muted" style="margin-top:4px">
                             Zip will be extracted &mdash; model files inside will be imported individually
+                        </div>
+                    </div>
+
+                    <!-- Source URL -->
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">Source URL</div>
+                        <div class="form-row">
+                            <input type="url" class="form-input" :value="uploadSourceUrl"
+                                   @input="emit('update:uploadSourceUrl', $event.target.value)"
+                                   placeholder="https://www.thingiverse.com/thing:12345">
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">Description</div>
+                        <div class="form-row">
+                            <textarea class="form-input" :value="uploadDescription"
+                                      @input="emit('update:uploadDescription', $event.target.value)"
+                                      placeholder="Optional description for the uploaded model(s)"
+                                      rows="2"></textarea>
                         </div>
                     </div>
 

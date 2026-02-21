@@ -304,18 +304,32 @@ async def get_model(request: Request, model_id: int):
 
 @router.put("/{model_id}")
 async def update_model(request: Request, model_id: int):
-    """Update a model's name and/or description."""
+    """Update a model's name, description, and/or source_url."""
     db_path = _get_db_path(request)
     body = await request.json()
 
     name = body.get("name")
     description = body.get("description")
+    # source_url can be a string or null/empty to clear
+    source_url = body.get("source_url")
+    has_source_url = "source_url" in body
 
-    if name is None and description is None:
+    if name is None and description is None and not has_source_url:
         raise HTTPException(
             status_code=400,
-            detail="At least one of 'name' or 'description' is required",
+            detail="At least one of 'name', 'description', or 'source_url' is required",
         )
+
+    # Validate source_url format
+    if has_source_url and source_url is not None:
+        source_url = source_url.strip()
+        if source_url == "":
+            source_url = None
+        elif not source_url.startswith(("http://", "https://")):
+            raise HTTPException(
+                status_code=400,
+                detail="source_url must start with http:// or https://",
+            )
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -336,6 +350,9 @@ async def update_model(request: Request, model_id: int):
         if description is not None:
             set_clauses.append("description = ?")
             params.append(description)
+        if has_source_url:
+            set_clauses.append("source_url = ?")
+            params.append(source_url)
 
         set_clauses.append("updated_at = CURRENT_TIMESTAMP")
         params.append(model_id)

@@ -11,8 +11,10 @@ defineProps({
     viewerLoading: { type: Boolean, default: false },
     editName: { type: String, default: '' },
     editDesc: { type: String, default: '' },
+    editSourceUrl: { type: String, default: '' },
     isEditingName: { type: Boolean, default: false },
     isEditingDesc: { type: Boolean, default: false },
+    isEditingSourceUrl: { type: Boolean, default: false },
     tagSuggestions: { type: Array, default: () => [] },
     tagSuggestionsLoading: { type: Boolean, default: false },
     newTagInput: { type: String, default: '' },
@@ -24,13 +26,17 @@ const emit = defineEmits([
     'close',
     'update:editName',
     'update:editDesc',
+    'update:editSourceUrl',
     'update:isEditingName',
     'update:isEditingDesc',
+    'update:isEditingSourceUrl',
     'update:newTagInput',
     'saveName',
     'saveDesc',
+    'saveSourceUrl',
     'startEditName',
     'startEditDesc',
+    'startEditSourceUrl',
     'resetView',
     'toggleFavorite',
     'openAddToCollection',
@@ -130,13 +136,39 @@ function formatClass(fmt) {
                     </div>
 
                     <!-- Source Link -->
-                    <div v-if="selectedModel.source_url" class="info-section">
+                    <div class="info-section">
                         <div class="info-section-title">Source</div>
-                        <a :href="selectedModel.source_url" target="_blank" rel="noopener"
-                           class="source-link">
-                            <span v-html="ICONS.link || '&#128279;'"></span>
-                            {{ selectedModel.source_url }}
-                        </a>
+                        <template v-if="!isEditingSourceUrl">
+                            <div v-if="selectedModel.source_url"
+                                 style="display:flex;align-items:center;gap:6px">
+                                <a :href="selectedModel.source_url" target="_blank" rel="noopener"
+                                   class="source-link" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                                    <span v-html="ICONS.link || '&#128279;'"></span>
+                                    {{ selectedModel.source_url }}
+                                </a>
+                                <button class="btn-icon" style="width:20px;height:20px;flex-shrink:0"
+                                        @click="emit('startEditSourceUrl')" title="Edit source URL">
+                                    <span v-html="ICONS.edit || '&#9998;'"></span>
+                                </button>
+                            </div>
+                            <div v-else @dblclick="emit('startEditSourceUrl')"
+                                 style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);padding:4px 0">
+                                Double-click to add a source URL...
+                            </div>
+                        </template>
+                        <template v-else>
+                            <div class="editable-field">
+                                <input type="url"
+                                       :value="editSourceUrl"
+                                       @input="emit('update:editSourceUrl', $event.target.value)"
+                                       @blur="emit('saveSourceUrl')"
+                                       @keydown.enter="emit('saveSourceUrl')"
+                                       @keydown.escape="emit('update:isEditingSourceUrl', false)"
+                                       placeholder="https://..."
+                                       style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:0.85rem"
+                                       autofocus>
+                            </div>
+                        </template>
                     </div>
 
                     <!-- File Information -->
