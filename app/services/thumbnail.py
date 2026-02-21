@@ -147,6 +147,56 @@ def _collect_meshes(loaded: trimesh.Trimesh | trimesh.Scene) -> list[trimesh.Tri
     return meshes
 
 
+# Maximum face count for thumbnail rendering. Meshes exceeding this are
+# simplified via quadric decimation to avoid holes from face subsampling.
+# Kept low so each projected triangle covers more pixels at 256x256.
+_MAX_THUMBNAIL_FACES = 50000
+
+
+def _simplify_mesh(mesh: trimesh.Trimesh, target_faces: int) -> trimesh.Trimesh:
+    """Simplify a single mesh to the target face count.
+
+    Uses fast_simplification (quadric decimation) if available, which
+    preserves surface shape far better than randomly dropping faces.
+    """
+    if len(mesh.faces) <= target_faces:
+        return mesh
+
+    try:
+        import fast_simplification
+        reduction = 1.0 - (target_faces / len(mesh.faces))
+        reduction = max(0.0, min(reduction, 0.99))
+        verts_out, faces_out = fast_simplification.simplify(
+            mesh.vertices.astype(np.float32),
+            mesh.faces,
+            target_reduction=reduction,
+        )
+        simplified = trimesh.Trimesh(vertices=verts_out, faces=faces_out, process=False)
+        if len(simplified.faces) > 0:
+            return simplified
+    except ImportError:
+        logger.debug("fast_simplification not installed, skipping mesh decimation")
+    except Exception:
+        logger.debug("Mesh simplification failed (%d faces), using original", len(mesh.faces))
+
+    return mesh
+
+
+def _simplify_for_thumbnail(meshes: list[trimesh.Trimesh]) -> list[trimesh.Trimesh]:
+    """Decimate meshes that exceed the face budget for thumbnail rendering.
+
+    Uses quadric decimation to reduce face count while preserving surface
+    shape, which is far better than randomly dropping faces.
+    """
+    total_faces = sum(len(m.faces) for m in meshes)
+    if total_faces <= _MAX_THUMBNAIL_FACES:
+        return meshes
+
+    # Compute per-mesh target proportional to its share of total faces
+    ratio = _MAX_THUMBNAIL_FACES / total_faces
+    return [_simplify_mesh(m, max(int(len(m.faces) * ratio), 100)) for m in meshes]
+
+
 def _render_wireframe(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     """
     Render a wireframe preview of the mesh(es) using Pillow.
@@ -157,6 +207,9 @@ def _render_wireframe(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     if not meshes:
         logger.warning("No meshes to render for wireframe")
         return False
+
+    # Decimate high-poly meshes to keep edge count manageable
+    meshes = _simplify_for_thumbnail(meshes)
 
     # Concatenate all vertices and collect edges with vertex offset
     all_vertices = []
@@ -244,6 +297,9 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
         logger.warning("No meshes to render for solid thumbnail")
         return False
 
+    # Decimate high-poly meshes to avoid holes from face subsampling
+    meshes = _simplify_for_thumbnail(meshes)
+
     # Collect all vertices and faces with vertex offset
     all_vertices: list[np.ndarray] = []
     all_faces: list[np.ndarray] = []
@@ -294,9 +350,16 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     projected_y = rotated[:, 1]
     projected_z = rotated[:, 2]
 
-    padding = SOLID_PADDING
-    usable_w = THUMBNAIL_WIDTH - 2 * padding
-    usable_h = THUMBNAIL_HEIGHT - 2 * padding
+    # Render at 2x resolution then downsample (supersampling anti-aliasing).
+    # This fills the hairline gaps that Pillow's polygon() leaves between
+    # adjacent triangles at 256x256.
+    ss = 2  # supersample factor
+    render_w = THUMBNAIL_WIDTH * ss
+    render_h = THUMBNAIL_HEIGHT * ss
+    padding = SOLID_PADDING * ss
+
+    usable_w = render_w - 2 * padding
+    usable_h = render_h - 2 * padding
 
     x_min, x_max = projected_x.min(), projected_x.max()
     y_min, y_max = projected_y.min(), projected_y.max()
@@ -338,16 +401,8 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     dot = np.abs(np.dot(normals, light_dir))  # abs for double-sided lighting
     intensity = np.clip(SOLID_AMBIENT + SOLID_DIFFUSE * dot, 0.0, 1.0)
 
-    # Limit face count for performance
-    max_faces = 80000
-    if len(sort_order) > max_faces:
-        # Keep a uniform subsample but maintain sort order
-        step = len(sort_order) / max_faces
-        indices = np.round(np.arange(0, len(sort_order), step)).astype(int)[:max_faces]
-        sort_order = sort_order[indices]
-
-    # Create image and draw
-    img = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), SOLID_BG_COLOR)
+    # Create supersampled image and draw
+    img = Image.new("RGB", (render_w, render_h), SOLID_BG_COLOR)
     draw = ImageDraw.Draw(img)
 
     for fi in sort_order:
@@ -359,8 +414,10 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
         ]
         c = (SOLID_BASE_COLOR * intensity[fi]).astype(int)
         fill_color = (int(c[0]), int(c[1]), int(c[2]))
-        draw.polygon(polygon, fill=fill_color)
+        draw.polygon(polygon, fill=fill_color, outline=fill_color)
 
+    # Downsample to final thumbnail size (LANCZOS for quality)
+    img = img.resize((THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), Image.LANCZOS)
     img.save(output_path, "PNG")
     logger.debug("Rendered solid thumbnail: %s", output_path)
     return True
