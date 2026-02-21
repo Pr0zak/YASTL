@@ -70,6 +70,9 @@ const app = createApp({
         // Category expansion state (by category id)
         const expandedCategories = reactive({});
 
+        // Sidebar section collapse state (format starts collapsed)
+        const collapsedSections = reactive({ format: true });
+
         const filters = reactive({
             format: '',
             tag: '',
@@ -996,6 +999,7 @@ const app = createApp({
             isEditingName,
             isEditingDesc,
             expandedCategories,
+            collapsedSections,
             filters,
             pagination,
             scanStatus,
@@ -1194,16 +1198,26 @@ const app = createApp({
                 </div>
             </div>
 
-            <!-- Format Filters -->
+            <!-- Format Filters (collapsible) -->
             <div class="sidebar-section">
-                <div class="sidebar-section-title">Format</div>
-                <label v-for="fmt in ['stl','obj','gltf','glb','3mf','step','stp','ply','fbx','dae','off']"
-                       :key="fmt"
-                       class="checkbox-item"
-                       @click.prevent="setFormatFilter(fmt)">
-                    <input type="checkbox" :checked="filters.format === fmt" readonly>
-                    <span class="format-badge" :class="formatClass(fmt)">{{ fmt.toUpperCase() }}</span>
-                </label>
+                <div class="sidebar-section-title sidebar-section-toggle"
+                     @click="collapsedSections.format = !collapsedSections.format">
+                    <span>Format</span>
+                    <span v-if="filters.format" class="sidebar-section-active-badge">
+                        {{ filters.format.toUpperCase() }}
+                    </span>
+                    <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.format }"
+                          v-html="ICONS.chevron"></span>
+                </div>
+                <template v-if="!collapsedSections.format">
+                    <label v-for="fmt in ['stl','obj','gltf','glb','3mf','step','stp','ply','fbx','dae','off']"
+                           :key="fmt"
+                           class="checkbox-item"
+                           @click.prevent="setFormatFilter(fmt)">
+                        <input type="checkbox" :checked="filters.format === fmt" readonly>
+                        <span class="format-badge" :class="formatClass(fmt)">{{ fmt.toUpperCase() }}</span>
+                    </label>
+                </template>
             </div>
 
             <!-- Tags -->

@@ -381,6 +381,40 @@ img {
     border-bottom: 1px solid var(--border);
 }
 
+.sidebar-section-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sidebar-section-toggle:hover {
+    color: var(--text-secondary);
+}
+
+.sidebar-section-chevron {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    width: 12px;
+    height: 12px;
+    transition: transform var(--transition);
+}
+
+.sidebar-section-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+.sidebar-section-active-badge {
+    margin-left: 6px;
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    letter-spacing: 0.3px;
+}
+
 .sidebar-item {
     display: flex;
     align-items: center;
