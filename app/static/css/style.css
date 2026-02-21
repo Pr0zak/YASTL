@@ -2063,6 +2063,18 @@ img {
     background: rgba(231, 76, 60, 0.15);
 }
 
+.sidebar-edit-input {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 4px;
+    font-size: 0.8rem;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
+}
+
 /* ============================================================
    Catalog System: Mini Modals
    ============================================================ */
@@ -2761,8 +2773,8 @@ img {
 
 .zip-badge {
     display: inline-block;
-    padding: 0 5px;
-    font-size: 0.6rem;
+    padding: 0 4px;
+    font-size: 0.55rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -2773,7 +2785,4 @@ img {
     white-space: nowrap;
     vertical-align: middle;
     margin-left: 4px;
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }

@@ -109,7 +109,7 @@ async def search_models(
 
         # Format filter
         if format is not None:
-            where_clauses.append("m.file_format = ?")
+            where_clauses.append("LOWER(m.file_format) = ?")
             params.append(format.lower())
 
         # Tag filter: model must have ALL specified tags

@@ -116,6 +116,19 @@ async def _fetch_model_with_relations(
     )
     model["is_favorite"] = await cursor.fetchone() is not None
 
+    # Collections
+    cursor = await db.execute(
+        """
+        SELECT c.id, c.name, c.color FROM collections c
+        JOIN collection_models cm ON cm.collection_id = c.id
+        WHERE cm.model_id = ?
+        ORDER BY c.name
+        """,
+        (model_id,),
+    )
+    col_rows = await cursor.fetchall()
+    model["collections"] = [dict(r) for r in col_rows]
+
     return model
 
 
@@ -182,7 +195,7 @@ async def list_models(
         where_clauses.append("m.status = 'active'")
 
         if format is not None:
-            where_clauses.append("m.file_format = ?")
+            where_clauses.append("LOWER(m.file_format) = ?")
             params.append(format.lower())
 
         # Multi-tag filter (AND logic — model must have ALL tags)
