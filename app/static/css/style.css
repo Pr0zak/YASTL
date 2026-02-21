@@ -1363,14 +1363,50 @@ img {
 }
 
 /* ============================================================
-   Pagination info
+   Pagination bar
    ============================================================ */
 
+.pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
 .pagination-info {
-    text-align: center;
     font-size: 0.8rem;
     color: var(--text-muted);
-    padding: 8px 0 4px;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-size-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.page-size-select {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.page-size-select:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 /* ============================================================

@@ -97,8 +97,11 @@ const app = createApp({
             sortOrder: 'desc',
         });
 
+        const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+        const savedPageSize = parseInt(localStorage.getItem('yastl_page_size')) || 50;
+
         const pagination = reactive({
-            limit: 50,
+            limit: PAGE_SIZE_OPTIONS.includes(savedPageSize) ? savedPageSize : 50,
             offset: 0,
             total: 0,
         });
@@ -1216,6 +1219,19 @@ const app = createApp({
             }
         }
 
+        function setPageSize(size) {
+            const val = parseInt(size);
+            if (!PAGE_SIZE_OPTIONS.includes(val)) return;
+            pagination.limit = val;
+            pagination.offset = 0;
+            localStorage.setItem('yastl_page_size', String(val));
+            if (searchQuery.value.trim()) {
+                searchModels();
+            } else {
+                fetchModels();
+            }
+        }
+
         function toggleCategory(catId) {
             expandedCategories[catId] = !expandedCategories[catId];
         }
@@ -1837,6 +1853,8 @@ const app = createApp({
             updateModel,
             deleteModel,
             loadMore,
+            setPageSize,
+            PAGE_SIZE_OPTIONS,
             handleResetView,
             setFormatFilter,
             setTagFilter,
@@ -2368,13 +2386,20 @@ const app = createApp({
             </div>
 
             <!-- Load More / Pagination Info -->
-            <div v-if="models.length > 0 && !loading" class="pagination-info">
-                Showing {{ shownCount }} of {{ pagination.total }} models
-            </div>
-            <div v-if="hasMore" class="load-more-container">
-                <button class="btn btn-secondary" @click="loadMore" :disabled="loading">
-                    Load More
-                </button>
+            <div v-if="models.length > 0 && !loading" class="pagination-bar">
+                <div class="pagination-info">
+                    Showing {{ shownCount }} of {{ pagination.total }} models
+                </div>
+                <div class="pagination-controls">
+                    <label class="page-size-label">Per page:
+                        <select class="page-size-select" :value="pagination.limit" @change="setPageSize($event.target.value)">
+                            <option v-for="opt in PAGE_SIZE_OPTIONS" :key="opt" :value="opt">{{ opt }}</option>
+                        </select>
+                    </label>
+                    <button v-if="hasMore" class="btn btn-secondary btn-sm" @click="loadMore" :disabled="loading">
+                        Load More
+                    </button>
+                </div>
             </div>
 
             <!-- Loading indicator when loading more -->
