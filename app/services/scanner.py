@@ -184,9 +184,9 @@ class Scanner:
             for library_id, items in library_items.items():
                 disk_paths = {str(fp) for fp, _ in items}
 
-                # Load all existing DB records for this library
+                # Load existing DB records for regular (non-zip) models in this library
                 cursor = await db.execute(
-                    "SELECT id, file_path, file_hash, status FROM models WHERE library_id = ?",
+                    "SELECT id, file_path, file_hash, status FROM models WHERE library_id = ? AND zip_path IS NULL",
                     (library_id,),
                 )
                 db_records = [dict(r) for r in await cursor.fetchall()]
@@ -279,6 +279,46 @@ class Scanner:
                     stats["errors"] += 1
                 finally:
                     self.processed_files += 1
+
+            # Reconcile zip entries: mark missing or reactivate
+            discovered_zip_paths = {
+                zip_handler.make_zip_file_path(str(zp), en)
+                for zp, en, _, _ in zip_entries
+            }
+            all_lib_ids = set(library_items.keys()) | {
+                lid for _, _, lid, _ in zip_entries
+            }
+            for lib_id in all_lib_ids:
+                cursor = await db.execute(
+                    "SELECT id, file_path, status FROM models WHERE library_id = ? AND zip_path IS NOT NULL",
+                    (lib_id,),
+                )
+                zip_db_records = [dict(r) for r in await cursor.fetchall()]
+                for rec in zip_db_records:
+                    if rec["file_path"] in discovered_zip_paths:
+                        if rec["status"] == "missing":
+                            await db.execute(
+                                "UPDATE models SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                (rec["id"],),
+                            )
+                            stats["reactivated_files"] += 1
+                            logger.info(
+                                "Reactivated zip entry: id=%d  %s",
+                                rec["id"],
+                                rec["file_path"],
+                            )
+                    else:
+                        if rec["status"] != "missing":
+                            await db.execute(
+                                "UPDATE models SET status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                (rec["id"],),
+                            )
+                            stats["missing_files"] += 1
+                            logger.info(
+                                "Marked zip entry as missing: id=%d  %s",
+                                rec["id"],
+                                rec["file_path"],
+                            )
 
             await db.commit()
         finally:
