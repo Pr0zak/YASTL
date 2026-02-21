@@ -701,15 +701,16 @@ def extract_zip_metadata(zip_path: Path) -> dict:
     stem = zip_path.stem
 
     # Detect Thingiverse zip patterns
-    # Pattern 1: "ModelName_12345_files" or "ModelName_12345"
-    tv_match = re.search(r"[_-](\d{4,})(?:_files)?$", stem)
+    # Patterns: "ModelName_12345_files", "ModelName_12345",
+    #           "Model Name - 12345", "Model Name - 12345 - files"
+    tv_match = re.search(r"[\s_-]+(\d{4,})(?:[\s_-]+files)?$", stem)
     if tv_match:
         thing_id = tv_match.group(1)
         meta["source_url"] = f"https://www.thingiverse.com/thing:{thing_id}"
         meta["site"] = "thingiverse"
         # Title: everything before the ID, cleaned up
         title_part = stem[:tv_match.start()]
-        title_part = re.sub(r"[_\-]+", " ", title_part).strip()
+        title_part = re.sub(r"[\s_\-]+$", "", title_part).strip()
         if title_part:
             meta["title"] = title_part
 

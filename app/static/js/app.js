@@ -180,6 +180,7 @@ const app = createApp({
         const showAddToCollectionModal = ref(false);
         const editingCollectionId = ref(null);
         const editCollectionName = ref('');
+        const inlineNewCollection = reactive({ active: false, name: '', color: '#0f9b8e' });
 
         // Catalog system: Saved searches
         const savedSearches = ref([]);
@@ -751,10 +752,10 @@ const app = createApp({
 
                 // Detect Thingiverse zip pattern: Name_12345_files.zip or Name-12345.zip
                 if (f.name.toLowerCase().endsWith('.zip')) {
-                    const tvMatch = stem.match(/[_-](\d{4,})(?:_files)?$/i);
+                    const tvMatch = stem.match(/[\s_-]+(\d{4,})(?:[\s_-]+files)?$/i);
                     if (tvMatch) {
                         const thingId = tvMatch[1];
-                        const titlePart = stem.slice(0, tvMatch.index).replace(/[_\-]+/g, ' ').trim();
+                        const titlePart = stem.slice(0, tvMatch.index).replace(/[\s_\-]+$/g, '').trim();
                         uploadZipMeta.value = {
                             title: titlePart || stem,
                             source_url: `https://www.thingiverse.com/thing:${thingId}`,
@@ -1230,6 +1231,25 @@ const app = createApp({
             isEditingDesc.value = false;
         }
 
+        async function renameModelFile() {
+            if (!selectedModel.value) return;
+            const id = selectedModel.value.id;
+            try {
+                const res = await fetch(`/api/models/${id}/rename-file`, { method: 'POST' });
+                if (res.ok) {
+                    const updated = await res.json();
+                    selectedModel.value = updated;
+                    updateModelInList(updated);
+                    showToast('File renamed');
+                } else {
+                    const err = await res.json();
+                    showToast(err.detail || 'Rename failed', 'error');
+                }
+            } catch (e) {
+                showToast('Failed to rename file', 'error');
+            }
+        }
+
         async function deleteModel(model) {
             if (
                 !confirm(
@@ -1508,6 +1528,42 @@ const app = createApp({
             } catch (e) {
                 showToast('Failed to create collection', 'error');
             }
+        }
+
+        function startInlineNewCollection() {
+            inlineNewCollection.active = true;
+            inlineNewCollection.name = '';
+            inlineNewCollection.color = pickNextCollectionColor();
+        }
+
+        async function confirmInlineNewCollection(context) {
+            const name = inlineNewCollection.name.trim();
+            if (!name) return;
+            try {
+                const resp = await fetch('/api/collections', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, color: inlineNewCollection.color }),
+                });
+                if (resp.ok) {
+                    const created = await resp.json();
+                    inlineNewCollection.active = false;
+                    await fetchCollections();
+                    // Auto-select the new collection in the relevant context
+                    if (context === 'upload') {
+                        uploadCollectionId.value = created.id;
+                    } else if (context === 'addToCollection') {
+                        handleCollectionSelect(created.id);
+                    }
+                    showToast('Collection created', 'success');
+                }
+            } catch (e) {
+                showToast('Failed to create collection', 'error');
+            }
+        }
+
+        function cancelInlineNewCollection() {
+            inlineNewCollection.active = false;
         }
 
         async function deleteCollection(id) {
@@ -1956,6 +2012,7 @@ const app = createApp({
             addToCollectionModelId,
             showAddToCollectionModal,
             editingCollectionId,
+            inlineNewCollection,
             editCollectionName,
             savedSearches,
             showSaveSearchModal,
@@ -1999,6 +2056,7 @@ const app = createApp({
             addTag,
             removeTag,
             updateModel,
+            renameModelFile,
             deleteModel,
             loadMore,
             setPageSize,
@@ -2033,6 +2091,9 @@ const app = createApp({
             statusDotClass,
             fetchCollections,
             createCollection,
+            startInlineNewCollection,
+            confirmInlineNewCollection,
+            cancelInlineNewCollection,
             deleteCollection,
             startEditCollection,
             saveCollectionName,
@@ -2691,6 +2752,11 @@ const app = createApp({
                                 {{ selectedModel.file_hash }}
                             </span>
                         </div>
+                        <div v-if="!selectedModel.zip_path" style="margin-top:8px">
+                            <button class="btn btn-sm btn-ghost" @click="renameModelFile" title="Rename file on disk to match model name">
+                                <span v-html="ICONS.edit || '&#9998;'"></span> Rename File
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Tags -->
@@ -3216,14 +3282,36 @@ const app = createApp({
                 <h3 style="margin:0">Add to Collection</h3>
                 <button class="close-btn" @click="showAddToCollectionModal = false">&times;</button>
             </div>
-            <div v-if="collections.length === 0" class="text-muted text-sm" style="padding:16px 0;text-align:center">
-                No collections yet. Create one first.
-            </div>
             <div v-for="col in collections" :key="col.id"
                  class="sidebar-item" @click="handleCollectionSelect(col.id)">
                 <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
                 <span>{{ col.name }}</span>
                 <span class="item-count">{{ col.model_count }}</span>
+            </div>
+            <!-- Inline new collection -->
+            <div v-if="inlineNewCollection.active" class="inline-new-collection">
+                <div style="display:flex;gap:8px;align-items:center">
+                    <span class="collection-dot" :style="{ background: inlineNewCollection.color }" style="flex-shrink:0;cursor:pointer"
+                          @click="inlineNewCollection.color = pickNextCollectionColor()"></span>
+                    <input class="form-input" v-model="inlineNewCollection.name" placeholder="Collection name"
+                           @keydown.enter="confirmInlineNewCollection('addToCollection')"
+                           @keydown.escape="cancelInlineNewCollection"
+                           style="flex:1;padding:4px 8px;font-size:0.85rem" autofocus>
+                    <button class="btn btn-primary btn-sm" @click="confirmInlineNewCollection('addToCollection')"
+                            :disabled="!inlineNewCollection.name.trim()">Add</button>
+                    <button class="btn btn-ghost btn-sm" @click="cancelInlineNewCollection">&times;</button>
+                </div>
+                <div class="color-swatch-grid" style="margin-top:6px">
+                    <button v-for="c in COLLECTION_COLORS" :key="c"
+                            class="color-swatch color-swatch-sm" :class="{ active: inlineNewCollection.color === c }"
+                            :style="{ background: c }"
+                            @click="inlineNewCollection.color = c"
+                            type="button"></button>
+                </div>
+            </div>
+            <div v-else class="sidebar-item" @click="startInlineNewCollection" style="color:var(--color-primary, #4f8cff)">
+                <span v-html="ICONS.plus"></span>
+                <span>New Collection</span>
             </div>
         </div>
     </div>
@@ -3355,16 +3443,35 @@ const app = createApp({
                     </div>
 
                     <!-- Collection -->
-                    <div v-if="uploadFiles.length && collections.length" class="settings-section" style="margin-top:12px">
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
                         <div class="settings-section-title">
                             <span v-html="ICONS.collection"></span>
                             Add to Collection
                         </div>
                         <div class="form-row">
-                            <select class="form-input" v-model="uploadCollectionId">
+                            <select class="form-input" v-model="uploadCollectionId"
+                                    @change="uploadCollectionId === '__new__' && startInlineNewCollection()">
                                 <option :value="null">None</option>
                                 <option v-for="col in collections" :key="col.id" :value="col.id">{{ col.name }}</option>
+                                <option value="__new__">+ New Collection...</option>
                             </select>
+                        </div>
+                        <div v-if="uploadCollectionId === '__new__'" class="inline-new-collection" style="margin-top:8px">
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <input class="form-input" v-model="inlineNewCollection.name" placeholder="Collection name"
+                                       @keydown.enter="confirmInlineNewCollection('upload')"
+                                       @keydown.escape="uploadCollectionId = null"
+                                       style="flex:1;padding:4px 8px;font-size:0.85rem" autofocus>
+                                <button class="btn btn-primary btn-sm" @click="confirmInlineNewCollection('upload')"
+                                        :disabled="!inlineNewCollection.name.trim()">Create</button>
+                            </div>
+                            <div class="color-swatch-grid" style="margin-top:6px">
+                                <button v-for="c in COLLECTION_COLORS" :key="c"
+                                        class="color-swatch color-swatch-sm" :class="{ active: inlineNewCollection.color === c }"
+                                        :style="{ background: c }"
+                                        @click="inlineNewCollection.color = c"
+                                        type="button"></button>
+                            </div>
                         </div>
                     </div>
                 </template>
