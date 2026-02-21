@@ -2804,6 +2804,19 @@ const app = createApp({
                                             @click="saveImportCredential(site, 'api_key')">Save</button>
                                 </div>
                             </div>
+                            <div v-else-if="site === 'makerworld'" class="form-row">
+                                <label class="form-label">Token</label>
+                                <div style="display:flex;gap:6px">
+                                    <input type="text" class="form-input" v-model="credentialInputs[site]"
+                                           :placeholder="importCredentials[site] ? importCredentials[site].token || 'Not set' : 'Not set'"
+                                           style="flex:1">
+                                    <button class="btn btn-sm btn-primary"
+                                            @click="saveImportCredential(site, 'token')">Save</button>
+                                </div>
+                                <div class="text-muted" style="font-size:0.7rem;margin-top:4px">
+                                    In your browser on makerworld.com: press F12 → Application → Cookies → copy the <strong>token</strong> value (starts with AAB_). Valid for 90 days.
+                                </div>
+                            </div>
                             <div v-else class="form-row">
                                 <label class="form-label">Cookie</label>
                                 <div style="display:flex;gap:6px">
@@ -2812,9 +2825,6 @@ const app = createApp({
                                            style="flex:1">
                                     <button class="btn btn-sm btn-primary"
                                             @click="saveImportCredential(site, 'cookie')">Save</button>
-                                </div>
-                                <div v-if="site === 'makerworld'" class="text-muted" style="font-size:0.7rem;margin-top:4px">
-                                    Required for MakerWorld (Cloudflare-protected). In your browser: log in, press F12 → Application → Cookies → copy all cookie values.
                                 </div>
                             </div>
                         </div>
