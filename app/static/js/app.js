@@ -115,7 +115,6 @@ const app = createApp({
 
         // Thumbnail settings
         const thumbnailMode = ref('wireframe');
-        const thumbnailQuality = ref('fast');
         const regeneratingThumbnails = ref(false);
 
         // Thumbnail regeneration progress
@@ -484,7 +483,6 @@ const app = createApp({
                 if (!res.ok) return;
                 const data = await res.json();
                 thumbnailMode.value = data.thumbnail_mode || 'wireframe';
-                thumbnailQuality.value = data.thumbnail_quality || 'fast';
             } catch (err) {
                 console.error('fetchSettings error:', err);
             }
@@ -508,27 +506,6 @@ const app = createApp({
             } catch (err) {
                 showToast('Failed to update setting', 'error');
                 console.error('setThumbnailMode error:', err);
-            }
-        }
-
-        async function setThumbnailQuality(quality) {
-            try {
-                const res = await fetch('/api/settings', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ thumbnail_quality: quality }),
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    thumbnailQuality.value = data.thumbnail_quality || quality;
-                    showToast(`Thumbnail quality set to ${quality}`);
-                } else {
-                    const data = await res.json();
-                    showToast(data.detail || 'Failed to update setting', 'error');
-                }
-            } catch (err) {
-                showToast('Failed to update setting', 'error');
-                console.error('setThumbnailQuality error:', err);
             }
         }
 
@@ -1021,9 +998,8 @@ const app = createApp({
 
         function thumbnailStatus(model) {
             if (!model.thumbnail_path) return 'missing';
-            if (!model.thumbnail_mode && !model.thumbnail_quality) return 'stale';
-            if (model.thumbnail_mode !== thumbnailMode.value ||
-                model.thumbnail_quality !== thumbnailQuality.value) return 'stale';
+            if (!model.thumbnail_mode) return 'stale';
+            if (model.thumbnail_mode !== thumbnailMode.value) return 'stale';
             return 'current';
         }
 
@@ -1456,7 +1432,6 @@ const app = createApp({
             addingLibrary,
             updateInfo,
             thumbnailMode,
-            thumbnailQuality,
             regeneratingThumbnails,
             regenProgress,
             showStatusMenu,
@@ -1511,7 +1486,6 @@ const app = createApp({
             addLibrary,
             deleteLibrary,
             setThumbnailMode,
-            setThumbnailQuality,
             regenerateThumbnails,
             thumbnailStatus,
             thumbStatusClass,
@@ -2284,27 +2258,6 @@ const app = createApp({
                         </label>
                     </div>
 
-                    <div class="settings-section-desc" style="margin-top:12px">
-                        Rendering quality. Fast uses a simple painter's algorithm. Quality uses a z-buffer rasterizer with smooth shading (slower, especially for high-poly models).
-                    </div>
-
-                    <div class="thumbnail-mode-options">
-                        <label class="thumbnail-mode-option" :class="{ active: thumbnailQuality === 'fast' }" @click="setThumbnailQuality('fast')">
-                            <input type="radio" name="thumbnailQuality" value="fast" :checked="thumbnailQuality === 'fast'">
-                            <div class="thumbnail-mode-info">
-                                <div class="thumbnail-mode-label">Fast</div>
-                                <div class="thumbnail-mode-desc">Quick rendering, good for most models</div>
-                            </div>
-                        </label>
-                        <label class="thumbnail-mode-option" :class="{ active: thumbnailQuality === 'quality' }" @click="setThumbnailQuality('quality')">
-                            <input type="radio" name="thumbnailQuality" value="quality" :checked="thumbnailQuality === 'quality'">
-                            <div class="thumbnail-mode-info">
-                                <div class="thumbnail-mode-label">Quality</div>
-                                <div class="thumbnail-mode-desc">Z-buffer with smooth shading, slower</div>
-                            </div>
-                        </label>
-                    </div>
-
                     <div class="thumbnail-regen-row">
                         <button class="btn btn-secondary"
                                 @click="regenerateThumbnails"
@@ -2312,7 +2265,7 @@ const app = createApp({
                             <span v-html="ICONS.refresh"></span>
                             Regenerate All Thumbnails
                         </button>
-                        <span class="text-muted text-sm">Re-render existing thumbnails with the current mode and quality</span>
+                        <span class="text-muted text-sm">Re-render existing thumbnails with the current mode</span>
                     </div>
                     <div v-if="regeneratingThumbnails && regenProgress.total > 0" class="regen-progress" style="margin-top:12px">
                         <div class="regen-progress-bar">

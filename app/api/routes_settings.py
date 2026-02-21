@@ -19,10 +19,6 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["wireframe", "solid"],
         "default": "wireframe",
     },
-    "thumbnail_quality": {
-        "allowed": ["fast", "quality"],
-        "default": "fast",
-    },
 }
 
 # Module-level regeneration progress state
