@@ -78,8 +78,8 @@ function formatClass(fmt) {
                                @blur="emit('saveName')"
                                @keydown.enter="emit('saveName')"
                                @keydown.escape="emit('update:isEditingName', false)"
-                               style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:1.1rem;font-weight:600"
-                               autofocus>
+                               @vue:mounted="$event.el.focus()"
+                               style="flex:1;min-width:0;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:1.1rem;font-weight:600">
                     </template>
                 </div>
                 <button class="btn btn-sm btn-ghost" :class="{ 'text-danger': selectedModel.is_favorite }"
