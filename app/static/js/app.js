@@ -2719,6 +2719,16 @@ const app = createApp({
                         </div>
                     </div>
 
+                    <!-- Source Link -->
+                    <div v-if="selectedModel.source_url" class="info-section">
+                        <div class="info-section-title">Source</div>
+                        <a :href="selectedModel.source_url" target="_blank" rel="noopener"
+                           class="source-link">
+                            <span v-html="ICONS.link || '&#128279;'"></span>
+                            {{ selectedModel.source_url }}
+                        </a>
+                    </div>
+
                     <!-- File Information -->
                     <div class="info-section">
                         <div class="info-section-title">File Information</div>
