@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS models (
     dimensions_z REAL,
     thumbnail_path TEXT,
     file_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
     library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
     zip_path TEXT,
     zip_entry TEXT,
@@ -114,6 +115,12 @@ CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 CREATE INDEX IF NOT EXISTS idx_collection_models_model ON collection_models(model_id);
 CREATE INDEX IF NOT EXISTS idx_collection_models_position ON collection_models(collection_id, position);
 """
+
+# Indexes on migrated columns — created after migrations in init_db()
+_POST_MIGRATION_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_models_status ON models(status)",
+    "CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path)",
+]
 
 MIGRATION_SQL = """
 -- Add library_id column to models if it doesn't exist (migration for existing DBs)
@@ -194,13 +201,21 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass  # Columns already exist or table just created with them
 
-        # Create zip_path index (after migration ensures column exists)
-        try:
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path)"
-            )
-        except Exception:
-            pass
+        # Add status column for soft-delete / archive support
+        if "status" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+                )
+            except Exception:
+                pass  # Column already exists or table just created with it
+
+        # Create indexes on migrated columns (must run after migrations)
+        for sql in _POST_MIGRATION_INDEXES:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
 
         await db.commit()
 
