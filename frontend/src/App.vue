@@ -17,6 +17,7 @@ import SideBar from './components/SideBar.vue';
 import ModelGrid from './components/ModelGrid.vue';
 import DetailPanel from './components/DetailPanel.vue';
 import SettingsModal from './components/SettingsModal.vue';
+import StatsModal from './components/StatsModal.vue';
 import ImportModal from './components/ImportModal.vue';
 import CollectionModal from './components/CollectionModal.vue';
 import SelectionBar from './components/SelectionBar.vue';
@@ -40,6 +41,7 @@ import {
     apiSaveSearch,
     apiDeleteSavedSearch,
     apiGetSystemStatus,
+    apiGetStats,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -59,9 +61,12 @@ const {
 /* ---- 3D Viewer ---- */
 const {
     viewerLoading,
+    modelDimensions,
     initViewer,
     loadModel,
     resetCamera,
+    setBedOverlay,
+    clearBedOverlay,
     dispose: disposeViewer,
 } = useViewer();
 
@@ -134,6 +139,11 @@ const savedSearches = ref([]);
 const showSaveSearchModal = ref(false);
 const saveSearchName = ref('');
 
+// Stats dashboard
+const showStats = ref(false);
+const statsData = ref(null);
+const statsLoading = ref(false);
+
 // System status indicator
 const showStatusMenu = ref(false);
 const systemStatus = reactive({
@@ -152,8 +162,10 @@ const {
     showSettings, libraries, newLibName, newLibPath, addingLibrary,
     thumbnailMode, regeneratingThumbnails, regenProgress,
     autoTagging, autoTagProgress,
+    bedConfig, bedPreset,
     fetchLibraries, addLibrary, deleteLibrary,
     setThumbnailMode, regenerateThumbnails, autoTagAll,
+    setBedPreset, saveBedSettings,
 } = settingsComposable;
 
 const updatesComposable = useUpdates(showToast, showConfirm);
@@ -476,6 +488,27 @@ function closeStatusMenu() {
     showStatusMenu.value = false;
 }
 
+async function openStats() {
+    showStats.value = true;
+    document.body.classList.add('modal-open');
+    statsLoading.value = true;
+    try {
+        statsData.value = await apiGetStats();
+    } catch (err) {
+        showToast('Failed to load stats', 'error');
+        console.error('fetchStats error:', err);
+    } finally {
+        statsLoading.value = false;
+    }
+}
+
+function closeStats() {
+    showStats.value = false;
+    if (!showDetail.value && !showSettings.value) {
+        document.body.classList.remove('modal-open');
+    }
+}
+
 function statusLabel(status) {
     const labels = {
         ok: 'Healthy',
@@ -606,10 +639,25 @@ async function viewModel(model) {
         }
     }
     viewerLoading.value = false;
+
+    // Auto-show bed overlay if enabled
+    if (loaded && bedConfig.enabled) {
+        const result = setBedOverlay({
+            width: bedConfig.width,
+            depth: bedConfig.depth,
+            height: bedConfig.height,
+            shape: bedConfig.shape,
+        });
+        bedFits.value = result?.fits ?? true;
+        bedVisible.value = true;
+    } else {
+        bedVisible.value = false;
+    }
 }
 
 function closeDetail() {
     showDetail.value = false;
+    bedVisible.value = false;
     disposeViewer();
     selectedModel.value = null;
     isEditingName.value = false;
@@ -803,6 +851,38 @@ function setPageSize(size) {
 
 function toggleCategory(catId) {
     expandedCategories[catId] = !expandedCategories[catId];
+}
+
+// ---- Print bed overlay state ----
+const bedVisible = ref(false);
+const bedFits = ref(true);
+
+function toggleBed() {
+    if (bedVisible.value) {
+        clearBedOverlay();
+        bedVisible.value = false;
+    } else {
+        if (!bedConfig.enabled) {
+            showToast('Enable print bed in Settings first', 'error');
+            return;
+        }
+        const result = setBedOverlay({
+            width: bedConfig.width,
+            depth: bedConfig.depth,
+            height: bedConfig.height,
+            shape: bedConfig.shape,
+        });
+        bedFits.value = result?.fits ?? true;
+        bedVisible.value = true;
+    }
+}
+
+function updateBedConfig(key, value) {
+    bedConfig[key] = value;
+    // Editing dimensions switches preset to "Custom"
+    if (['width', 'depth', 'height', 'shape'].includes(key)) {
+        bedPreset.value = 'Custom';
+    }
 }
 
 function handleResetView() {
@@ -1046,6 +1126,8 @@ function onKeydown(e) {
             showSaveSearchModal.value = false;
         } else if (showStatusMenu.value) {
             closeStatusMenu();
+        } else if (showStats.value) {
+            closeStats();
         } else if (showSettings.value) {
             closeSettings();
         } else if (showDetail.value) {
@@ -1105,6 +1187,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @openImportModal="openImportModal"
         @toggleSelectionMode="toggleSelectionMode"
         @toggleStatusMenu="toggleStatusMenu"
+        @openStats="openStats"
         @searchInput="onSearchInput"
         @clearSearch="clearSearch"
     />
@@ -1303,6 +1386,9 @@ const { pickNextCollectionColor } = collectionsComposable;
         :collections="collections"
         :detailTab="detailTab"
         :showFileDetails="showFileDetails"
+        :bedConfig="bedConfig"
+        :bedVisible="bedVisible"
+        :bedFits="bedFits"
         @close="closeDetail"
         @update:detailTab="detailTab = $event"
         @update:showFileDetails="showFileDetails = $event"
@@ -1329,6 +1415,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @applyTagSuggestion="applyTagSuggestion"
         @renameModelFile="renameModelFile"
         @deleteModel="deleteModel"
+        @toggleBed="toggleBed"
     />
 
     <!-- ============================================================
@@ -1349,6 +1436,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :scanStatus="scanStatus"
         :importCredentials="importCredentials"
         :credentialInputs="credentialInputs"
+        :bedConfig="bedConfig"
+        :bedPreset="bedPreset"
         @close="closeSettings"
         @update:newLibName="newLibName = $event"
         @update:newLibPath="newLibPath = $event"
@@ -1363,6 +1452,19 @@ const { pickNextCollectionColor } = collectionsComposable;
         @saveImportCredential="saveImportCredential"
         @deleteImportCredential="deleteImportCredential"
         @updateCredentialInput="(site, val) => credentialInputs[site] = val"
+        @setBedPreset="setBedPreset"
+        @updateBedConfig="updateBedConfig"
+        @saveBedSettings="saveBedSettings"
+    />
+
+    <!-- ============================================================
+         Stats Modal
+         ============================================================ -->
+    <StatsModal
+        :showStats="showStats"
+        :stats="statsData"
+        :statsLoading="statsLoading"
+        @close="closeStats"
     />
 
     <!-- ============================================================

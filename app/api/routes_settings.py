@@ -20,6 +20,21 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["wireframe", "solid"],
         "default": "wireframe",
     },
+    "bed_shape": {
+        "allowed": ["rectangular", "circular"],
+        "default": "rectangular",
+    },
+    "bed_enabled": {
+        "allowed": ["true", "false"],
+        "default": "false",
+    },
+}
+
+# Numeric settings with min/max validation (stored as strings in DB)
+NUMERIC_SETTINGS: dict[str, dict] = {
+    "bed_width": {"default": "256", "min": 50, "max": 1000},
+    "bed_depth": {"default": "256", "min": 50, "max": 1000},
+    "bed_height": {"default": "256", "min": 50, "max": 1000},
 }
 
 # Module-level regeneration progress state
@@ -45,6 +60,8 @@ async def get_settings():
     result: dict[str, str] = {}
     for key, schema in SETTINGS_SCHEMA.items():
         result[key] = stored.get(key, schema["default"])
+    for key, schema in NUMERIC_SETTINGS.items():
+        result[key] = stored.get(key, schema["default"])
     return result
 
 
@@ -58,17 +75,33 @@ async def update_settings(body: dict):
     updated: dict[str, str] = {}
     for key, value in body.items():
         schema = SETTINGS_SCHEMA.get(key)
-        if schema is None:
+        numeric = NUMERIC_SETTINGS.get(key)
+        if schema is None and numeric is None:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unknown setting: {key}",
             )
-        if value not in schema["allowed"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid value for {key}: {value!r}. "
-                f"Allowed: {schema['allowed']}",
-            )
+        if schema is not None:
+            if value not in schema["allowed"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid value for {key}: {value!r}. "
+                    f"Allowed: {schema['allowed']}",
+                )
+        elif numeric is not None:
+            try:
+                num_val = int(value)
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid value for {key}: {value!r}. Must be an integer.",
+                )
+            if num_val < numeric["min"] or num_val > numeric["max"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Value for {key} must be between {numeric['min']} and {numeric['max']}.",
+                )
+            value = str(num_val)
         await set_setting(key, value)
         updated[key] = value
 
@@ -76,6 +109,8 @@ async def update_settings(body: dict):
     stored = await get_all_settings()
     result: dict[str, str] = {}
     for key, schema in SETTINGS_SCHEMA.items():
+        result[key] = stored.get(key, schema["default"])
+    for key, schema in NUMERIC_SETTINGS.items():
         result[key] = stored.get(key, schema["default"])
     return result
 

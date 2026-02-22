@@ -314,6 +314,16 @@ export async function apiGetAutoTagStatus() {
 }
 
 /* ==================================================================
+   Stats
+   ================================================================== */
+
+export async function apiGetStats() {
+    const res = await fetch('/api/stats');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+/* ==================================================================
    System Status
    ================================================================== */
 

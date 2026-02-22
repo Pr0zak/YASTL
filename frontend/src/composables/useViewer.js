@@ -22,6 +22,8 @@ export function useViewer() {
     /* ---- Reactive state exposed to the component ---- */
     const viewerLoading = ref(false);
     const viewerError = ref(null);
+    /** Original model dimensions in mm (set after model load). */
+    const modelDimensions = ref(null);
 
     /* ---- Internal Three.js state (not reactive) ---- */
     let scene = null;
@@ -32,6 +34,11 @@ export function useViewer() {
     let animationId = null;
     let container = null;
     let resizeObserver = null;
+
+    /** Scale factor applied to the model (mm → scene units). */
+    let modelScaleFactor = 0;
+    /** Group holding all bed overlay meshes. */
+    let bedGroup = null;
 
     /** Default material for models that don't carry their own (teal accent). */
     const DEFAULT_MATERIAL = new THREE.MeshPhongMaterial({
@@ -116,6 +123,9 @@ export function useViewer() {
             return;
         }
 
+        // Store original dimensions (in model units, typically mm)
+        modelDimensions.value = { x: size.x, y: size.y, z: size.z };
+
         // Center the model on the origin
         object.position.sub(center);
 
@@ -124,7 +134,10 @@ export function useViewer() {
         if (maxDim > 0) {
             const targetSize = 4;
             const scale = targetSize / maxDim;
+            modelScaleFactor = scale;
             object.scale.multiplyScalar(scale);
+        } else {
+            modelScaleFactor = 1;
         }
 
         // Lift model so its bottom sits on the grid (y=0)
@@ -457,6 +470,161 @@ export function useViewer() {
         viewerError.value = null;
     }
 
+    /* ==================================================================
+       Print Bed Overlay
+       ================================================================== */
+
+    /**
+     * Remove the bed overlay from the scene.
+     */
+    function clearBedOverlay() {
+        if (bedGroup && scene) {
+            scene.remove(bedGroup);
+            bedGroup.traverse((child) => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) disposeMaterial(child.material);
+            });
+            bedGroup = null;
+        }
+    }
+
+    /**
+     * Show a print bed overlay in the viewer.
+     *
+     * @param {{ width: number, depth: number, height: number, shape: string }} config
+     *   Dimensions in mm; shape is "rectangular" or "circular".
+     * @returns {{ fits: boolean }} Whether the model fits inside the bed volume.
+     */
+    function setBedOverlay({ width, depth, height, shape }) {
+        clearBedOverlay();
+        if (!scene || modelScaleFactor === 0) return { fits: true };
+
+        bedGroup = new THREE.Group();
+        bedGroup.name = '__yastl_bed';
+
+        const sw = width * modelScaleFactor;
+        const sd = depth * modelScaleFactor;
+        const sh = height * modelScaleFactor;
+
+        // Check if model fits
+        const dims = modelDimensions.value;
+        let fits = true;
+        if (dims) {
+            if (shape === 'circular') {
+                // For circular beds, width = diameter
+                const radius = width / 2;
+                const modelRadius = Math.sqrt(
+                    Math.pow(Math.max(dims.x, 0) / 2, 2) +
+                    Math.pow(Math.max(dims.z, 0) / 2, 2)
+                );
+                fits = modelRadius <= radius && dims.y <= height;
+            } else {
+                fits = dims.x <= width && dims.z <= depth && dims.y <= height;
+            }
+        }
+
+        const baseColor = fits ? 0x44aacc : 0xff6633;
+        const edgeMat = new THREE.LineBasicMaterial({ color: baseColor, opacity: 0.6, transparent: true });
+
+        if (shape === 'circular') {
+            const radius = sw / 2;
+
+            // Base circle
+            const circleGeo = new THREE.CircleGeometry(radius, 64);
+            const circleMat = new THREE.MeshBasicMaterial({
+                color: baseColor, opacity: 0.08, transparent: true, side: THREE.DoubleSide,
+            });
+            const circle = new THREE.Mesh(circleGeo, circleMat);
+            circle.rotation.x = -Math.PI / 2;
+            circle.position.y = 0.001;
+            bedGroup.add(circle);
+
+            // Base circle edge
+            const ringGeo = new THREE.RingGeometry(radius - 0.01, radius, 64);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: baseColor, opacity: 0.5, transparent: true, side: THREE.DoubleSide,
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.y = 0.002;
+            bedGroup.add(ring);
+
+            // Volume cylinder wireframe (top ring + vertical lines)
+            const topRingPoints = [];
+            for (let i = 0; i <= 64; i++) {
+                const angle = (i / 64) * Math.PI * 2;
+                topRingPoints.push(new THREE.Vector3(Math.cos(angle) * radius, sh, Math.sin(angle) * radius));
+            }
+            const topRingGeo = new THREE.BufferGeometry().setFromPoints(topRingPoints);
+            bedGroup.add(new THREE.Line(topRingGeo, edgeMat));
+
+            // Vertical lines (4 cardinal directions)
+            for (let i = 0; i < 4; i++) {
+                const angle = (i / 4) * Math.PI * 2;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(x, 0, z),
+                    new THREE.Vector3(x, sh, z),
+                ]);
+                bedGroup.add(new THREE.Line(lineGeo, edgeMat));
+            }
+        } else {
+            // Rectangular bed
+            const halfW = sw / 2;
+            const halfD = sd / 2;
+
+            // Base plane
+            const planeGeo = new THREE.PlaneGeometry(sw, sd);
+            const planeMat = new THREE.MeshBasicMaterial({
+                color: baseColor, opacity: 0.08, transparent: true, side: THREE.DoubleSide,
+            });
+            const plane = new THREE.Mesh(planeGeo, planeMat);
+            plane.rotation.x = -Math.PI / 2;
+            plane.position.y = 0.001;
+            bedGroup.add(plane);
+
+            // Wireframe box edges
+            const corners = [
+                [-halfW, 0, -halfD], [halfW, 0, -halfD],
+                [halfW, 0, halfD], [-halfW, 0, halfD],
+            ];
+            const topCorners = corners.map(([x, , z]) => [x, sh, z]);
+
+            // Bottom edges
+            for (let i = 0; i < 4; i++) {
+                const a = corners[i];
+                const b = corners[(i + 1) % 4];
+                const geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(...a), new THREE.Vector3(...b),
+                ]);
+                bedGroup.add(new THREE.Line(geo, edgeMat));
+            }
+
+            // Top edges
+            for (let i = 0; i < 4; i++) {
+                const a = topCorners[i];
+                const b = topCorners[(i + 1) % 4];
+                const geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(...a), new THREE.Vector3(...b),
+                ]);
+                bedGroup.add(new THREE.Line(geo, edgeMat));
+            }
+
+            // Vertical edges
+            for (let i = 0; i < 4; i++) {
+                const geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(...corners[i]),
+                    new THREE.Vector3(...topCorners[i]),
+                ]);
+                bedGroup.add(new THREE.Line(geo, edgeMat));
+            }
+        }
+
+        scene.add(bedGroup);
+        return { fits };
+    }
+
     // Auto-cleanup when the component using this composable unmounts
     onUnmounted(() => {
         dispose();
@@ -464,9 +632,12 @@ export function useViewer() {
 
     return {
         viewerLoading,
+        modelDimensions,
         initViewer,
         loadModel,
         resetCamera,
+        setBedOverlay,
+        clearBedOverlay,
         dispose,
     };
 }

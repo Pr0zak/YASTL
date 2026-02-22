@@ -244,6 +244,30 @@
     color: var(--text-primary);
 }
 
+.viewer-toolbar .btn-active {
+    background: rgba(68, 170, 204, 0.2);
+    border-color: #44aacc;
+    color: #44aacc;
+}
+
+.bed-status {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    align-self: center;
+}
+
+.bed-fits {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.bed-too-large {
+    background: rgba(255, 102, 51, 0.15);
+    color: #ff6633;
+}
+
 .viewer-loading {
     position: absolute;
     top: 50%;

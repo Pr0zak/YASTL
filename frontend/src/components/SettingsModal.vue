@@ -1,9 +1,10 @@
 <script setup>
 /**
- * SettingsModal - Settings panel with libraries, thumbnails, import credentials, and updates.
+ * SettingsModal - Settings panel with libraries, thumbnails, print bed, import credentials, and updates.
  */
 import { ref } from 'vue';
 import { ICONS } from '../icons.js';
+import { BED_PRESETS } from '../composables/useSettings.js';
 
 const showCredentials = ref(false);
 
@@ -22,6 +23,8 @@ defineProps({
     scanStatus: { type: Object, required: true },
     importCredentials: { type: Object, default: () => ({}) },
     credentialInputs: { type: Object, default: () => ({}) },
+    bedConfig: { type: Object, default: () => ({ enabled: false, shape: 'rectangular', width: 256, depth: 256, height: 256 }) },
+    bedPreset: { type: String, default: 'Custom' },
 });
 
 const emit = defineEmits([
@@ -39,6 +42,9 @@ const emit = defineEmits([
     'saveImportCredential',
     'deleteImportCredential',
     'updateCredentialInput',
+    'setBedPreset',
+    'updateBedConfig',
+    'saveBedSettings',
 ]);
 </script>
 
@@ -192,6 +198,81 @@ const emit = defineEmits([
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
                             {{ autoTagProgress.completed }} / {{ autoTagProgress.total }} models &middot; {{ autoTagProgress.tags_added }} tags added
                         </span>
+                    </div>
+                </div>
+
+                <!-- Print Bed Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                        Print Bed
+                    </div>
+                    <div class="settings-section-desc">
+                        Configure your printer's build plate dimensions. The bed overlay shows in the 3D viewer to help you check if a model fits.
+                    </div>
+
+                    <!-- Enable toggle -->
+                    <div class="form-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" :checked="bedConfig.enabled"
+                                   @change="emit('updateBedConfig', 'enabled', $event.target.checked)">
+                            <span style="font-size:0.85rem">Show bed overlay by default when viewing models</span>
+                        </label>
+                    </div>
+
+                    <!-- Preset dropdown -->
+                    <div class="form-row">
+                        <label class="form-label">Printer Preset</label>
+                        <select class="form-input"
+                                :value="bedPreset"
+                                @change="emit('setBedPreset', $event.target.value)">
+                            <option v-for="p in BED_PRESETS" :key="p.name" :value="p.name">
+                                {{ p.name }}{{ p.width ? ` (${p.width}×${p.depth}×${p.height})` : '' }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Dimension inputs -->
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <div class="form-row" style="flex:1">
+                            <label class="form-label">Width (mm)</label>
+                            <input type="number" class="form-input" :value="bedConfig.width" min="50" max="1000"
+                                   @input="emit('updateBedConfig', 'width', parseInt($event.target.value) || 0)">
+                        </div>
+                        <div class="form-row" style="flex:1">
+                            <label class="form-label">Depth (mm)</label>
+                            <input type="number" class="form-input" :value="bedConfig.depth" min="50" max="1000"
+                                   @input="emit('updateBedConfig', 'depth', parseInt($event.target.value) || 0)">
+                        </div>
+                        <div class="form-row" style="flex:1">
+                            <label class="form-label">Height (mm)</label>
+                            <input type="number" class="form-input" :value="bedConfig.height" min="50" max="1000"
+                                   @input="emit('updateBedConfig', 'height', parseInt($event.target.value) || 0)">
+                        </div>
+                    </div>
+
+                    <!-- Shape toggle -->
+                    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                        <span class="form-label" style="margin-bottom:0">Shape:</span>
+                        <label class="thumbnail-mode-option" style="flex:0;padding:6px 14px"
+                               :class="{ active: bedConfig.shape === 'rectangular' }"
+                               @click="emit('updateBedConfig', 'shape', 'rectangular')">
+                            <input type="radio" name="bedShape" value="rectangular" :checked="bedConfig.shape === 'rectangular'" style="display:none">
+                            Rectangular
+                        </label>
+                        <label class="thumbnail-mode-option" style="flex:0;padding:6px 14px"
+                               :class="{ active: bedConfig.shape === 'circular' }"
+                               @click="emit('updateBedConfig', 'shape', 'circular')">
+                            <input type="radio" name="bedShape" value="circular" :checked="bedConfig.shape === 'circular'" style="display:none">
+                            Circular
+                        </label>
+                    </div>
+
+                    <!-- Save button -->
+                    <div style="margin-top:12px">
+                        <button class="btn btn-primary" @click="emit('saveBedSettings')">
+                            Save Bed Settings
+                        </button>
                     </div>
                 </div>
 

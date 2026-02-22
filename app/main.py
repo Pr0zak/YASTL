@@ -23,6 +23,7 @@ from app.api.routes_saved_searches import router as saved_searches_router
 from app.api.routes_scan import router as scan_router
 from app.api.routes_search import router as search_router
 from app.api.routes_settings import router as settings_router
+from app.api.routes_stats import router as stats_router
 from app.api.routes_status import router as status_router
 from app.api.routes_tags import router as tags_router
 from app.api.routes_update import router as update_router
@@ -141,6 +142,7 @@ app.include_router(categories_router)
 app.include_router(scan_router)
 app.include_router(search_router)
 app.include_router(settings_router)
+app.include_router(stats_router)
 app.include_router(update_router)
 app.include_router(status_router)
 app.include_router(favorites_router)
@@ -153,7 +155,7 @@ app.include_router(import_router)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 dist_dir = os.path.join(static_dir, "dist")
 
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/static", StaticFiles(directory=static_dir, check_dir=False), name="static")
 
 # Serve Vite build assets
 _dist_assets = os.path.join(dist_dir, "assets")

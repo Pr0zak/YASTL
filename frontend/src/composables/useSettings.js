@@ -18,6 +18,16 @@ import {
 
 import { ref, reactive } from 'vue';
 
+/** Common printer bed presets. */
+export const BED_PRESETS = [
+    { name: 'Ender 3', width: 220, depth: 220, height: 250, shape: 'rectangular' },
+    { name: 'Prusa MK3S+', width: 250, depth: 210, height: 210, shape: 'rectangular' },
+    { name: 'Bambu Lab P1S', width: 256, depth: 256, height: 256, shape: 'rectangular' },
+    { name: 'Bambu Lab A1', width: 256, depth: 256, height: 256, shape: 'rectangular' },
+    { name: 'Voron 2.4 350', width: 350, depth: 350, height: 340, shape: 'rectangular' },
+    { name: 'Custom', width: null, depth: null, height: null, shape: null },
+];
+
 /**
  * @param {Function} showToast - Toast notification function
  * @param {Function} fetchModelsFn - Callback to refresh models after regen
@@ -35,6 +45,16 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     const regenProgress = reactive({ running: false, total: 0, completed: 0 });
     const autoTagging = ref(false);
     const autoTagProgress = reactive({ running: false, total: 0, completed: 0, tags_added: 0 });
+
+    // Print bed config
+    const bedConfig = reactive({
+        enabled: false,
+        shape: 'rectangular',
+        width: 256,
+        depth: 256,
+        height: 256,
+    });
+    const bedPreset = ref('Custom');
 
     let regenPollTimer = null;
     let autoTagPollTimer = null;
@@ -94,8 +114,52 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         try {
             const data = await apiGetSettings();
             thumbnailMode.value = data.thumbnail_mode || 'wireframe';
+            // Bed settings
+            bedConfig.enabled = data.bed_enabled === 'true';
+            bedConfig.shape = data.bed_shape || 'rectangular';
+            bedConfig.width = parseInt(data.bed_width) || 256;
+            bedConfig.depth = parseInt(data.bed_depth) || 256;
+            bedConfig.height = parseInt(data.bed_height) || 256;
+            // Detect preset
+            _detectPreset();
         } catch (err) {
             console.error('fetchSettings error:', err);
+        }
+    }
+
+    function _detectPreset() {
+        const match = BED_PRESETS.find(p =>
+            p.width === bedConfig.width && p.depth === bedConfig.depth &&
+            p.height === bedConfig.height && p.shape === bedConfig.shape
+        );
+        bedPreset.value = match ? match.name : 'Custom';
+    }
+
+    function setBedPreset(name) {
+        const preset = BED_PRESETS.find(p => p.name === name);
+        if (preset && preset.width !== null) {
+            bedConfig.width = preset.width;
+            bedConfig.depth = preset.depth;
+            bedConfig.height = preset.height;
+            bedConfig.shape = preset.shape;
+        }
+        bedPreset.value = name;
+    }
+
+    async function saveBedSettings() {
+        try {
+            await apiUpdateSettings({
+                bed_enabled: bedConfig.enabled ? 'true' : 'false',
+                bed_shape: bedConfig.shape,
+                bed_width: String(bedConfig.width),
+                bed_depth: String(bedConfig.depth),
+                bed_height: String(bedConfig.height),
+            });
+            _detectPreset();
+            showToast('Print bed settings saved');
+        } catch (err) {
+            showToast('Failed to save bed settings', 'error');
+            console.error('saveBedSettings error:', err);
         }
     }
 
@@ -220,6 +284,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         regenProgress,
         autoTagging,
         autoTagProgress,
+        bedConfig,
+        bedPreset,
 
         // Actions
         fetchLibraries,
@@ -229,6 +295,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         setThumbnailMode,
         regenerateThumbnails,
         autoTagAll,
+        setBedPreset,
+        saveBedSettings,
         openSettings,
         closeSettings,
     };
