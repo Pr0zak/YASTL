@@ -23,6 +23,7 @@ defineProps({
     uploadTags: { type: String, default: '' },
     uploadTagSuggestions: { type: Array, default: () => [] },
     uploadCollectionId: { default: null },
+    uploadName: { type: String, default: '' },
     uploadSourceUrl: { type: String, default: '' },
     uploadDescription: { type: String, default: '' },
     uploadZipMeta: { default: null },
@@ -58,6 +59,7 @@ const emit = defineEmits([
     'update:importSubfolder',
     'update:uploadTags',
     'update:uploadCollectionId',
+    'update:uploadName',
     'update:uploadSourceUrl',
     'update:uploadDescription',
     'previewImportUrl',
@@ -84,11 +86,11 @@ const emit = defineEmits([
             <div class="settings-content">
                 <!-- Mode tabs -->
                 <div class="import-tabs">
-                    <button class="import-tab" :class="{ active: importMode === 'url' }" @click="emit('update:importMode', 'url')">
-                        <span v-html="ICONS.link"></span> From URL
-                    </button>
                     <button class="import-tab" :class="{ active: importMode === 'file' }" @click="emit('update:importMode', 'file')">
                         <span v-html="ICONS.download"></span> Upload Files
+                    </button>
+                    <button class="import-tab" :class="{ active: importMode === 'url' }" @click="emit('update:importMode', 'url')">
+                        <span v-html="ICONS.link"></span> From URL
                     </button>
                 </div>
 
@@ -164,6 +166,16 @@ const emit = defineEmits([
                            class="text-sm" style="color:var(--color-primary, #4f8cff)">{{ uploadZipMeta.source_url }}</a>
                         <div class="text-sm text-muted" style="margin-top:4px">
                             Zip will be extracted &mdash; model files inside will be imported individually
+                        </div>
+                    </div>
+
+                    <!-- Model Name -->
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">Model Name</div>
+                        <div class="form-row">
+                            <input type="text" class="form-input" :value="uploadName"
+                                   @input="emit('update:uploadName', $event.target.value)"
+                                   placeholder="Custom name (defaults to filename)">
                         </div>
                     </div>
 

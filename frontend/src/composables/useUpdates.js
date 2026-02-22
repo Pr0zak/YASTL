@@ -11,7 +11,7 @@ import { reactive } from 'vue';
 /**
  * @param {Function} showToast - Toast notification function
  */
-export function useUpdates(showToast) {
+export function useUpdates(showToast, showConfirm) {
     const updateInfo = reactive({
         checked: false,
         checking: false,
@@ -56,9 +56,11 @@ export function useUpdates(showToast) {
     }
 
     async function applyUpdate() {
-        if (!confirm('Apply update and restart YASTL?\n\nThe application will be briefly unavailable while it restarts.')) {
-            return;
-        }
+        if (!await showConfirm({
+            title: 'Apply Update',
+            message: 'Update and restart YASTL? App will be briefly unavailable.',
+            action: 'Update',
+        })) return;
         updateInfo.applying = true;
         updateInfo.error = null;
         try {

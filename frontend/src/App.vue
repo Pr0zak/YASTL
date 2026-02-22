@@ -7,9 +7,11 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { debounce } from './search.js';
 import { ICONS } from './icons.js';
 import { useToast } from './composables/useToast.js';
+import { useConfirm } from './composables/useConfirm.js';
 import { useViewer } from './composables/useViewer.js';
 
 /* ---- Child components ---- */
+import ConfirmDialog from './components/ConfirmDialog.vue';
 import NavBar from './components/NavBar.vue';
 import SideBar from './components/SideBar.vue';
 import ModelGrid from './components/ModelGrid.vue';
@@ -47,6 +49,12 @@ import { useUpdates } from './composables/useUpdates.js';
 
 /* ---- Toast ---- */
 const { toasts, showToast } = useToast();
+
+/* ---- Confirm dialog ---- */
+const {
+    confirmVisible, confirmTitle, confirmMessage, confirmAction, confirmDanger,
+    showConfirm, onConfirm, onCancel,
+} = useConfirm();
 
 /* ---- 3D Viewer ---- */
 const {
@@ -141,7 +149,7 @@ const systemStatus = reactive({
 let statusPollTimer = null;
 
 /* ---- Composables ---- */
-const settingsComposable = useSettings(showToast, () => fetchModels());
+const settingsComposable = useSettings(showToast, () => fetchModels(), showConfirm);
 const {
     showSettings, libraries, newLibName, newLibPath, addingLibrary,
     thumbnailMode, regeneratingThumbnails, regenProgress,
@@ -149,7 +157,7 @@ const {
     setThumbnailMode, regenerateThumbnails,
 } = settingsComposable;
 
-const updatesComposable = useUpdates(showToast);
+const updatesComposable = useUpdates(showToast, showConfirm);
 const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
 
 const collectionsComposable = useCollections(showToast);
@@ -196,6 +204,7 @@ const selectionComposable = useSelection(
     () => fetchTags(),
     () => fetchFavoritesCount(),
     fetchCollections,
+    showConfirm,
 );
 const {
     selectionMode, selectedModels, showBulkTagModal, bulkTagInput,
@@ -222,7 +231,7 @@ const {
     showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
     importRunning, importDone, importPreview, importProgress,
     uploadFiles, uploadResults, uploadTags, uploadTagSuggestions,
-    uploadCollectionId, uploadSourceUrl, uploadDescription, uploadZipMeta,
+    uploadCollectionId, uploadName, uploadSourceUrl, uploadDescription, uploadZipMeta,
     importCredentials, credentialInputs,
     openImportModal: _openImportModal,
     closeImportModal: _closeImportModal,
@@ -649,7 +658,11 @@ async function renameModelFile() {
     const oldName = model.file_path?.split('/').pop() || '';
     const ext = oldName.includes('.') ? oldName.slice(oldName.lastIndexOf('.')) : '';
     const newName = model.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_') + ext;
-    if (!confirm(`Rename file on disk?\n\n"${oldName}"\n→ "${newName}"`)) return;
+    if (!await showConfirm({
+        title: 'Rename File',
+        message: `"${oldName}" \u2192 "${newName}"`,
+        action: 'Rename',
+    })) return;
     try {
         const updated = await apiRenameModelFile(model.id);
         selectedModel.value = updated;
@@ -661,13 +674,12 @@ async function renameModelFile() {
 }
 
 async function deleteModel(model) {
-    if (
-        !confirm(
-            `Delete "${model.name}" from the library?\n\nThis removes it from the database but does NOT delete the file from disk.`
-        )
-    ) {
-        return;
-    }
+    if (!await showConfirm({
+        title: 'Delete Model',
+        message: `Remove "${model.name}" from library? File stays on disk.`,
+        action: 'Delete',
+        danger: true,
+    })) return;
     try {
         await apiDeleteModel(model.id);
         models.value = models.value.filter((m) => m.id !== model.id);
@@ -998,7 +1010,9 @@ function closeSettings() {
 /* ---- Keyboard handler for modals ---- */
 function onKeydown(e) {
     if (e.key === 'Escape') {
-        if (showBulkTagModal.value) {
+        if (confirmVisible.value) {
+            onCancel();
+        } else if (showBulkTagModal.value) {
             showBulkTagModal.value = false;
         } else if (showImportModal.value) {
             closeImportModal();
@@ -1489,6 +1503,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :uploadTags="uploadTags"
         :uploadTagSuggestions="uploadTagSuggestions"
         :uploadCollectionId="uploadCollectionId"
+        :uploadName="uploadName"
         :uploadSourceUrl="uploadSourceUrl"
         :uploadDescription="uploadDescription"
         :uploadZipMeta="uploadZipMeta"
@@ -1503,6 +1518,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @update:importSubfolder="importSubfolder = $event"
         @update:uploadTags="uploadTags = $event"
         @update:uploadCollectionId="uploadCollectionId = $event"
+        @update:uploadName="uploadName = $event"
         @update:uploadSourceUrl="uploadSourceUrl = $event"
         @update:uploadDescription="uploadDescription = $event"
         @previewImportUrl="previewImportUrl"
@@ -1535,6 +1551,19 @@ const { pickNextCollectionColor } = collectionsComposable;
             </div>
         </div>
     </div>
+
+    <!-- ============================================================
+         Confirm Dialog
+         ============================================================ -->
+    <ConfirmDialog
+        :visible="confirmVisible"
+        :title="confirmTitle"
+        :message="confirmMessage"
+        :action="confirmAction"
+        :danger="confirmDanger"
+        @confirm="onConfirm"
+        @cancel="onCancel"
+    />
 
     <!-- ============================================================
          Toast Notifications

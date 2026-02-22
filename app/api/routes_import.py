@@ -143,6 +143,7 @@ async def upload_files(
     collection_id: int | None = Form(None),
     source_url: str | None = Form(None),
     description: str | None = Form(None),
+    name: str | None = Form(None),
 ):
     """Upload local 3D model files and process them into the library.
 
@@ -179,6 +180,8 @@ async def upload_files(
             )
     if description is not None:
         description = description.strip()
+    if name is not None:
+        name = name.strip() or None
 
     results = []
     model_ids = []
@@ -226,12 +229,15 @@ async def upload_files(
             logger.warning("Upload processing failed for %s: %s", fname, e)
             results.append({"filename": fname, "status": "error", "error": str(e)})
 
-    # Update models with source_url and/or description if provided
-    if (source_url or description) and model_ids:
+    # Update models with name, source_url, and/or description if provided
+    if (name or source_url or description) and model_ids:
         try:
             async with get_db() as db:
                 set_parts: list[str] = []
                 params: list[str | int] = []
+                if name:
+                    set_parts.append("name = ?")
+                    params.append(name)
                 if source_url:
                     set_parts.append("source_url = ?")
                     params.append(source_url)

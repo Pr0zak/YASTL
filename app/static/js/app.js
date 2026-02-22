@@ -38,6 +38,7 @@ import { useCollections } from './use-collections.js';
 import { useSelection } from './use-selection.js';
 import { useSettings } from './use-settings.js';
 import { useUpdates } from './use-updates.js';
+import { useConfirm } from './use-confirm.js';
 
 const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
@@ -49,6 +50,12 @@ const app = createApp({
     setup() {
         /* ---- Toast ---- */
         const { toasts, showToast } = useToast();
+
+        /* ---- Confirm dialog ---- */
+        const {
+            confirmVisible, confirmTitle, confirmMessage, confirmAction, confirmDanger,
+            showConfirm, onConfirm, onCancel,
+        } = useConfirm();
 
         /* ---- Core reactive state ---- */
         const models = ref([]);
@@ -136,7 +143,7 @@ const app = createApp({
         let statusPollTimer = null;
 
         /* ---- Composables ---- */
-        const settingsComposable = useSettings(showToast, () => fetchModels());
+        const settingsComposable = useSettings(showToast, () => fetchModels(), showConfirm);
         const {
             showSettings, libraries, newLibName, newLibPath, addingLibrary,
             thumbnailMode, regeneratingThumbnails, regenProgress,
@@ -144,7 +151,7 @@ const app = createApp({
             setThumbnailMode, regenerateThumbnails,
         } = settingsComposable;
 
-        const updatesComposable = useUpdates(showToast);
+        const updatesComposable = useUpdates(showToast, showConfirm);
         const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
 
         const collectionsComposable = useCollections(showToast);
@@ -191,6 +198,7 @@ const app = createApp({
             () => fetchTags(),
             () => fetchFavoritesCount(),
             fetchCollections,
+            showConfirm,
         );
         const {
             selectionMode, selectedModels, showBulkTagModal, bulkTagInput,
@@ -217,7 +225,7 @@ const app = createApp({
             showImportModal, importMode, importUrls, importLibraryId, importSubfolder,
             importRunning, importDone, importPreview, importProgress,
             uploadFiles, uploadResults, uploadTags, uploadTagSuggestions,
-            uploadCollectionId, uploadSourceUrl, uploadDescription, uploadZipMeta,
+            uploadCollectionId, uploadName, uploadSourceUrl, uploadDescription, uploadZipMeta,
             importCredentials, credentialInputs,
             openImportModal: _openImportModal,
             closeImportModal: _closeImportModal,
@@ -651,7 +659,11 @@ const app = createApp({
             const oldName = model.file_path?.split('/').pop() || '';
             const ext = oldName.includes('.') ? oldName.slice(oldName.lastIndexOf('.')) : '';
             const newName = model.name.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_') + ext;
-            if (!confirm(`Rename file on disk?\n\n"${oldName}"\n→ "${newName}"`)) return;
+            if (!await showConfirm({
+                title: 'Rename File',
+                message: `"${oldName}" \u2192 "${newName}"`,
+                action: 'Rename',
+            })) return;
             try {
                 const updated = await apiRenameModelFile(model.id);
                 selectedModel.value = updated;
@@ -663,13 +675,12 @@ const app = createApp({
         }
 
         async function deleteModel(model) {
-            if (
-                !confirm(
-                    `Delete "${model.name}" from the library?\n\nThis removes it from the database but does NOT delete the file from disk.`
-                )
-            ) {
-                return;
-            }
+            if (!await showConfirm({
+                title: 'Delete Model',
+                message: `Remove "${model.name}" from library? File stays on disk.`,
+                action: 'Delete',
+                danger: true,
+            })) return;
             try {
                 await apiDeleteModel(model.id);
                 models.value = models.value.filter((m) => m.id !== model.id);
@@ -1063,7 +1074,9 @@ const app = createApp({
         /* ---- Keyboard handler for modals ---- */
         function onKeydown(e) {
             if (e.key === 'Escape') {
-                if (showBulkTagModal.value) {
+                if (confirmVisible.value) {
+                    onCancel();
+                } else if (showBulkTagModal.value) {
                     showBulkTagModal.value = false;
                 } else if (showImportModal.value) {
                     closeImportModal();
@@ -1113,6 +1126,10 @@ const app = createApp({
 
         /* ---- Expose everything to the template ---- */
         return {
+            // Confirm dialog
+            confirmVisible, confirmTitle, confirmMessage, confirmAction, confirmDanger,
+            onConfirm, onCancel,
+
             // State
             models,
             selectedModel,
@@ -1190,6 +1207,7 @@ const app = createApp({
             uploadTagSuggestions,
             uploadCollectionId,
             uploadZipMeta,
+            uploadName,
             uploadDescription,
             uploadSourceUrl,
 
@@ -2578,11 +2596,11 @@ const app = createApp({
             <div class="settings-content">
                 <!-- Mode tabs -->
                 <div class="import-tabs">
-                    <button class="import-tab" :class="{ active: importMode === 'url' }" @click="importMode = 'url'">
-                        <span v-html="ICONS.link"></span> From URL
-                    </button>
                     <button class="import-tab" :class="{ active: importMode === 'file' }" @click="importMode = 'file'">
                         <span v-html="ICONS.download"></span> Upload Files
+                    </button>
+                    <button class="import-tab" :class="{ active: importMode === 'url' }" @click="importMode = 'url'">
+                        <span v-html="ICONS.link"></span> From URL
                     </button>
                 </div>
 
@@ -2657,6 +2675,15 @@ const app = createApp({
                            class="text-sm" style="color:var(--color-primary, #4f8cff)">{{ uploadZipMeta.source_url }}</a>
                         <div class="text-sm text-muted" style="margin-top:4px">
                             Zip will be extracted &mdash; model files inside will be imported individually
+                        </div>
+                    </div>
+
+                    <!-- Model Name -->
+                    <div v-if="uploadFiles.length" class="settings-section" style="margin-top:12px">
+                        <div class="settings-section-title">Model Name</div>
+                        <div class="form-row">
+                            <input type="text" class="form-input" v-model="uploadName"
+                                   placeholder="Custom name (defaults to filename)">
                         </div>
                     </div>
 
@@ -2835,6 +2862,20 @@ const app = createApp({
             <div class="form-actions">
                 <button class="btn btn-secondary" @click="showBulkTagModal = false">Cancel</button>
                 <button class="btn btn-primary" @click="bulkAddTags" :disabled="!bulkTagInput.trim()">Apply Tags</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         Confirm Dialog
+         ============================================================ -->
+    <div v-if="confirmVisible" class="confirm-overlay" @click.self="onCancel">
+        <div class="confirm-dialog">
+            <h3 class="confirm-title">{{ confirmTitle }}</h3>
+            <p class="confirm-message">{{ confirmMessage }}</p>
+            <div class="confirm-actions">
+                <button class="btn btn-secondary" @click="onCancel">Cancel</button>
+                <button class="btn" :class="confirmDanger ? 'btn-danger' : 'btn-primary'" @click="onConfirm">{{ confirmAction }}</button>
             </div>
         </div>
     </div>

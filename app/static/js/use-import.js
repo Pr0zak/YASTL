@@ -26,7 +26,7 @@ const { ref, reactive } = Vue;
 export function useImport(showToast, refreshData, libraries, collections, fetchCollectionsFn) {
     // Modal state
     const showImportModal = ref(false);
-    const importMode = ref('url');
+    const importMode = ref('file');
     const importUrls = ref('');
     const importLibraryId = ref(null);
     const importSubfolder = ref('');
@@ -41,6 +41,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
     const uploadTags = ref('');
     const uploadTagSuggestions = ref([]);
     const uploadCollectionId = ref(null);
+    const uploadName = ref('');
     const uploadSourceUrl = ref('');
     const uploadDescription = ref('');
     const uploadZipMeta = ref(null);
@@ -52,7 +53,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
     let importPollTimer = null;
 
     function openImportModal() {
-        importMode.value = 'url';
+        importMode.value = 'file';
         importUrls.value = '';
         importSubfolder.value = '';
         importPreview.loading = false;
@@ -64,6 +65,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         uploadTags.value = '';
         uploadTagSuggestions.value = [];
         uploadCollectionId.value = null;
+        uploadName.value = '';
         uploadSourceUrl.value = '';
         uploadDescription.value = '';
         uploadZipMeta.value = null;
@@ -200,6 +202,8 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         const tagStr = uploadTags.value.trim();
         if (tagStr) formData.append('tags', tagStr);
         if (uploadCollectionId.value) formData.append('collection_id', uploadCollectionId.value);
+        const uploadNameStr = uploadName.value.trim();
+        if (uploadNameStr) formData.append('name', uploadNameStr);
         const srcUrl = uploadSourceUrl.value.trim() || (uploadZipMeta.value?.source_url || '');
         if (srcUrl) formData.append('source_url', srcUrl);
         const desc = uploadDescription.value.trim();
@@ -280,6 +284,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         uploadTags,
         uploadTagSuggestions,
         uploadCollectionId,
+        uploadName,
         uploadSourceUrl,
         uploadDescription,
         uploadZipMeta,

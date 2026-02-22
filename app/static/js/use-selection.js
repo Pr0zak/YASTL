@@ -22,7 +22,7 @@ const { ref, reactive } = Vue;
  * @param {Function} fetchFavoritesCount - Callback to refresh favorites count
  * @param {Function} fetchCollections - Callback to refresh collections
  */
-export function useSelection(showToast, fetchModels, models, fetchTags, fetchFavoritesCount, fetchCollections) {
+export function useSelection(showToast, fetchModels, models, fetchTags, fetchFavoritesCount, fetchCollections, showConfirm) {
     const selectionMode = ref(false);
     const selectedModels = reactive(new Set());
     const showBulkTagModal = ref(false);
@@ -123,7 +123,12 @@ export function useSelection(showToast, fetchModels, models, fetchTags, fetchFav
     async function bulkDelete() {
         const ids = [...selectedModels];
         if (!ids.length) return;
-        if (!confirm(`Delete ${ids.length} model(s)? This cannot be undone.`)) return;
+        if (!await showConfirm({
+            title: 'Delete Models',
+            message: `Delete ${ids.length} model(s)? This cannot be undone.`,
+            action: 'Delete',
+            danger: true,
+        })) return;
         try {
             await apiBulkDelete(ids);
             selectedModels.clear();

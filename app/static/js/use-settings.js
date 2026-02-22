@@ -20,7 +20,7 @@ const { ref, reactive } = Vue;
  * @param {Function} showToast - Toast notification function
  * @param {Function} fetchModelsFn - Callback to refresh models after regen
  */
-export function useSettings(showToast, fetchModelsFn) {
+export function useSettings(showToast, fetchModelsFn, showConfirm) {
     const showSettings = ref(false);
     const libraries = ref([]);
     const newLibName = ref('');
@@ -68,9 +68,12 @@ export function useSettings(showToast, fetchModelsFn) {
     }
 
     async function deleteLibrary(lib) {
-        if (!confirm(`Remove library "${lib.name}"?\n\nModels already scanned from this library will remain in the database.`)) {
-            return;
-        }
+        if (!await showConfirm({
+            title: 'Remove Library',
+            message: `Remove "${lib.name}"? Scanned models stay in database.`,
+            action: 'Remove',
+            danger: true,
+        })) return;
         try {
             await apiRemoveLibrary(lib.id);
             libraries.value = libraries.value.filter((l) => l.id !== lib.id);
@@ -101,9 +104,11 @@ export function useSettings(showToast, fetchModelsFn) {
     }
 
     async function regenerateThumbnails() {
-        if (!confirm('Regenerate all thumbnails?\n\nThis will re-render every model thumbnail using the current mode. This runs in the background.')) {
-            return;
-        }
+        if (!await showConfirm({
+            title: 'Regenerate Thumbnails',
+            message: 'Re-render all thumbnails using current mode? Runs in background.',
+            action: 'Regenerate',
+        })) return;
         regeneratingThumbnails.value = true;
         try {
             await apiRegenerateThumbnails();
