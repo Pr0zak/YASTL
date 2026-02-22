@@ -238,10 +238,13 @@ function formatClass(fmt) {
                                             {{ selectedModel.file_hash }}
                                         </span>
                                     </div>
-                                    <div v-if="!selectedModel.zip_path" style="margin-top:8px">
-                                        <button class="btn btn-sm btn-ghost" @click="emit('renameModelFile')" title="Rename file on disk to match model name">
-                                            <span v-html="ICONS.edit || '&#9998;'"></span> Rename File
+                                    <div v-if="!selectedModel.zip_path" style="margin-top:10px">
+                                        <button class="btn btn-sm btn-secondary" @click="emit('renameModelFile')" title="Rename the file on disk to match the model name">
+                                            <span v-html="ICONS.edit || '&#9998;'"></span> Rename File on Disk
                                         </button>
+                                        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px">
+                                            Renames the actual file to match the model name above.
+                                        </div>
                                     </div>
                                 </div>
                             </div>

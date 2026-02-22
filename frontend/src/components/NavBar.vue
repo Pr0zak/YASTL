@@ -45,8 +45,7 @@ function onSearchInput(e) {
 
         <!-- Brand -->
         <div class="navbar-brand">
-            <div class="logo-icon">3D</div>
-            <h1><span>YA</span>STL</h1>
+            <h1>YASTL</h1>
         </div>
 
         <!-- Search -->
