@@ -161,7 +161,7 @@
     }
 
     /* Close button bigger on touch devices */
-    .detail-header .close-btn {
+    .close-btn {
         width: 40px;
         height: 40px;
         font-size: 22px;

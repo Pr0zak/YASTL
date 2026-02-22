@@ -2,9 +2,14 @@
 /**
  * SideBar - Filters sidebar with libraries, format, tags, categories, collections, saved searches.
  */
+import { ref, computed } from 'vue';
 import { ICONS } from '../icons.js';
 
-defineProps({
+const TAG_PAGE_SIZE = 30;
+const tagSearch = ref('');
+const tagShowAll = ref(false);
+
+const props = defineProps({
     sidebarOpen: { type: Boolean, default: false },
     filters: { type: Object, required: true },
     allTags: { type: Array, default: () => [] },
@@ -46,6 +51,24 @@ function formatClass(fmt) {
     if (f === '3mf') return '_3mf';
     return f;
 }
+
+const filteredTags = computed(() => {
+    const q = tagSearch.value.trim().toLowerCase();
+    let tags = props.allTags;
+    if (q) {
+        tags = tags.filter(t => t.name.toLowerCase().includes(q));
+    }
+    return tags;
+});
+
+const visibleTags = computed(() => {
+    if (tagShowAll.value || tagSearch.value.trim()) return filteredTags.value;
+    return filteredTags.value.slice(0, TAG_PAGE_SIZE);
+});
+
+const hasMoreTags = computed(() => {
+    return !tagShowAll.value && !tagSearch.value.trim() && filteredTags.value.length > TAG_PAGE_SIZE;
+});
 </script>
 
 <template>
@@ -105,13 +128,28 @@ function formatClass(fmt) {
                 <div v-if="allTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
                     No tags yet
                 </div>
-                <div v-for="tag in allTags" :key="tag.id"
-                     class="sidebar-item"
-                     :class="{ active: filters.tags.includes(tag.name) }"
-                     @click="emit('toggleTagFilter', tag.name)">
-                    <span>{{ tag.name }}</span>
-                    <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
-                </div>
+                <template v-else>
+                    <div class="sidebar-search" v-if="allTags.length > TAG_PAGE_SIZE">
+                        <input type="text" class="sidebar-search-input" v-model="tagSearch"
+                               placeholder="Filter tags..." @click.stop>
+                    </div>
+                    <div v-for="tag in visibleTags" :key="tag.id"
+                         class="sidebar-item"
+                         :class="{ active: filters.tags.includes(tag.name) }"
+                         @click="emit('toggleTagFilter', tag.name)">
+                        <span>{{ tag.name }}</span>
+                        <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
+                    </div>
+                    <div v-if="tagSearch && filteredTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
+                        No matching tags
+                    </div>
+                    <button v-if="hasMoreTags" class="sidebar-show-more" @click="tagShowAll = true">
+                        Show all {{ filteredTags.length }} tags
+                    </button>
+                    <button v-if="tagShowAll && allTags.length > TAG_PAGE_SIZE && !tagSearch" class="sidebar-show-more" @click="tagShowAll = false">
+                        Show fewer
+                    </button>
+                </template>
             </template>
         </div>
 

@@ -81,7 +81,7 @@
     text-decoration: none;
 }
 
-.detail-header .close-btn {
+.close-btn {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -97,7 +97,7 @@
     flex-shrink: 0;
 }
 
-.detail-header .close-btn:hover {
+.close-btn:hover {
     background: var(--danger);
     border-color: var(--danger);
     color: #fff;
