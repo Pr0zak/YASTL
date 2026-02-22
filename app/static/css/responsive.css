@@ -147,9 +147,17 @@
         min-width: 120px;
     }
 
-    /* Detail panel info: stack on mobile */
-    .detail-info {
+    /* Detail tabs: smaller padding on mobile */
+    .detail-tabs {
+        padding: 0 16px;
+    }
+
+    .detail-tab-content {
         padding: 16px;
+    }
+
+    .detail-actions-pinned {
+        padding: 12px 16px;
     }
 
     /* Close button bigger on touch devices */
@@ -223,11 +231,13 @@
     }
 
     /* Detail actions: stack vertically */
-    .detail-actions {
+    .detail-actions,
+    .detail-actions-pinned {
         flex-direction: column;
     }
 
-    .detail-actions .btn {
+    .detail-actions .btn,
+    .detail-actions-pinned .btn {
         width: 100%;
         justify-content: center;
     }

@@ -79,6 +79,10 @@ const isEditingName = ref(false);
 const isEditingDesc = ref(false);
 const isEditingSourceUrl = ref(false);
 
+// Detail panel tab state
+const detailTab = ref('info');
+const showFileDetails = ref(false);
+
 // Category expansion state (by category id)
 const expandedCategories = reactive({});
 
@@ -277,9 +281,6 @@ const selectedLibrary = computed(() => {
 // Build breadcrumb trail from current filters
 const breadcrumbTrail = computed(() => {
     const trail = [];
-    if (filters.library_id && selectedLibrary.value) {
-        trail.push({ type: 'library_id', label: selectedLibrary.value.name });
-    }
     if (filters.category) {
         trail.push({ type: 'category', label: filters.category });
     }
@@ -545,6 +546,8 @@ async function viewModel(model) {
     isEditingDesc.value = false;
     isEditingSourceUrl.value = false;
     tagSuggestions.value = [];
+    detailTab.value = 'info';
+    showFileDetails.value = false;
     showDetail.value = true;
     document.body.classList.add('modal-open');
 
@@ -1278,7 +1281,11 @@ const { pickNextCollectionColor } = collectionsComposable;
         :newTagInput="newTagInput"
         :allCategories="allCategories"
         :collections="collections"
+        :detailTab="detailTab"
+        :showFileDetails="showFileDetails"
         @close="closeDetail"
+        @update:detailTab="detailTab = $event"
+        @update:showFileDetails="showFileDetails = $event"
         @update:editName="editName = $event"
         @update:editDesc="editDesc = $event"
         @update:editSourceUrl="editSourceUrl = $event"

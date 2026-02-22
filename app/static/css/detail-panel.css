@@ -119,9 +119,90 @@
 .detail-info {
     width: 360px;
     flex-shrink: 0;
-    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ---- Detail Tabs ---- */
+.detail-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.detail-tab {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    transition: color var(--transition), border-color var(--transition);
+}
+
+.detail-tab:hover { color: var(--text-primary); }
+
+.detail-tab.active {
+    border-bottom-color: var(--accent);
+    color: var(--accent);
+}
+
+.detail-tab-content {
+    flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    padding: 20px;
+}
+
+/* ---- File Summary Row ---- */
+.file-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.file-summary-size {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.file-details-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition), background var(--transition);
+    margin-left: auto;
+}
+
+.file-details-toggle:hover {
+    color: var(--text-primary);
+    background: var(--bg-card);
+}
+
+.file-details {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+/* ---- Pinned Actions ---- */
+.detail-actions-pinned {
+    display: flex;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 /* ---- 3D Viewer Container ---- */
