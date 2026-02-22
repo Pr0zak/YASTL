@@ -39,7 +39,8 @@ app/                    # Main application package
     routes_categories.py # Category management
     routes_libraries.py # Library management
     routes_import.py    # URL import + file upload (source_url, description metadata)
-    routes_settings.py  # Settings API, thumbnail regeneration + progress tracking
+    routes_settings.py  # Settings API, thumbnail regeneration, bed config
+    routes_stats.py     # Library statistics dashboard (GET /api/stats)
     routes_status.py    # System health status (scanner, watcher, DB, thumbnails)
     routes_catalog.py   # Favorites, collections, bulk ops, saved searches
     routes_update.py    # Git-based update check and apply
@@ -127,7 +128,8 @@ docker compose up -d
 - **GLB conversion** — server-side trimesh conversion for formats Three.js can't load natively (3MF, STEP)
 - **Zip archive support** — models inside zip files are extracted on demand and cached; shown with purple ZIP badge in UI
 - **Thumbnail tracking** — `thumbnail_mode`, `thumbnail_quality`, `thumbnail_generated_at` columns track generation settings per model; UI shows colored status dots (green=current, amber=stale, red=missing)
-- **System status** — `/api/status` aggregates health of scanner, watcher, database, and thumbnails; navbar dot turns amber during scanning or thumbnail regeneration
+- **Stats & status** — `/api/stats` returns aggregate library statistics; `/api/status` returns system health. Both displayed in a unified Stats modal (bar chart icon in navbar with health dot). Replaced the old separate status dropdown.
+- **Print bed overlay** — configurable bed dimensions stored as settings (`bed_width`, `bed_depth`, `bed_height`, `bed_shape`, `bed_enabled`). Viewer renders a wireframe build volume at correct scale; shows "Fits" / "Too large" indicator. Presets for common printers (Ender 3, Prusa MK3S+, Bambu Lab P1S/A1, Voron 2.4).
 - **Detail panel tabs** — Model detail overlay uses a tabbed layout (Info, Tags, More) to reduce clutter; file details (vertices, faces, dimensions, path, hash) are collapsed by default behind a toggle; Download/Delete actions are pinned at the bottom across all tabs
 - **File upload drag-and-drop** — Import modal file upload area supports both click-to-browse and drag-and-drop; drop events feed `dataTransfer.files` into `onFilesSelected` via a synthetic event
 

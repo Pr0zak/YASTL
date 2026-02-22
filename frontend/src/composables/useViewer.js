@@ -90,6 +90,9 @@ export function useViewer() {
             });
             currentModel = null;
         }
+        modelScaleFactor = 0;
+        modelDimensions.value = null;
+        clearBedOverlay();
     }
 
     /**
@@ -497,7 +500,7 @@ export function useViewer() {
      */
     function setBedOverlay({ width, depth, height, shape }) {
         clearBedOverlay();
-        if (!scene || modelScaleFactor === 0) return { fits: true };
+        if (!scene || modelScaleFactor === 0 || !currentModel) return { fits: true };
 
         bedGroup = new THREE.Group();
         bedGroup.name = '__yastl_bed';
@@ -505,6 +508,11 @@ export function useViewer() {
         const sw = width * modelScaleFactor;
         const sd = depth * modelScaleFactor;
         const sh = height * modelScaleFactor;
+
+        // Center bed on model's XZ center
+        const modelBox = new THREE.Box3().setFromObject(currentModel);
+        const modelCenter = modelBox.getCenter(new THREE.Vector3());
+        bedGroup.position.set(modelCenter.x, 0, modelCenter.z);
 
         // Check if model fits
         const dims = modelDimensions.value;
