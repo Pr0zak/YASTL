@@ -1,8 +1,0 @@
-/* YASTL - Main stylesheet aggregator */
-@import url('base.css');
-@import url('layout.css');
-@import url('components.css');
-@import url('cards.css');
-@import url('detail-panel.css');
-@import url('features.css');
-@import url('responsive.css');

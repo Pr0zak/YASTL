@@ -149,17 +149,16 @@ app.include_router(saved_searches_router)
 app.include_router(bulk_router)
 app.include_router(import_router)
 
-# Serve static files (legacy CDN frontend and favicon/assets)
+# Serve static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 dist_dir = os.path.join(static_dir, "dist")
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Serve Vite build assets when the dist directory exists
-if os.path.isdir(dist_dir):
-    _dist_assets = os.path.join(dist_dir, "assets")
-    if os.path.isdir(_dist_assets):
-        app.mount("/assets", StaticFiles(directory=_dist_assets), name="dist-assets")
+# Serve Vite build assets
+_dist_assets = os.path.join(dist_dir, "assets")
+if os.path.isdir(_dist_assets):
+    app.mount("/assets", StaticFiles(directory=_dist_assets), name="dist-assets")
 
 # Serve thumbnails as static files (avoids DB lookup per request)
 # check_dir=False because the directory is created in the lifespan handler.
@@ -172,15 +171,8 @@ app.mount(
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """Serve the main frontend page.
-
-    Serves the Vite build output when available, otherwise falls back
-    to the legacy CDN-based frontend.
-    """
-    dist_index = os.path.join(dist_dir, "index.html")
-    if os.path.isfile(dist_index):
-        return FileResponse(dist_index)
-    return FileResponse(os.path.join(static_dir, "index.html"))
+    """Serve the Vite frontend."""
+    return FileResponse(os.path.join(dist_dir, "index.html"))
 
 
 @app.get("/health")

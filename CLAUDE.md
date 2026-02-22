@@ -2,14 +2,14 @@
 
 ## Project Overview
 
-YASTL (Yet Another STL) is a full-stack web application for browsing, searching, and previewing 3D model files. Python FastAPI backend with a Vue 3 + Three.js frontend (Vite SFC build with legacy CDN fallback).
+YASTL (Yet Another STL) is a full-stack web application for browsing, searching, and previewing 3D model files. Python FastAPI backend with a Vue 3 + Three.js frontend (Vite SFC build).
 
 **Repo:** https://github.com/Pr0zak/YASTL
 
 ## Tech Stack
 
 - **Backend:** Python 3.11+, FastAPI, Uvicorn, aiosqlite (async SQLite with FTS5)
-- **Frontend:** Vue 3 + Three.js — Vite SFC build (`frontend/` → `app/static/dist/`), legacy CDN fallback in `app/static/`
+- **Frontend:** Vue 3 + Three.js — Vite SFC build (`frontend/` → `app/static/dist/`)
 - **Build:** Vite 6, vue-tsc, ESLint
 - **3D Processing:** trimesh, numpy-stl, pygltflib, manifold3d, scipy
 - **trimesh extras:** networkx (3MF scene graphs), lxml (3MF XML parsing), cascadio + gmsh (STEP files, optional)
@@ -23,7 +23,7 @@ YASTL (Yet Another STL) is a full-stack web application for browsing, searching,
 
 ```
 app/                    # Main application package
-  main.py               # FastAPI app init and lifespan (serves dist/ if present, else static/)
+  main.py               # FastAPI app init and lifespan (serves Vite dist/)
   config.py             # Pydantic settings (YASTL_ env prefix)
   database.py           # Runtime DB logic (imports schema from database_schema.py)
   database_schema.py    # SCHEMA_SQL, FTS_SCHEMA_SQL, migrations, indexes
@@ -59,11 +59,8 @@ app/                    # Main application package
     watcher.py          # watchdog file system observer
     zip_handler.py      # Zip archive support (extraction, caching)
     step_converter.py   # STEP→trimesh conversion (OCP or gmsh backends)
-  static/               # Legacy CDN frontend (fallback)
-    index.html          # Main page (CDN-loaded Vue 3 + Three.js)
-    dist/               # Vite build output (served first if present)
-    js/                 # Legacy JS modules (app.js, viewer.js, api.js, composables)
-    css/style.css       # CSS custom properties theming
+  static/               # Static file root
+    dist/               # Vite build output
 frontend/               # Vite + Vue SFC source
   src/
     App.vue             # Main Vue app component
@@ -118,11 +115,11 @@ docker compose up -d
 - **No ORM:** Direct SQL with parameterized queries (`?` placeholders) and context managers
 - **Error handling:** `HTTPException` for API errors; try/except with logging in services
 - **Logging:** `logging` module with `"yastl"` root logger name
-- **Frontend:** Vue 3 composition API (SFC + legacy CDN), CSS custom properties for theming, inline SVG icons
+- **Frontend:** Vue 3 composition API (SFC), CSS custom properties for theming, inline SVG icons
 
 ## Architecture Notes
 
-- **Dual frontend** — Vite SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/ if present, otherwise falls back to legacy CDN frontend in `app/static/`
+- **Vite frontend** — SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/
 - **SQLite with WAL mode** — concurrent reads, FTS5 for full-text search (porter tokenizer)
 - **Service layer pattern** — business logic in `app/services/`, routes in `app/api/`
 - **Background tasks** — directory scanning and file watching run off the request/response thread
