@@ -102,7 +102,8 @@ pct exec "$CT_ID" -- bash -c "
         python3-full python3-pip python3-dev \
         libgomp1 \
         git curl ca-certificates \
-        build-essential pkg-config
+        build-essential pkg-config \
+        nodejs npm
 
     # GL libraries (package names differ between Debian versions)
     apt-get install -y -qq libgl1-mesa-glx libglib2.0-0 2>/dev/null || \
@@ -128,14 +129,16 @@ if [[ "$YASTL_INSTALL_MODE" == "git" ]]; then
     echo "  Cloning YASTL from GitHub..."
     pct exec "$CT_ID" -- bash -c "
         git clone --depth 1 --branch '${YASTL_BRANCH}' '${YASTL_REPO}' /opt/yastl/src 2>/dev/null
+        cd /opt/yastl/src/frontend && npm ci --no-audit --no-fund -q && npm run build
         cd /opt/yastl/src
         /opt/yastl/venv/bin/pip install --no-cache-dir -q . 2>&1 | tail -1
     "
     WORK_DIR="/opt/yastl/src"
 else
     echo "  Copying application files from local checkout..."
-    tar -cf - -C "$SCRIPT_DIR" app/ pyproject.toml | pct exec "$CT_ID" -- tar -xf - -C /opt/yastl/
+    tar -cf - -C "$SCRIPT_DIR" app/ frontend/ pyproject.toml | pct exec "$CT_ID" -- tar -xf - -C /opt/yastl/
     pct exec "$CT_ID" -- bash -c "
+        cd /opt/yastl/frontend && npm ci --no-audit --no-fund -q && npm run build
         cd /opt/yastl
         /opt/yastl/venv/bin/pip install --no-cache-dir .
     "
@@ -180,6 +183,7 @@ set -euo pipefail
 echo \"Updating YASTL...\"
 cd /opt/yastl/src
 git pull --ff-only
+cd frontend && npm ci --no-audit --no-fund -q && npm run build && cd ..
 /opt/yastl/venv/bin/pip install --no-cache-dir -q .
 systemctl restart yastl
 echo \"YASTL updated and restarted.\"

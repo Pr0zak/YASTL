@@ -379,7 +379,8 @@ install_deps() {
             python3-full python3-pip python3-dev \
             libgomp1 \
             git curl ca-certificates \
-            build-essential pkg-config
+            build-essential pkg-config \
+            nodejs npm
 
         # GL libraries (package names differ between Debian versions)
         apt-get install -y -qq libgl1-mesa-glx libglib2.0-0 2>/dev/null || \
@@ -414,6 +415,11 @@ install_yastl() {
             echo 'ERROR: git clone failed. Check network connectivity and that the repo/branch exist.' >&2
             exit 1
         fi
+
+        # Build Vite frontend
+        cd /opt/yastl/src/frontend
+        npm ci --no-audit --no-fund -q
+        npm run build
 
         # Install YASTL and dependencies
         cd /opt/yastl/src
@@ -471,6 +477,7 @@ set -euo pipefail
 echo \"Updating YASTL...\"
 cd /opt/yastl/src
 git pull --ff-only
+cd frontend && npm ci --no-audit --no-fund -q && npm run build && cd ..
 /opt/yastl/venv/bin/pip install --no-cache-dir -q .
 systemctl restart yastl
 echo \"YASTL updated and restarted.\"
