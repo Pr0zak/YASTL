@@ -1,6 +1,6 @@
 <script setup>
 /**
- * StatsModal - Library statistics dashboard.
+ * StatsModal - Library statistics dashboard with system status.
  */
 import { ICONS } from '../icons.js';
 
@@ -8,6 +8,7 @@ defineProps({
     showStats: { type: Boolean, default: false },
     stats: { type: Object, default: null },
     statsLoading: { type: Boolean, default: false },
+    systemStatus: { type: Object, default: () => ({ health: 'unknown', scanner: { status: 'unknown' }, watcher: { status: 'unknown' }, database: { status: 'unknown' }, thumbnails: { status: 'unknown' } }) },
 });
 
 const emit = defineEmits(['close']);
@@ -22,6 +23,22 @@ function formatSize(bytes) {
 function barWidth(value, max) {
     if (!max || !value) return '0%';
     return Math.max(2, Math.round((value / max) * 100)) + '%';
+}
+
+function statusLabel(status) {
+    const labels = {
+        ok: 'Healthy', busy: 'Busy', idle: 'Idle', scanning: 'Scanning',
+        watching: 'Watching', regenerating: 'Regenerating', stopped: 'Stopped',
+        degraded: 'Degraded', error: 'Error', unavailable: 'Unavailable', unknown: 'Unknown',
+    };
+    return labels[status] || status;
+}
+
+function statusDotClass(status) {
+    if (['ok', 'idle', 'watching'].includes(status)) return 'status-dot-ok';
+    if (['busy', 'scanning', 'degraded', 'regenerating'].includes(status)) return 'status-dot-warn';
+    if (['error', 'stopped', 'unavailable'].includes(status)) return 'status-dot-error';
+    return 'status-dot-unknown';
 }
 </script>
 
@@ -38,6 +55,46 @@ function barWidth(value, max) {
             </div>
 
             <div class="settings-content" v-if="stats && !statsLoading">
+                <!-- System Health -->
+                <div class="stats-health">
+                    <div class="stats-health-header">
+                        <span>System</span>
+                        <span class="status-badge" :class="statusDotClass(systemStatus.health)">
+                            {{ statusLabel(systemStatus.health) }}
+                        </span>
+                    </div>
+                    <div class="stats-health-items">
+                        <div class="stats-health-item">
+                            <span class="stats-health-icon" v-html="ICONS.scan"></span>
+                            <span class="stats-health-label">Scanner</span>
+                            <span class="stats-health-value" :class="statusDotClass(systemStatus.scanner.status)">
+                                {{ statusLabel(systemStatus.scanner.status) }}
+                            </span>
+                        </div>
+                        <div class="stats-health-item">
+                            <span class="stats-health-icon" v-html="ICONS.eye"></span>
+                            <span class="stats-health-label">Watcher</span>
+                            <span class="stats-health-value" :class="statusDotClass(systemStatus.watcher.status)">
+                                {{ statusLabel(systemStatus.watcher.status) }}
+                            </span>
+                        </div>
+                        <div class="stats-health-item">
+                            <span class="stats-health-icon" v-html="ICONS.database"></span>
+                            <span class="stats-health-label">Database</span>
+                            <span class="stats-health-value" :class="statusDotClass(systemStatus.database.status)">
+                                {{ statusLabel(systemStatus.database.status) }}
+                            </span>
+                        </div>
+                        <div class="stats-health-item">
+                            <span class="stats-health-icon" v-html="ICONS.image"></span>
+                            <span class="stats-health-label">Thumbnails</span>
+                            <span class="stats-health-value" :class="statusDotClass(systemStatus.thumbnails.status)">
+                                {{ systemStatus.thumbnails.regenerating ? 'Regenerating' : statusLabel(systemStatus.thumbnails.status) }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Overview Cards -->
                 <div class="stats-cards">
                     <div class="stats-card">
@@ -322,9 +379,67 @@ function barWidth(value, max) {
     margin-left: 2px;
 }
 
+/* System health */
+.stats-health {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+}
+
+.stats-health-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.stats-health-items {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.stats-health-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.75rem;
+}
+
+.stats-health-icon {
+    opacity: 0.5;
+}
+
+.stats-health-icon :deep(svg) {
+    width: 14px;
+    height: 14px;
+}
+
+.stats-health-label {
+    color: var(--text-muted);
+}
+
+.stats-health-value {
+    font-weight: 600;
+    font-size: 0.7rem;
+}
+
+.stats-health-value.status-dot-ok { color: #22c55e; }
+.stats-health-value.status-dot-warn { color: #f59e0b; }
+.stats-health-value.status-dot-error { color: #ef4444; }
+.stats-health-value.status-dot-unknown { color: var(--text-muted); }
+
 @media (max-width: 640px) {
     .stats-cards,
     .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .stats-health-items {
         grid-template-columns: repeat(2, 1fr);
     }
 }

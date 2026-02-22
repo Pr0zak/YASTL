@@ -20,7 +20,6 @@ const emit = defineEmits([
     'openSettings',
     'openImportModal',
     'toggleSelectionMode',
-    'toggleStatusMenu',
     'openStats',
     'searchInput',
     'clearSearch',
@@ -77,18 +76,14 @@ function onSearchInput(e) {
                         title="List view"
                         v-html="ICONS.list"></button>
             </div>
-            <!-- Status Indicator -->
-            <div class="status-wrapper" @click.stop>
+            <!-- Stats & Status -->
+            <div class="status-wrapper">
                 <button class="btn-icon status-btn" :class="statusDotClass(systemStatus.health)"
-                        @click="emit('toggleStatusMenu')" title="System Status">
-                    <span v-html="ICONS.activity"></span>
+                        @click="emit('openStats')" title="Stats &amp; Status">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                     <span class="status-dot" :class="statusDotClass(systemStatus.health)"></span>
                 </button>
             </div>
-
-            <button class="btn-icon" @click="emit('openStats')" title="Library Stats">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            </button>
             <button class="btn-icon" @click="emit('openImportModal')" title="Import Models">
                 <span v-html="ICONS.link"></span>
             </button>

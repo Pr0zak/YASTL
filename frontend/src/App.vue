@@ -145,7 +145,6 @@ const statsData = ref(null);
 const statsLoading = ref(false);
 
 // System status indicator
-const showStatusMenu = ref(false);
 const systemStatus = reactive({
     health: 'unknown',
     scanner: { status: 'unknown' },
@@ -480,18 +479,11 @@ async function fetchSystemStatus() {
     }
 }
 
-function toggleStatusMenu() {
-    showStatusMenu.value = !showStatusMenu.value;
-}
-
-function closeStatusMenu() {
-    showStatusMenu.value = false;
-}
-
 async function openStats() {
     showStats.value = true;
     document.body.classList.add('modal-open');
     statsLoading.value = true;
+    fetchSystemStatus();
     try {
         statsData.value = await apiGetStats();
     } catch (err) {
@@ -507,30 +499,6 @@ function closeStats() {
     if (!showDetail.value && !showSettings.value) {
         document.body.classList.remove('modal-open');
     }
-}
-
-function statusLabel(status) {
-    const labels = {
-        ok: 'Healthy',
-        busy: 'Busy',
-        idle: 'Idle',
-        scanning: 'Scanning',
-        watching: 'Watching',
-        regenerating: 'Regenerating',
-        stopped: 'Stopped',
-        degraded: 'Degraded',
-        error: 'Error',
-        unavailable: 'Unavailable',
-        unknown: 'Unknown',
-    };
-    return labels[status] || status;
-}
-
-function statusDotClass(status) {
-    if (['ok', 'idle', 'watching'].includes(status)) return 'status-dot-ok';
-    if (['busy', 'scanning', 'degraded', 'regenerating'].includes(status)) return 'status-dot-warn';
-    if (['error', 'stopped', 'unavailable'].includes(status)) return 'status-dot-error';
-    return 'status-dot-unknown';
 }
 
 /* ==============================================================
@@ -1124,25 +1092,12 @@ function onKeydown(e) {
             showCollectionModal.value = false;
         } else if (showSaveSearchModal.value) {
             showSaveSearchModal.value = false;
-        } else if (showStatusMenu.value) {
-            closeStatusMenu();
         } else if (showStats.value) {
             closeStats();
         } else if (showSettings.value) {
             closeSettings();
         } else if (showDetail.value) {
             closeDetail();
-        }
-    }
-}
-
-/* ---- Click-outside handler for status menu ---- */
-function onDocumentClick(e) {
-    if (showStatusMenu.value) {
-        const wrapper = document.querySelector('.status-wrapper');
-        const menu = document.querySelector('.status-menu');
-        if (wrapper && !wrapper.contains(e.target) && (!menu || !menu.contains(e.target))) {
-            closeStatusMenu();
         }
     }
 }
@@ -1161,7 +1116,6 @@ onMounted(() => {
     fetchImportCredentials();
     statusPollTimer = setInterval(fetchSystemStatus, 30000);
     document.addEventListener('keydown', onKeydown);
-    document.addEventListener('click', onDocumentClick);
 });
 
 // pickNextCollectionColor is needed in template via collectionsComposable
@@ -1186,7 +1140,6 @@ const { pickNextCollectionColor } = collectionsComposable;
         @openSettings="openSettings"
         @openImportModal="openImportModal"
         @toggleSelectionMode="toggleSelectionMode"
-        @toggleStatusMenu="toggleStatusMenu"
         @openStats="openStats"
         @searchInput="onSearchInput"
         @clearSearch="clearSearch"
@@ -1464,75 +1417,9 @@ const { pickNextCollectionColor } = collectionsComposable;
         :showStats="showStats"
         :stats="statsData"
         :statsLoading="statsLoading"
+        :systemStatus="systemStatus"
         @close="closeStats"
     />
-
-    <!-- ============================================================
-         Status Menu (teleported to body to avoid navbar stacking context)
-         ============================================================ -->
-    <teleport to="body">
-        <div v-if="showStatusMenu" class="status-menu-backdrop" @click="showStatusMenu = false"></div>
-        <div v-if="showStatusMenu" class="status-menu" @click.stop>
-            <div class="status-menu-header">
-                <span>System Status</span>
-                <span class="status-badge" :class="statusDotClass(systemStatus.health)">
-                    {{ statusLabel(systemStatus.health) }}
-                </span>
-            </div>
-            <div class="status-menu-items">
-                <!-- Scanner -->
-                <div class="status-menu-item">
-                    <span class="status-item-icon" v-html="ICONS.scan"></span>
-                    <span class="status-item-label">Scanner</span>
-                    <span class="status-item-value" :class="statusDotClass(systemStatus.scanner.status)">
-                        {{ statusLabel(systemStatus.scanner.status) }}
-                    </span>
-                </div>
-                <div v-if="systemStatus.scanner.is_scanning" class="status-menu-detail">
-                    {{ systemStatus.scanner.processed_files }} / {{ systemStatus.scanner.total_files }} files
-                </div>
-
-                <!-- File Watcher -->
-                <div class="status-menu-item">
-                    <span class="status-item-icon" v-html="ICONS.eye"></span>
-                    <span class="status-item-label">File Watcher</span>
-                    <span class="status-item-value" :class="statusDotClass(systemStatus.watcher.status)">
-                        {{ statusLabel(systemStatus.watcher.status) }}
-                    </span>
-                </div>
-                <div v-if="systemStatus.watcher.watched_count" class="status-menu-detail">
-                    {{ systemStatus.watcher.watched_count }} path{{ systemStatus.watcher.watched_count !== 1 ? 's' : '' }} monitored
-                </div>
-
-                <!-- Database -->
-                <div class="status-menu-item">
-                    <span class="status-item-icon" v-html="ICONS.database"></span>
-                    <span class="status-item-label">Database</span>
-                    <span class="status-item-value" :class="statusDotClass(systemStatus.database.status)">
-                        {{ statusLabel(systemStatus.database.status) }}
-                    </span>
-                </div>
-                <div v-if="systemStatus.database.total_models != null" class="status-menu-detail">
-                    {{ systemStatus.database.total_models }} models &middot; {{ systemStatus.database.total_libraries }} libraries
-                </div>
-
-                <!-- Thumbnails -->
-                <div class="status-menu-item">
-                    <span class="status-item-icon" v-html="ICONS.image"></span>
-                    <span class="status-item-label">Thumbnails</span>
-                    <span class="status-item-value" :class="statusDotClass(systemStatus.thumbnails.status)">
-                        {{ systemStatus.thumbnails.regenerating ? 'regenerating' : statusLabel(systemStatus.thumbnails.status) }}
-                    </span>
-                </div>
-                <div v-if="systemStatus.thumbnails.regenerating" class="status-menu-detail">
-                    Regenerating: {{ systemStatus.thumbnails.regen_completed }} / {{ systemStatus.thumbnails.regen_total }} models
-                </div>
-                <div v-else-if="systemStatus.thumbnails.total_cached != null" class="status-menu-detail">
-                    {{ systemStatus.thumbnails.total_cached }} cached
-                </div>
-            </div>
-        </div>
-    </teleport>
 
     <!-- ============================================================
          Selection Bar
