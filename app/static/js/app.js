@@ -76,6 +76,7 @@ const app = createApp({
         // Detail panel tab state
         const detailTab = ref('info');
         const showFileDetails = ref(false);
+        const dragOver = ref(false);
 
         // Category expansion state (by category id)
         const expandedCategories = reactive({});
@@ -224,6 +225,13 @@ const app = createApp({
             addUploadTagSuggestion, fetchImportCredentials,
             saveImportCredential, deleteImportCredential,
         } = importComposable;
+
+        function handleFileDrop(e) {
+            dragOver.value = false;
+            if (e.dataTransfer && e.dataTransfer.files.length) {
+                onFilesSelected({ target: { files: e.dataTransfer.files } });
+            }
+        }
 
         function openImportModal() {
             fetchLibraries();
@@ -1130,6 +1138,7 @@ const app = createApp({
             isEditingSourceUrl,
             detailTab,
             showFileDetails,
+            dragOver,
             expandedCategories,
             collapsedSections,
             filters,
@@ -1277,6 +1286,7 @@ const app = createApp({
             previewImportUrl,
             startImport,
             onFilesSelected,
+            handleFileDrop,
             startUpload,
             addUploadTagSuggestion,
             fetchImportCredentials,
@@ -1315,7 +1325,7 @@ const app = createApp({
 
         <!-- Brand -->
         <div class="navbar-brand">
-            <h1>YASTL</h1>
+            <h1><span>YA</span>STL</h1>
         </div>
 
         <!-- Search -->
@@ -1960,18 +1970,6 @@ const app = createApp({
                                 </div>
                             </div>
 
-                            <!-- Categories -->
-                            <div class="info-section">
-                                <div class="info-section-title">Categories</div>
-                                <div class="tags-list">
-                                    <span v-for="cat in (selectedModel.categories || [])" :key="cat"
-                                          class="tag-chip" style="background:var(--bg-primary);color:var(--text-secondary);border:1px solid var(--border)">
-                                        {{ cat }}
-                                    </span>
-                                    <span v-if="!selectedModel.categories || !selectedModel.categories.length"
-                                          class="text-muted text-sm">Uncategorized</span>
-                                </div>
-                            </div>
                         </template>
 
                         <!-- ==================== TAGS TAB ==================== -->
@@ -2013,6 +2011,19 @@ const app = createApp({
                             <div v-if="selectedModel.file_hash" class="duplicate-warning" style="display:none">
                                 <span v-html="ICONS.warning"></span>
                                 <span>This file has duplicates in the library.</span>
+                            </div>
+
+                            <!-- Categories -->
+                            <div class="info-section">
+                                <div class="info-section-title">Categories</div>
+                                <div class="tags-list">
+                                    <span v-for="cat in (selectedModel.categories || [])" :key="cat"
+                                          class="tag-chip" style="background:var(--bg-primary);color:var(--text-secondary);border:1px solid var(--border)">
+                                        {{ cat }}
+                                    </span>
+                                    <span v-if="!selectedModel.categories || !selectedModel.categories.length"
+                                          class="text-muted text-sm">Uncategorized</span>
+                                </div>
                             </div>
 
                             <!-- Collections -->
@@ -2615,7 +2626,11 @@ const app = createApp({
                             Select 3D model files to upload (.stl, .obj, .3mf, .step, .gltf, .glb, .ply, .zip).
                         </div>
                         <div class="form-row">
-                            <label class="file-upload-area" :class="{ 'has-files': uploadFiles.length }">
+                            <label class="file-upload-area"
+                                   :class="{ 'has-files': uploadFiles.length, 'drag-over': dragOver }"
+                                   @dragover.prevent="dragOver = true"
+                                   @dragleave.prevent="dragOver = false"
+                                   @drop.prevent="handleFileDrop">
                                 <input type="file" multiple
                                        accept=".stl,.obj,.gltf,.glb,.3mf,.ply,.dae,.off,.step,.stp,.fbx,.zip"
                                        @change="onFilesSelected"

@@ -131,6 +131,8 @@ docker compose up -d
 - **Zip archive support** — models inside zip files are extracted on demand and cached; shown with purple ZIP badge in UI
 - **Thumbnail tracking** — `thumbnail_mode`, `thumbnail_quality`, `thumbnail_generated_at` columns track generation settings per model; UI shows colored status dots (green=current, amber=stale, red=missing)
 - **System status** — `/api/status` aggregates health of scanner, watcher, database, and thumbnails; navbar dot turns amber during scanning or thumbnail regeneration
+- **Detail panel tabs** — Model detail overlay uses a tabbed layout (Info, Tags, More) to reduce clutter; file details (vertices, faces, dimensions, path, hash) are collapsed by default behind a toggle; Download/Delete actions are pinned at the bottom across all tabs
+- **File upload drag-and-drop** — Import modal file upload area supports both click-to-browse and drag-and-drop; drop events feed `dataTransfer.files` into `onFilesSelected` via a synthetic event
 
 ## Database Migrations
 

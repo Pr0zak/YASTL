@@ -2,8 +2,11 @@
 /**
  * ImportModal - Import/upload modal for URL imports and file uploads.
  */
+import { ref } from 'vue';
 import { ICONS } from '../icons.js';
 import { formatFileSize } from '../search.js';
+
+const dragOver = ref(false);
 
 defineProps({
     showImportModal: { type: Boolean, default: false },
@@ -28,6 +31,13 @@ defineProps({
     inlineNewCollection: { type: Object, default: () => ({ active: false, name: '', color: '#4f8cff' }) },
     COLLECTION_COLORS: { type: Array, default: () => [] },
 });
+
+function onDrop(e) {
+    dragOver.value = false;
+    if (e.dataTransfer && e.dataTransfer.files.length) {
+        emit('onFilesSelected', { target: { files: e.dataTransfer.files } });
+    }
+}
 
 function onCollectionSelect(e) {
     const val = e.target.value;
@@ -123,7 +133,11 @@ const emit = defineEmits([
                             Select 3D model files to upload (.stl, .obj, .3mf, .step, .gltf, .glb, .ply, .zip).
                         </div>
                         <div class="form-row">
-                            <label class="file-upload-area" :class="{ 'has-files': uploadFiles.length }">
+                            <label class="file-upload-area"
+                                   :class="{ 'has-files': uploadFiles.length, 'drag-over': dragOver }"
+                                   @dragover.prevent="dragOver = true"
+                                   @dragleave.prevent="dragOver = false"
+                                   @drop.prevent="onDrop">
                                 <input type="file" multiple
                                        accept=".stl,.obj,.gltf,.glb,.3mf,.ply,.dae,.off,.step,.stp,.fbx,.zip"
                                        @change="emit('onFilesSelected', $event)"

@@ -249,18 +249,6 @@ function formatClass(fmt) {
                                 </div>
                             </div>
 
-                            <!-- Categories -->
-                            <div class="info-section">
-                                <div class="info-section-title">Categories</div>
-                                <div class="tags-list">
-                                    <span v-for="cat in (selectedModel.categories || [])" :key="cat"
-                                          class="tag-chip" style="background:var(--bg-primary);color:var(--text-secondary);border:1px solid var(--border)">
-                                        {{ cat }}
-                                    </span>
-                                    <span v-if="!selectedModel.categories || !selectedModel.categories.length"
-                                          class="text-muted text-sm">Uncategorized</span>
-                                </div>
-                            </div>
                         </template>
 
                         <!-- ==================== TAGS TAB ==================== -->
@@ -303,6 +291,19 @@ function formatClass(fmt) {
                             <div v-if="selectedModel.file_hash" class="duplicate-warning" style="display:none">
                                 <span v-html="ICONS.warning"></span>
                                 <span>This file has duplicates in the library.</span>
+                            </div>
+
+                            <!-- Categories -->
+                            <div class="info-section">
+                                <div class="info-section-title">Categories</div>
+                                <div class="tags-list">
+                                    <span v-for="cat in (selectedModel.categories || [])" :key="cat"
+                                          class="tag-chip" style="background:var(--bg-primary);color:var(--text-secondary);border:1px solid var(--border)">
+                                        {{ cat }}
+                                    </span>
+                                    <span v-if="!selectedModel.categories || !selectedModel.categories.length"
+                                          class="text-muted text-sm">Uncategorized</span>
+                                </div>
                             </div>
 
                             <!-- Collections -->

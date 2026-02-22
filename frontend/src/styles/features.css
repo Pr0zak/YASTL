@@ -863,6 +863,10 @@ textarea.import-textarea {
     border-color: var(--color-primary, #4f8cff);
     background: rgba(79, 140, 255, 0.04);
 }
+.file-upload-area.drag-over {
+    border-color: var(--accent);
+    background: rgba(79, 140, 255, 0.08);
+}
 .file-upload-area.has-files {
     border-style: solid;
     padding: 12px 14px;
