@@ -111,6 +111,20 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass  # Column already exists or table just created with it
 
+        # Add smart collection columns to collections table
+        cursor = await db.execute("PRAGMA table_info(collections)")
+        coll_columns = [row["name"] for row in await cursor.fetchall()]
+        if "is_smart" not in coll_columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE collections ADD COLUMN is_smart INTEGER DEFAULT 0"
+                )
+                await db.execute(
+                    "ALTER TABLE collections ADD COLUMN rules TEXT DEFAULT '{}'"
+                )
+            except Exception:
+                pass  # Columns already exist or table just created with them
+
         # Create indexes on migrated columns (must run after migrations)
         for sql in _POST_MIGRATION_INDEXES:
             try:

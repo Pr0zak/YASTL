@@ -1,13 +1,99 @@
-"""API routes for collection management."""
+"""API routes for collection management (regular and smart collections)."""
+
+import json
+import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 import aiosqlite
+
+logger = logging.getLogger("yastl")
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
 
 def _get_db_path(request: Request) -> str:
     return request.app.state.db_path
+
+
+def _build_smart_count_query(
+    rules: dict,
+) -> tuple[str, list]:
+    """Build a COUNT query from smart collection rules.
+
+    Returns (sql, params) for counting matching active models.
+    """
+    where = ["m.status = 'active'"]
+    params: list = []
+
+    if rules.get("format"):
+        where.append("LOWER(m.file_format) = LOWER(?)")
+        params.append(rules["format"])
+
+    if rules.get("library_id"):
+        where.append("m.library_id = ?")
+        params.append(int(rules["library_id"]))
+
+    if rules.get("tags"):
+        tags = rules["tags"]
+        placeholders = ",".join("?" for _ in tags)
+        where.append(
+            f"m.id IN ("
+            f"SELECT mt.model_id FROM model_tags mt "
+            f"JOIN tags t ON t.id = mt.tag_id "
+            f"WHERE t.name IN ({placeholders}) "
+            f"GROUP BY mt.model_id "
+            f"HAVING COUNT(DISTINCT t.name) = ?)"
+        )
+        params.extend(tags)
+        params.append(len(tags))
+
+    if rules.get("categories"):
+        cats = rules["categories"]
+        placeholders = ",".join("?" for _ in cats)
+        where.append(
+            f"m.id IN ("
+            f"SELECT mc.model_id FROM model_categories mc "
+            f"JOIN categories c ON c.id = mc.category_id "
+            f"WHERE c.name IN ({placeholders}))"
+        )
+        params.extend(cats)
+
+    if rules.get("favoritesOnly"):
+        where.append("m.id IN (SELECT f.model_id FROM favorites f)")
+
+    if rules.get("duplicatesOnly"):
+        where.append(
+            "m.file_hash IS NOT NULL AND m.file_hash != '' "
+            "AND m.file_hash IN ("
+            "SELECT file_hash FROM models "
+            "WHERE file_hash IS NOT NULL AND file_hash != '' "
+            "AND status = 'active' "
+            "GROUP BY file_hash HAVING COUNT(*) > 1)"
+        )
+
+    if rules.get("sizeMin"):
+        where.append("m.file_size >= ?")
+        params.append(int(rules["sizeMin"]))
+
+    if rules.get("sizeMax"):
+        where.append("m.file_size <= ?")
+        params.append(int(rules["sizeMax"]))
+
+    if rules.get("dateRange"):
+        days_map = {
+            "last_7d": 7,
+            "last_30d": 30,
+            "last_90d": 90,
+            "last_365d": 365,
+        }
+        days = days_map.get(rules["dateRange"])
+        if days:
+            where.append(
+                f"m.created_at >= datetime('now', '-{days} days')"
+            )
+
+    sql = f"SELECT COUNT(*) as cnt FROM models m WHERE {' AND '.join(where)}"
+    return sql, params
 
 
 @router.get("")
@@ -29,20 +115,39 @@ async def list_collections(request: Request):
         )
         rows = await cursor.fetchall()
 
-    return {"collections": [dict(r) for r in rows]}
+        results = []
+        for r in rows:
+            coll = dict(r)
+            # For smart collections, compute model_count dynamically
+            if coll.get("is_smart"):
+                try:
+                    rules = json.loads(coll.get("rules") or "{}")
+                    sql, params = _build_smart_count_query(rules)
+                    cursor = await db.execute(sql, params)
+                    count_row = await cursor.fetchone()
+                    coll["model_count"] = dict(count_row)["cnt"]
+                except Exception as e:
+                    logger.warning("Smart collection %s count failed: %s", coll["id"], e)
+                    coll["model_count"] = 0
+            results.append(coll)
+
+    return {"collections": results}
 
 
 @router.post("", status_code=201)
 async def create_collection(request: Request):
-    """Create a new collection.
+    """Create a new collection (regular or smart).
 
-    Expects JSON body: {"name": "...", "description": "...", "color": "#hex"}
+    Expects JSON body: {"name": "...", "description": "...", "color": "#hex",
+                        "is_smart": false, "rules": {}}
     """
     db_path = _get_db_path(request)
     body = await request.json()
     name = body.get("name")
     description = body.get("description", "")
     color = body.get("color")
+    is_smart = 1 if body.get("is_smart") else 0
+    rules = body.get("rules", {})
 
     if not name or not isinstance(name, str) or not name.strip():
         raise HTTPException(
@@ -51,13 +156,15 @@ async def create_collection(request: Request):
         )
 
     name = name.strip()
+    rules_json = json.dumps(rules) if isinstance(rules, dict) else "{}"
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            "INSERT INTO collections (name, description, color) VALUES (?, ?, ?)",
-            (name, description or "", color),
+            "INSERT INTO collections (name, description, color, is_smart, rules) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (name, description or "", color, is_smart, rules_json),
         )
         collection_id = cursor.lastrowid
         await db.commit()
@@ -68,7 +175,19 @@ async def create_collection(request: Request):
         row = await cursor.fetchone()
 
     result = dict(row)
-    result["model_count"] = 0
+    # Compute smart collection count
+    if is_smart:
+        try:
+            async with aiosqlite.connect(db_path) as db:
+                db.row_factory = aiosqlite.Row
+                sql, params = _build_smart_count_query(rules)
+                cursor = await db.execute(sql, params)
+                count_row = await cursor.fetchone()
+                result["model_count"] = dict(count_row)["cnt"]
+        except Exception:
+            result["model_count"] = 0
+    else:
+        result["model_count"] = 0
     return result
 
 
@@ -166,7 +285,8 @@ async def get_collection(
 async def update_collection(request: Request, collection_id: int):
     """Update a collection's metadata.
 
-    Expects JSON body with optional: {"name": "...", "description": "...", "color": "#hex"}
+    Expects JSON body with optional: {"name": "...", "description": "...",
+                                      "color": "#hex", "rules": {}}
     """
     db_path = _get_db_path(request)
     body = await request.json()
@@ -174,11 +294,12 @@ async def update_collection(request: Request, collection_id: int):
     name = body.get("name")
     description = body.get("description")
     color = body.get("color")
+    rules = body.get("rules")
 
-    if name is None and description is None and color is None:
+    if name is None and description is None and color is None and rules is None:
         raise HTTPException(
             status_code=400,
-            detail="At least one of 'name', 'description', or 'color' is required",
+            detail="At least one of 'name', 'description', 'color', or 'rules' is required",
         )
 
     async with aiosqlite.connect(db_path) as db:
@@ -204,6 +325,9 @@ async def update_collection(request: Request, collection_id: int):
         if color is not None:
             set_clauses.append("color = ?")
             params.append(color)
+        if rules is not None:
+            set_clauses.append("rules = ?")
+            params.append(json.dumps(rules) if isinstance(rules, dict) else "{}")
 
         set_clauses.append("updated_at = CURRENT_TIMESTAMP")
         params.append(collection_id)
@@ -226,7 +350,19 @@ async def update_collection(request: Request, collection_id: int):
         )
         row = await cursor.fetchone()
 
-    return dict(row)
+        result = dict(row)
+        # Recompute smart count
+        if result.get("is_smart"):
+            try:
+                r = json.loads(result.get("rules") or "{}")
+                sql, p = _build_smart_count_query(r)
+                cursor = await db.execute(sql, p)
+                count_row = await cursor.fetchone()
+                result["model_count"] = dict(count_row)["cnt"]
+            except Exception:
+                pass
+
+    return result
 
 
 @router.delete("/{collection_id}")

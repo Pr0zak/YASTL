@@ -143,10 +143,12 @@ export function useViewer() {
             modelScaleFactor = 1;
         }
 
-        // Lift model so its bottom sits on the grid (y=0)
+        // Re-center XZ after scaling, lift bottom to y=0
         const scaledBox = new THREE.Box3().setFromObject(object);
-        const yOffset = -scaledBox.min.y;
-        object.position.y += yOffset;
+        const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+        object.position.x -= scaledCenter.x;
+        object.position.z -= scaledCenter.z;
+        object.position.y -= scaledBox.min.y;
 
         scene.add(object);
         currentModel = object;

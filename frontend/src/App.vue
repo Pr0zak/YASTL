@@ -20,6 +20,7 @@ import SettingsModal from './components/SettingsModal.vue';
 import StatsModal from './components/StatsModal.vue';
 import ImportModal from './components/ImportModal.vue';
 import CollectionModal from './components/CollectionModal.vue';
+import SmartCollectionModal from './components/SmartCollectionModal.vue';
 import SelectionBar from './components/SelectionBar.vue';
 import {
     apiGetModels,
@@ -110,6 +111,7 @@ const filters = reactive({
     favoritesOnly: false,
     duplicatesOnly: false,
     collection: null,
+    smartCollection: null,
     sortBy: 'updated_at',
     sortOrder: 'desc',
 });
@@ -176,6 +178,7 @@ const {
     showCollectionModal, newCollectionName, newCollectionColor,
     addToCollectionModelId, showAddToCollectionModal,
     editingCollectionId, editCollectionName, inlineNewCollection,
+    showSmartCollectionModal, editingSmartCollection, smartCollectionForm,
     fetchCollections, openCollectionModal, createCollection,
     startInlineNewCollection, cancelInlineNewCollection,
     deleteCollection: _deleteCollection,
@@ -183,6 +186,7 @@ const {
     openAddToCollection,
     addModelToCollection: _addModelToCollection,
     removeModelFromCollection: _removeModelFromCollection,
+    openSmartCollectionModal, saveSmartCollection,
 } = collectionsComposable;
 
 // Wrap collection functions that need extra context
@@ -288,7 +292,7 @@ const shownCount = computed(() => {
 });
 
 const hasActiveFilters = computed(() => {
-    return !!(filters.format || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection);
+    return !!(filters.format || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection || filters.smartCollection);
 });
 
 // Find the library object for the currently selected library_id
@@ -308,6 +312,11 @@ const breadcrumbTrail = computed(() => {
     if (filters.collection) {
         const col = collections.value.find(c => c.id === filters.collection);
         trail.push({ type: 'collection', label: col ? col.name : 'Collection' });
+    }
+    // Smart Collection
+    if (filters.smartCollection) {
+        const sc = collections.value.find(c => c.id === filters.smartCollection);
+        trail.push({ type: 'smartCollection', label: sc ? sc.name : 'Smart Collection' });
     }
     // Favorites / Duplicates
     if (filters.favoritesOnly) {
@@ -759,6 +768,7 @@ function clearFilters() {
     filters.favoritesOnly = false;
     filters.duplicatesOnly = false;
     filters.collection = null;
+    filters.smartCollection = null;
     filters.sortBy = 'updated_at';
     filters.sortOrder = 'desc';
     pagination.offset = 0;
@@ -778,6 +788,14 @@ function removeBreadcrumb(crumb) {
         filters.library_id = null;
     } else if (crumb.type === 'collection') {
         filters.collection = null;
+    } else if (crumb.type === 'smartCollection') {
+        filters.smartCollection = null;
+        filters.format = '';
+        filters.tags = [];
+        filters.categories = [];
+        filters.library_id = null;
+        filters.favoritesOnly = false;
+        filters.duplicatesOnly = false;
     } else if (crumb.type === 'favorites') {
         filters.favoritesOnly = false;
     } else if (crumb.type === 'duplicates') {
@@ -918,6 +936,35 @@ function setCollectionFilter(collectionId) {
         filters.collection = null;
     } else {
         filters.collection = collectionId;
+        filters.smartCollection = null; // clear smart collection
+    }
+    pagination.offset = 0;
+    fetchModels();
+}
+
+function setSmartCollectionFilter(collectionId) {
+    if (filters.smartCollection === collectionId) {
+        // Deselect: clear smart collection and restore default filters
+        filters.smartCollection = null;
+        filters.format = '';
+        filters.tags = [];
+        filters.categories = [];
+        filters.library_id = null;
+        filters.favoritesOnly = false;
+        filters.duplicatesOnly = false;
+    } else {
+        // Apply smart collection rules as filters
+        const sc = collections.value.find(c => c.id === collectionId);
+        if (!sc) return;
+        const rules = typeof sc.rules === 'string' ? JSON.parse(sc.rules || '{}') : (sc.rules || {});
+        filters.smartCollection = collectionId;
+        filters.collection = null; // clear regular collection
+        filters.format = rules.format || '';
+        filters.tags = rules.tags ? [...rules.tags] : [];
+        filters.categories = rules.categories ? [...rules.categories] : [];
+        filters.library_id = rules.library_id || null;
+        filters.favoritesOnly = rules.favoritesOnly || false;
+        filters.duplicatesOnly = rules.duplicatesOnly || false;
     }
     pagination.offset = 0;
     fetchModels();
@@ -1088,6 +1135,8 @@ function onKeydown(e) {
             closeImportModal();
         } else if (showAddToCollectionModal.value) {
             showAddToCollectionModal.value = false;
+        } else if (showSmartCollectionModal.value) {
+            showSmartCollectionModal.value = false;
         } else if (showCollectionModal.value) {
             showCollectionModal.value = false;
         } else if (showSaveSearchModal.value) {
@@ -1117,6 +1166,32 @@ onMounted(() => {
     statusPollTimer = setInterval(fetchSystemStatus, 30000);
     document.addEventListener('keydown', onKeydown);
 });
+
+// Smart collection form helpers
+function updateSmartRuleName(val) { smartCollectionForm.name = val; }
+function updateSmartRuleColor(val) { smartCollectionForm.color = val; }
+function updateSmartRule(key, val) { smartCollectionForm.rules[key] = val; }
+function addSmartRuleTag(tag) {
+    if (!smartCollectionForm.rules.tags.includes(tag)) {
+        smartCollectionForm.rules.tags.push(tag);
+    }
+}
+function removeSmartRuleTag(tag) {
+    const idx = smartCollectionForm.rules.tags.indexOf(tag);
+    if (idx >= 0) smartCollectionForm.rules.tags.splice(idx, 1);
+}
+function addSmartRuleCategory(cat) {
+    if (!smartCollectionForm.rules.categories.includes(cat)) {
+        smartCollectionForm.rules.categories.push(cat);
+    }
+}
+function removeSmartRuleCategory(cat) {
+    const idx = smartCollectionForm.rules.categories.indexOf(cat);
+    if (idx >= 0) smartCollectionForm.rules.categories.splice(idx, 1);
+}
+function editSmartCollection(col) {
+    openSmartCollectionModal(col);
+}
 
 // pickNextCollectionColor is needed in template via collectionsComposable
 const { pickNextCollectionColor } = collectionsComposable;
@@ -1217,9 +1292,12 @@ const { pickNextCollectionColor } = collectionsComposable;
             @toggleCategory="toggleCategory"
             @toggleCollapsedSection="(section) => collapsedSections[section] = !collapsedSections[section]"
             @setCollectionFilter="setCollectionFilter"
+            @setSmartCollectionFilter="setSmartCollectionFilter"
             @toggleFavoritesFilter="toggleFavoritesFilter"
             @toggleDuplicatesFilter="toggleDuplicatesFilter"
             @openCollectionModal="openCollectionModal"
+            @openSmartCollectionModal="() => openSmartCollectionModal()"
+            @editSmartCollection="editSmartCollection"
             @startEditCollection="startEditCollection"
             @saveCollectionName="saveCollectionName"
             @cancelEditCollection="editingCollectionId = null"
@@ -1460,6 +1538,28 @@ const { pickNextCollectionColor } = collectionsComposable;
         @pickNextCollectionColor="inlineNewCollection.color = pickNextCollectionColor()"
         @updateInlineNewCollectionName="inlineNewCollection.name = $event"
         @updateInlineNewCollectionColor="inlineNewCollection.color = $event"
+    />
+
+    <!-- ============================================================
+         Smart Collection Modal
+         ============================================================ -->
+    <SmartCollectionModal
+        :show="showSmartCollectionModal"
+        :form="smartCollectionForm"
+        :editing="editingSmartCollection"
+        :allTags="allTags"
+        :allCategories="allCategories"
+        :libraries="libraries"
+        :COLLECTION_COLORS="COLLECTION_COLORS"
+        @close="showSmartCollectionModal = false"
+        @save="saveSmartCollection"
+        @updateName="updateSmartRuleName"
+        @updateColor="updateSmartRuleColor"
+        @updateRule="updateSmartRule"
+        @addRuleTag="addSmartRuleTag"
+        @removeRuleTag="removeSmartRuleTag"
+        @addRuleCategory="addSmartRuleCategory"
+        @removeRuleCategory="removeSmartRuleCategory"
     />
 
     <!-- ============================================================

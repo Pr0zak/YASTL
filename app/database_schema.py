@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS collections (
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
     color TEXT DEFAULT NULL,
+    is_smart INTEGER DEFAULT 0,
+    rules TEXT DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

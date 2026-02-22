@@ -1,7 +1,8 @@
 /**
  * YASTL - Collections composable
  *
- * Manages collection state, CRUD operations, and inline creation.
+ * Manages collection state, CRUD operations, inline creation,
+ * and smart collection support.
  */
 
 import {
@@ -13,7 +14,7 @@ import {
     apiRemoveFromCollection,
 } from '../api.js';
 
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed } from 'vue';
 
 /**
  * @param {Function} showToast - Toast notification function
@@ -34,6 +35,34 @@ export function useCollections(showToast) {
     const editingCollectionId = ref(null);
     const editCollectionName = ref('');
     const inlineNewCollection = reactive({ active: false, name: '', color: '#0f9b8e' });
+
+    // Smart collection creation/editing state
+    const showSmartCollectionModal = ref(false);
+    const editingSmartCollection = ref(null); // null = creating new, object = editing existing
+    const smartCollectionForm = reactive({
+        name: '',
+        color: '#0f9b8e',
+        rules: {
+            format: '',
+            tags: [],
+            categories: [],
+            library_id: null,
+            favoritesOnly: false,
+            duplicatesOnly: false,
+            sizeMin: null,
+            sizeMax: null,
+            dateRange: '',
+        },
+    });
+
+    // Split collections into regular and smart
+    const regularCollections = computed(() =>
+        collections.value.filter(c => !c.is_smart)
+    );
+
+    const smartCollections = computed(() =>
+        collections.value.filter(c => c.is_smart)
+    );
 
     function pickNextCollectionColor() {
         const used = new Set(collections.value.map(c => (c.color || '').toLowerCase()));
@@ -104,6 +133,9 @@ export function useCollections(showToast) {
             if (filters && filters.collection === id) {
                 filters.collection = null;
             }
+            if (filters && filters.smartCollection === id) {
+                filters.smartCollection = null;
+            }
             await fetchCollections();
             showToast('Collection deleted', 'success');
         } catch (e) {
@@ -159,9 +191,88 @@ export function useCollections(showToast) {
         }
     }
 
+    // ---- Smart Collection CRUD ----
+
+    function openSmartCollectionModal(existing = null) {
+        if (existing) {
+            editingSmartCollection.value = existing;
+            smartCollectionForm.name = existing.name;
+            smartCollectionForm.color = existing.color || '#0f9b8e';
+            const rules = typeof existing.rules === 'string'
+                ? JSON.parse(existing.rules || '{}')
+                : (existing.rules || {});
+            smartCollectionForm.rules.format = rules.format || '';
+            smartCollectionForm.rules.tags = rules.tags || [];
+            smartCollectionForm.rules.categories = rules.categories || [];
+            smartCollectionForm.rules.library_id = rules.library_id || null;
+            smartCollectionForm.rules.favoritesOnly = rules.favoritesOnly || false;
+            smartCollectionForm.rules.duplicatesOnly = rules.duplicatesOnly || false;
+            smartCollectionForm.rules.sizeMin = rules.sizeMin || null;
+            smartCollectionForm.rules.sizeMax = rules.sizeMax || null;
+            smartCollectionForm.rules.dateRange = rules.dateRange || '';
+        } else {
+            editingSmartCollection.value = null;
+            smartCollectionForm.name = '';
+            smartCollectionForm.color = pickNextCollectionColor();
+            smartCollectionForm.rules.format = '';
+            smartCollectionForm.rules.tags = [];
+            smartCollectionForm.rules.categories = [];
+            smartCollectionForm.rules.library_id = null;
+            smartCollectionForm.rules.favoritesOnly = false;
+            smartCollectionForm.rules.duplicatesOnly = false;
+            smartCollectionForm.rules.sizeMin = null;
+            smartCollectionForm.rules.sizeMax = null;
+            smartCollectionForm.rules.dateRange = '';
+        }
+        showSmartCollectionModal.value = true;
+    }
+
+    async function saveSmartCollection() {
+        const name = smartCollectionForm.name.trim();
+        if (!name) return;
+
+        // Build clean rules object (omit empty values)
+        const rules = {};
+        if (smartCollectionForm.rules.format) rules.format = smartCollectionForm.rules.format;
+        if (smartCollectionForm.rules.tags.length > 0) rules.tags = [...smartCollectionForm.rules.tags];
+        if (smartCollectionForm.rules.categories.length > 0) rules.categories = [...smartCollectionForm.rules.categories];
+        if (smartCollectionForm.rules.library_id) rules.library_id = smartCollectionForm.rules.library_id;
+        if (smartCollectionForm.rules.favoritesOnly) rules.favoritesOnly = true;
+        if (smartCollectionForm.rules.duplicatesOnly) rules.duplicatesOnly = true;
+        if (smartCollectionForm.rules.sizeMin) rules.sizeMin = smartCollectionForm.rules.sizeMin;
+        if (smartCollectionForm.rules.sizeMax) rules.sizeMax = smartCollectionForm.rules.sizeMax;
+        if (smartCollectionForm.rules.dateRange) rules.dateRange = smartCollectionForm.rules.dateRange;
+
+        try {
+            if (editingSmartCollection.value) {
+                // Update existing
+                await apiUpdateCollection(editingSmartCollection.value.id, {
+                    name,
+                    color: smartCollectionForm.color,
+                    rules,
+                });
+            } else {
+                // Create new
+                await apiCreateCollection({
+                    name,
+                    color: smartCollectionForm.color,
+                    is_smart: true,
+                    rules,
+                });
+            }
+            showSmartCollectionModal.value = false;
+            await fetchCollections();
+            showToast(editingSmartCollection.value ? 'Smart collection updated' : 'Smart collection created', 'success');
+        } catch (e) {
+            showToast('Failed to save smart collection', 'error');
+        }
+    }
+
     return {
         // State
         collections,
+        regularCollections,
+        smartCollections,
         COLLECTION_COLORS,
         showCollectionModal,
         newCollectionName,
@@ -171,6 +282,9 @@ export function useCollections(showToast) {
         editingCollectionId,
         editCollectionName,
         inlineNewCollection,
+        showSmartCollectionModal,
+        editingSmartCollection,
+        smartCollectionForm,
 
         // Actions
         pickNextCollectionColor,
@@ -186,5 +300,7 @@ export function useCollections(showToast) {
         openAddToCollection,
         addModelToCollection,
         removeModelFromCollection,
+        openSmartCollectionModal,
+        saveSmartCollection,
     };
 }
