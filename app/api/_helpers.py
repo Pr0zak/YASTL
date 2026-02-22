@@ -9,6 +9,7 @@ from fastapi import Request
 
 from app.config import settings
 from app.services import zip_handler
+from app.services.tagger import suggest_tags
 
 logger = logging.getLogger(__name__)
 
@@ -128,3 +129,70 @@ async def _fetch_model_with_relations(
     model["collections"] = [dict(r) for r in col_rows]
 
     return model
+
+
+async def apply_auto_tags(db: aiosqlite.Connection, model_id: int) -> int:
+    """Generate and apply tag suggestions for a model. Returns tags added count.
+
+    Fetches the model with its existing tags and categories, runs
+    ``suggest_tags``, and upserts any new tag associations.  The caller
+    is responsible for committing the transaction.
+    """
+    cursor = await db.execute("SELECT * FROM models WHERE id = ?", (model_id,))
+    row = await cursor.fetchone()
+    if row is None:
+        return 0
+
+    model = dict(row)
+
+    # Fetch existing tags
+    cursor = await db.execute(
+        """SELECT t.name FROM tags t
+           JOIN model_tags mt ON mt.tag_id = t.id
+           WHERE mt.model_id = ?""",
+        (model_id,),
+    )
+    model["tags"] = [dict(r)["name"] for r in await cursor.fetchall()]
+
+    # Fetch categories
+    cursor = await db.execute(
+        """SELECT c.name FROM categories c
+           JOIN model_categories mc ON mc.category_id = c.id
+           WHERE mc.model_id = ?""",
+        (model_id,),
+    )
+    model["categories"] = [dict(r)["name"] for r in await cursor.fetchall()]
+
+    # Generate suggestions
+    suggestions = suggest_tags(model)
+    if not suggestions:
+        return 0
+
+    # Apply each suggestion
+    tags_added = 0
+    for tag_name in suggestions:
+        tag_name = tag_name.strip()
+        if not tag_name:
+            continue
+
+        # Upsert tag
+        cursor = await db.execute(
+            "SELECT id FROM tags WHERE name = ? COLLATE NOCASE",
+            (tag_name,),
+        )
+        tag_row = await cursor.fetchone()
+        if tag_row is None:
+            cursor = await db.execute(
+                "INSERT INTO tags (name) VALUES (?)", (tag_name,)
+            )
+            tag_id = cursor.lastrowid
+        else:
+            tag_id = dict(tag_row)["id"]
+
+        await db.execute(
+            "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
+            (model_id, tag_id),
+        )
+        tags_added += 1
+
+    return tags_added

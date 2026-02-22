@@ -16,6 +16,8 @@ defineProps({
     thumbnailMode: { type: String, default: 'wireframe' },
     regeneratingThumbnails: { type: Boolean, default: false },
     regenProgress: { type: Object, default: () => ({ completed: 0, total: 0 }) },
+    autoTagging: { type: Boolean, default: false },
+    autoTagProgress: { type: Object, default: () => ({ completed: 0, total: 0, tags_added: 0 }) },
     updateInfo: { type: Object, required: true },
     scanStatus: { type: Object, required: true },
     importCredentials: { type: Object, default: () => ({}) },
@@ -31,6 +33,7 @@ const emit = defineEmits([
     'triggerScan',
     'setThumbnailMode',
     'regenerateThumbnails',
+    'autoTagAll',
     'checkForUpdates',
     'applyUpdate',
     'saveImportCredential',
@@ -159,6 +162,35 @@ const emit = defineEmits([
                         </div>
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
                             {{ regenProgress.completed }} / {{ regenProgress.total }} models
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Tags Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                        Tags
+                    </div>
+                    <div class="settings-section-desc">
+                        Generate and apply suggested tags to all models based on filenames, categories, and metadata.
+                    </div>
+
+                    <div class="thumbnail-regen-row">
+                        <button class="btn btn-secondary"
+                                @click="emit('autoTagAll')"
+                                :disabled="autoTagging">
+                            <span v-html="ICONS.refresh"></span>
+                            Auto-Tag All Models
+                        </button>
+                        <span class="text-muted text-sm">Suggest and apply tags for every model in the library</span>
+                    </div>
+                    <div v-if="autoTagging && autoTagProgress.total > 0" class="regen-progress" style="margin-top:12px">
+                        <div class="regen-progress-bar">
+                            <div class="regen-progress-fill" :style="{ width: Math.round((autoTagProgress.completed / autoTagProgress.total) * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                            {{ autoTagProgress.completed }} / {{ autoTagProgress.total }} models &middot; {{ autoTagProgress.tags_added }} tags added
                         </span>
                     </div>
                 </div>

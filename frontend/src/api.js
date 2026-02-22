@@ -298,6 +298,21 @@ export async function apiGetRegenStatus() {
     return res.json();
 }
 
+export async function apiAutoTagAll() {
+    const res = await fetch('/api/settings/auto-tag-all', { method: 'POST' });
+    if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.detail || 'Failed to start auto-tagging');
+    }
+    return res.json();
+}
+
+export async function apiGetAutoTagStatus() {
+    const res = await fetch('/api/settings/auto-tag-all/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
 /* ==================================================================
    System Status
    ================================================================== */

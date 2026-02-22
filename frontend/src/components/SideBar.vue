@@ -95,8 +95,8 @@ function formatClass(fmt) {
             <div class="sidebar-section-title sidebar-section-toggle"
                  @click="emit('toggleCollapsedSection', 'tags')">
                 <span>Tags</span>
-                <span v-if="filters.tag || filters.tags.length" class="sidebar-section-active-badge">
-                    {{ filters.tags.length || 1 }} active
+                <span v-if="filters.tags.length" class="sidebar-section-active-badge">
+                    {{ filters.tags.length }} active
                 </span>
                 <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.tags }"
                       v-html="ICONS.chevron"></span>
@@ -107,7 +107,7 @@ function formatClass(fmt) {
                 </div>
                 <div v-for="tag in allTags" :key="tag.id"
                      class="sidebar-item"
-                     :class="{ active: filters.tag === tag.name || filters.tags.includes(tag.name) }"
+                     :class="{ active: filters.tags.includes(tag.name) }"
                      @click="emit('toggleTagFilter', tag.name)">
                     <span>{{ tag.name }}</span>
                     <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
@@ -120,8 +120,8 @@ function formatClass(fmt) {
             <div class="sidebar-section-title sidebar-section-toggle"
                  @click="emit('toggleCollapsedSection', 'categories')">
                 <span>Categories</span>
-                <span v-if="filters.category || filters.categories.length" class="sidebar-section-active-badge">
-                    {{ filters.categories.length || 1 }} active
+                <span v-if="filters.categories.length" class="sidebar-section-active-badge">
+                    {{ filters.categories.length }} active
                 </span>
                 <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.categories }"
                       v-html="ICONS.chevron"></span>
@@ -134,7 +134,7 @@ function formatClass(fmt) {
                 <template v-for="cat in allCategories" :key="cat.id">
                     <li>
                         <div class="category-item"
-                             :class="{ active: filters.category === cat.name || filters.categories.includes(cat.name) }"
+                             :class="{ active: filters.categories.includes(cat.name) }"
                              @click="emit('toggleCategoryFilter', cat.name)">
                             <span v-if="cat.children && cat.children.length"
                                   class="category-toggle"
@@ -149,7 +149,7 @@ function formatClass(fmt) {
                             class="category-children">
                             <li v-for="child in cat.children" :key="child.id">
                                 <div class="category-item"
-                                     :class="{ active: filters.category === child.name || filters.categories.includes(child.name) }"
+                                     :class="{ active: filters.categories.includes(child.name) }"
                                      @click="emit('toggleCategoryFilter', child.name)">
                                     <span v-if="child.children && child.children.length"
                                           class="category-toggle"
@@ -165,7 +165,7 @@ function formatClass(fmt) {
                                     class="category-children">
                                     <li v-for="grandchild in child.children" :key="grandchild.id">
                                         <div class="category-item"
-                                             :class="{ active: filters.category === grandchild.name || filters.categories.includes(grandchild.name) }"
+                                             :class="{ active: filters.categories.includes(grandchild.name) }"
                                              @click="emit('toggleCategoryFilter', grandchild.name)">
                                             <span style="width:16px;display:inline-block"></span>
                                             <span class="category-name">{{ grandchild.name }}</span>

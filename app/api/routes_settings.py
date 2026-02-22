@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from app.config import settings as app_settings
 from app.database import get_all_settings, get_db, get_setting, set_setting
 from app.services import thumbnail
+from app.api._helpers import apply_auto_tags
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,14 @@ _regen_progress: dict = {
     "running": False,
     "total": 0,
     "completed": 0,
+}
+
+# Module-level auto-tag progress state
+_autotag_progress: dict = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+    "tags_added": 0,
 }
 
 
@@ -151,3 +160,71 @@ async def _regenerate_all_thumbnails(
         _regen_progress["running"] = False
 
     logger.info("Thumbnail regeneration complete")
+
+
+@router.post("/auto-tag-all")
+async def auto_tag_all(background_tasks: BackgroundTasks):
+    """Generate and apply tag suggestions to all active models.
+
+    Runs in the background and returns immediately.
+    """
+    if _autotag_progress["running"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Auto-tagging is already in progress",
+        )
+
+    background_tasks.add_task(_auto_tag_all_models)
+
+    return {"detail": "Auto-tagging started in background"}
+
+
+@router.get("/auto-tag-all/status")
+async def auto_tag_all_status():
+    """Return the current progress of the auto-tag-all operation."""
+    return {
+        "running": _autotag_progress["running"],
+        "total": _autotag_progress["total"],
+        "completed": _autotag_progress["completed"],
+        "tags_added": _autotag_progress["tags_added"],
+    }
+
+
+async def _auto_tag_all_models() -> None:
+    """Walk all active models and apply auto-tag suggestions."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM models WHERE status = 'active'"
+        )
+        rows = await cursor.fetchall()
+
+    model_ids = [row["id"] for row in rows]
+
+    _autotag_progress["running"] = True
+    _autotag_progress["total"] = len(model_ids)
+    _autotag_progress["completed"] = 0
+    _autotag_progress["tags_added"] = 0
+
+    logger.info("Auto-tagging %d models", len(model_ids))
+
+    try:
+        for model_id in model_ids:
+            try:
+                async with get_db() as db:
+                    tags_added = await apply_auto_tags(db, model_id)
+                    await db.commit()
+                _autotag_progress["tags_added"] += tags_added
+            except Exception as e:
+                logger.warning(
+                    "Failed to auto-tag model %d: %s", model_id, e
+                )
+            finally:
+                _autotag_progress["completed"] += 1
+    finally:
+        _autotag_progress["running"] = False
+
+    logger.info(
+        "Auto-tagging complete: %d models, %d tags added",
+        _autotag_progress["total"],
+        _autotag_progress["tags_added"],
+    )

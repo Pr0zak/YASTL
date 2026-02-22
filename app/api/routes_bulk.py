@@ -5,6 +5,8 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
+from app.api._helpers import apply_auto_tags
+
 router = APIRouter(prefix="/api/bulk", tags=["bulk"])
 
 
@@ -299,8 +301,6 @@ async def bulk_auto_tags(request: Request):
     For each model, generates tag suggestions from metadata (filename words,
     categories, format, size, complexity) and applies them.
     """
-    from app.services.tagger import suggest_tags
-
     db_path = _get_db_path(request)
     body = await request.json()
     model_ids = body.get("model_ids", [])
@@ -318,66 +318,7 @@ async def bulk_auto_tags(request: Request):
         models_tagged = 0
 
         for model_id in model_ids:
-            # Fetch model with tags and categories
-            cursor = await db.execute(
-                "SELECT * FROM models WHERE id = ?", (model_id,)
-            )
-            row = await cursor.fetchone()
-            if row is None:
-                continue
-
-            model = dict(row)
-
-            # Fetch existing tags
-            cursor = await db.execute(
-                """SELECT t.name FROM tags t
-                   JOIN model_tags mt ON mt.tag_id = t.id
-                   WHERE mt.model_id = ?""",
-                (model_id,),
-            )
-            model["tags"] = [dict(r)["name"] for r in await cursor.fetchall()]
-
-            # Fetch categories
-            cursor = await db.execute(
-                """SELECT c.name FROM categories c
-                   JOIN model_categories mc ON mc.category_id = c.id
-                   WHERE mc.model_id = ?""",
-                (model_id,),
-            )
-            model["categories"] = [dict(r)["name"] for r in await cursor.fetchall()]
-
-            # Generate suggestions
-            suggestions = suggest_tags(model)
-            if not suggestions:
-                continue
-
-            # Apply each suggestion
-            tags_added = 0
-            for tag_name in suggestions:
-                tag_name = tag_name.strip()
-                if not tag_name:
-                    continue
-
-                # Upsert tag
-                cursor = await db.execute(
-                    "SELECT id FROM tags WHERE name = ? COLLATE NOCASE",
-                    (tag_name,),
-                )
-                tag_row = await cursor.fetchone()
-                if tag_row is None:
-                    cursor = await db.execute(
-                        "INSERT INTO tags (name) VALUES (?)", (tag_name,)
-                    )
-                    tag_id = cursor.lastrowid
-                else:
-                    tag_id = dict(tag_row)["id"]
-
-                await db.execute(
-                    "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
-                    (model_id, tag_id),
-                )
-                tags_added += 1
-
+            tags_added = await apply_auto_tags(db, model_id)
             if tags_added > 0:
                 models_tagged += 1
                 total_tags_added += tags_added

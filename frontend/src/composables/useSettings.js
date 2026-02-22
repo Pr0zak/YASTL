@@ -12,6 +12,8 @@ import {
     apiUpdateSettings,
     apiRegenerateThumbnails,
     apiGetRegenStatus,
+    apiAutoTagAll,
+    apiGetAutoTagStatus,
 } from '../api.js';
 
 import { ref, reactive } from 'vue';
@@ -19,8 +21,10 @@ import { ref, reactive } from 'vue';
 /**
  * @param {Function} showToast - Toast notification function
  * @param {Function} fetchModelsFn - Callback to refresh models after regen
+ * @param {Function} showConfirm - Confirm dialog function
+ * @param {Function} fetchTagsFn - Callback to refresh tags after auto-tag
  */
-export function useSettings(showToast, fetchModelsFn, showConfirm) {
+export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) {
     const showSettings = ref(false);
     const libraries = ref([]);
     const newLibName = ref('');
@@ -29,8 +33,11 @@ export function useSettings(showToast, fetchModelsFn, showConfirm) {
     const thumbnailMode = ref('wireframe');
     const regeneratingThumbnails = ref(false);
     const regenProgress = reactive({ running: false, total: 0, completed: 0 });
+    const autoTagging = ref(false);
+    const autoTagProgress = reactive({ running: false, total: 0, completed: 0, tags_added: 0 });
 
     let regenPollTimer = null;
+    let autoTagPollTimer = null;
 
     async function fetchLibraries() {
         try {
@@ -142,6 +149,47 @@ export function useSettings(showToast, fetchModelsFn, showConfirm) {
         }, 2000);
     }
 
+    async function autoTagAll() {
+        if (!await showConfirm({
+            title: 'Auto-Tag All Models',
+            message: 'Generate and apply suggested tags to all models? Runs in background.',
+            action: 'Auto-Tag',
+        })) return;
+        autoTagging.value = true;
+        try {
+            await apiAutoTagAll();
+            showToast('Auto-tagging started', 'info');
+            startAutoTagPolling();
+        } catch (err) {
+            showToast(err.message || 'Failed to start auto-tagging', 'error');
+            console.error('autoTagAll error:', err);
+            autoTagging.value = false;
+        }
+    }
+
+    function startAutoTagPolling() {
+        if (autoTagPollTimer) clearInterval(autoTagPollTimer);
+        autoTagPollTimer = setInterval(async () => {
+            try {
+                const data = await apiGetAutoTagStatus();
+                autoTagProgress.running = data.running;
+                autoTagProgress.total = data.total;
+                autoTagProgress.completed = data.completed;
+                autoTagProgress.tags_added = data.tags_added;
+                if (!data.running) {
+                    clearInterval(autoTagPollTimer);
+                    autoTagPollTimer = null;
+                    autoTagging.value = false;
+                    showToast(`Auto-tagging complete: ${data.tags_added} tags added`);
+                    fetchModelsFn();
+                    if (fetchTagsFn) fetchTagsFn();
+                }
+            } catch (err) {
+                console.error('autoTagPoll error:', err);
+            }
+        }, 2000);
+    }
+
     function openSettings(checkForUpdatesFn, updateInfo) {
         fetchLibraries();
         fetchSettings();
@@ -170,6 +218,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm) {
         thumbnailMode,
         regeneratingThumbnails,
         regenProgress,
+        autoTagging,
+        autoTagProgress,
 
         // Actions
         fetchLibraries,
@@ -178,6 +228,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm) {
         fetchSettings,
         setThumbnailMode,
         regenerateThumbnails,
+        autoTagAll,
         openSettings,
         closeSettings,
     };

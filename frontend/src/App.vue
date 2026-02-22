@@ -99,9 +99,7 @@ const collapsedSections = reactive({ format: true, tags: true, categories: true 
 
 const filters = reactive({
     format: '',
-    tag: '',
     tags: [],
-    category: '',
     categories: [],
     library_id: null,
     favoritesOnly: false,
@@ -149,12 +147,13 @@ const systemStatus = reactive({
 let statusPollTimer = null;
 
 /* ---- Composables ---- */
-const settingsComposable = useSettings(showToast, () => fetchModels(), showConfirm);
+const settingsComposable = useSettings(showToast, () => fetchModels(), showConfirm, () => fetchTags());
 const {
     showSettings, libraries, newLibName, newLibPath, addingLibrary,
     thumbnailMode, regeneratingThumbnails, regenProgress,
+    autoTagging, autoTagProgress,
     fetchLibraries, addLibrary, deleteLibrary,
-    setThumbnailMode, regenerateThumbnails,
+    setThumbnailMode, regenerateThumbnails, autoTagAll,
 } = settingsComposable;
 
 const updatesComposable = useUpdates(showToast, showConfirm);
@@ -278,7 +277,7 @@ const shownCount = computed(() => {
 });
 
 const hasActiveFilters = computed(() => {
-    return !!(filters.format || filters.tag || filters.category || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection);
+    return !!(filters.format || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection);
 });
 
 // Find the library object for the currently selected library_id
@@ -290,14 +289,33 @@ const selectedLibrary = computed(() => {
 // Build breadcrumb trail from current filters
 const breadcrumbTrail = computed(() => {
     const trail = [];
-    if (filters.category) {
-        trail.push({ type: 'category', label: filters.category });
+    // Library
+    if (selectedLibrary.value) {
+        trail.push({ type: 'library', label: selectedLibrary.value.name });
     }
-    if (filters.tag) {
-        trail.push({ type: 'tag', label: filters.tag });
+    // Collection
+    if (filters.collection) {
+        const col = collections.value.find(c => c.id === filters.collection);
+        trail.push({ type: 'collection', label: col ? col.name : 'Collection' });
     }
+    // Favorites / Duplicates
+    if (filters.favoritesOnly) {
+        trail.push({ type: 'favorites', label: 'Favorites' });
+    }
+    if (filters.duplicatesOnly) {
+        trail.push({ type: 'duplicates', label: 'Duplicates' });
+    }
+    // Format
     if (filters.format) {
         trail.push({ type: 'format', label: filters.format.toUpperCase() });
+    }
+    // Categories (plural array)
+    for (const cat of filters.categories) {
+        trail.push({ type: 'category', label: cat, value: cat });
+    }
+    // Tags (plural array)
+    for (const tag of filters.tags) {
+        trail.push({ type: 'tag', label: tag, value: tag });
     }
     return trail;
 });
@@ -314,8 +332,6 @@ async function fetchModels(append = false) {
             offset: String(pagination.offset),
         });
         if (filters.format) params.append('format', filters.format);
-        if (filters.tag) params.append('tag', filters.tag);
-        if (filters.category) params.append('category', filters.category);
         if (filters.library_id) params.append('library_id', String(filters.library_id));
         if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
         if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
@@ -354,8 +370,8 @@ async function searchModels(append = false) {
             offset: String(pagination.offset),
         });
         if (filters.format) params.append('format', filters.format);
-        if (filters.tag) params.append('tags', filters.tag);
-        if (filters.category) params.append('categories', filters.category);
+        if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
+        if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
         if (filters.library_id) params.append('library_id', String(filters.library_id));
 
         const data = await apiSearchModels(params);
@@ -721,8 +737,6 @@ function setLibraryFilter(libId) {
 
 function clearFilters() {
     filters.format = '';
-    filters.tag = '';
-    filters.category = '';
     filters.library_id = null;
     filters.tags = [];
     filters.categories = [];
@@ -739,11 +753,19 @@ function removeBreadcrumb(crumb) {
     if (crumb.type === 'format') {
         filters.format = '';
     } else if (crumb.type === 'tag') {
-        filters.tag = '';
+        const idx = filters.tags.indexOf(crumb.value);
+        if (idx >= 0) filters.tags.splice(idx, 1);
     } else if (crumb.type === 'category') {
-        filters.category = '';
-    } else if (crumb.type === 'library_id') {
+        const idx = filters.categories.indexOf(crumb.value);
+        if (idx >= 0) filters.categories.splice(idx, 1);
+    } else if (crumb.type === 'library') {
         filters.library_id = null;
+    } else if (crumb.type === 'collection') {
+        filters.collection = null;
+    } else if (crumb.type === 'favorites') {
+        filters.favoritesOnly = false;
+    } else if (crumb.type === 'duplicates') {
+        filters.duplicatesOnly = false;
     }
     pagination.offset = 0;
     refreshCurrentView();
@@ -1173,22 +1195,6 @@ const { pickNextCollectionColor } = collectionsComposable;
         <!-- Main Content -->
         <main class="main-content">
 
-            <!-- Active Filter Chips -->
-            <div class="active-filters" v-if="filters.tags.length || filters.categories.length">
-                <template v-for="tag in filters.tags" :key="'tag-'+tag">
-                    <span class="filter-chip">
-                        Tag: {{ tag }}
-                        <button class="chip-remove" @click="removeTagFilter(tag)">&times;</button>
-                    </span>
-                </template>
-                <template v-for="cat in filters.categories" :key="'cat-'+cat">
-                    <span class="filter-chip">
-                        {{ cat }}
-                        <button class="chip-remove" @click="removeCategoryFilter(cat)">&times;</button>
-                    </span>
-                </template>
-            </div>
-
             <!-- Scan Progress Banner -->
             <div v-if="scanStatus.scanning" class="scan-banner">
                 <div class="spinner spinner-sm"></div>
@@ -1337,6 +1343,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :thumbnailMode="thumbnailMode"
         :regeneratingThumbnails="regeneratingThumbnails"
         :regenProgress="regenProgress"
+        :autoTagging="autoTagging"
+        :autoTagProgress="autoTagProgress"
         :updateInfo="updateInfo"
         :scanStatus="scanStatus"
         :importCredentials="importCredentials"
@@ -1349,6 +1357,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @triggerScan="triggerScan"
         @setThumbnailMode="setThumbnailMode"
         @regenerateThumbnails="regenerateThumbnails"
+        @autoTagAll="autoTagAll"
         @checkForUpdates="checkForUpdates"
         @applyUpdate="applyUpdate"
         @saveImportCredential="saveImportCredential"
