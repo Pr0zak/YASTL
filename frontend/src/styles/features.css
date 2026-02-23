@@ -739,6 +739,33 @@
     background: rgba(231, 76, 60, 0.15);
 }
 
+.sidebar-item-action {
+    width: 18px;
+    height: 18px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: all var(--transition);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 3px;
+}
+
+.sidebar-item:hover .sidebar-item-action {
+    opacity: 0.5;
+}
+
+.sidebar-item-action:hover {
+    opacity: 1 !important;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
 .sidebar-edit-input {
     flex: 1;
     min-width: 0;

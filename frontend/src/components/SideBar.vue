@@ -284,7 +284,7 @@ const smartCollections = computed(() =>
                 <span class="truncate">{{ col.name }}</span>
                 <span class="item-count">{{ col.model_count }}</span>
                 <button class="sidebar-item-action" @click.stop="emit('editSmartCollection', col)"
-                        title="Edit rules" v-html="ICONS.settings" style="opacity:0.4;width:14px;height:14px"></button>
+                        title="Edit rules" v-html="ICONS.filter"></button>
                 <button class="sidebar-item-delete" @click.stop="emit('deleteCollection', col.id)">&times;</button>
             </div>
         </div>
