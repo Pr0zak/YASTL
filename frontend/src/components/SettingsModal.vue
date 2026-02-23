@@ -25,6 +25,7 @@ defineProps({
     credentialInputs: { type: Object, default: () => ({}) },
     bedConfig: { type: Object, default: () => ({ enabled: false, shape: 'rectangular', width: 256, depth: 256, height: 256 }) },
     bedPreset: { type: String, default: 'Custom' },
+    colorTheme: { type: String, default: 'default' },
 });
 
 const emit = defineEmits([
@@ -45,7 +46,18 @@ const emit = defineEmits([
     'setBedPreset',
     'updateBedConfig',
     'saveBedSettings',
+    'setColorTheme',
 ]);
+
+const THEMES = [
+    { id: 'default', name: 'Default', color: '#0f9b8e', bg: '#1a1a2e' },
+    { id: 'midnight', name: 'Midnight', color: '#58a6ff', bg: '#0d1117' },
+    { id: 'forest', name: 'Forest', color: '#4caf50', bg: '#1a2318' },
+    { id: 'crimson', name: 'Crimson', color: '#e5534b', bg: '#1a1014' },
+    { id: 'ocean', name: 'Ocean', color: '#0ea5e9', bg: '#0f1923' },
+    { id: 'slate', name: 'Slate', color: '#cba6f7', bg: '#1e1e2e' },
+    { id: 'light', name: 'Light', color: '#0f9b8e', bg: '#f5f5f5' },
+];
 </script>
 
 <template>
@@ -58,6 +70,26 @@ const emit = defineEmits([
             </div>
 
             <div class="settings-content">
+                <!-- Theme Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                        Theme
+                    </div>
+                    <div class="theme-grid">
+                        <button v-for="t in THEMES" :key="t.id"
+                                class="theme-swatch"
+                                :class="{ active: colorTheme === t.id }"
+                                @click="emit('setColorTheme', t.id)"
+                                :title="t.name">
+                            <div class="theme-swatch-preview" :style="{ background: t.bg }">
+                                <div class="theme-swatch-accent" :style="{ background: t.color }"></div>
+                            </div>
+                            <span class="theme-swatch-label">{{ t.name }}</span>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Libraries Section -->
                 <div class="settings-section">
                     <div class="settings-section-title">

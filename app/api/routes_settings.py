@@ -28,6 +28,10 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["true", "false"],
         "default": "false",
     },
+    "color_theme": {
+        "allowed": ["default", "midnight", "forest", "crimson", "ocean", "slate", "light"],
+        "default": "default",
+    },
 }
 
 # Numeric settings with min/max validation (stored as strings in DB)

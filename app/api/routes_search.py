@@ -215,6 +215,20 @@ async def search_models(
             cat_rows = await cursor.fetchall()
             model["categories"] = [dict(r)["name"] for r in cat_rows]
 
+            # Collection colors
+            cursor = await db.execute(
+                """
+                SELECT c.color FROM collections c
+                JOIN collection_models cm ON cm.collection_id = c.id
+                WHERE cm.model_id = ? AND c.color IS NOT NULL
+                """,
+                (model_id,),
+            )
+            col_color_rows = await cursor.fetchall()
+            model["collection_colors"] = [
+                dict(r)["color"] for r in col_color_rows
+            ]
+
             models.append(model)
 
     return {

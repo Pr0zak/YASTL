@@ -56,6 +56,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     });
     const bedPreset = ref('Custom');
 
+    // Color theme
+    const colorTheme = ref('default');
+
     let regenPollTimer = null;
     let autoTagPollTimer = null;
 
@@ -122,8 +125,30 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             bedConfig.height = parseInt(data.bed_height) || 256;
             // Detect preset
             _detectPreset();
+            // Color theme
+            colorTheme.value = data.color_theme || 'default';
+            applyTheme(colorTheme.value);
         } catch (err) {
             console.error('fetchSettings error:', err);
+        }
+    }
+
+    function applyTheme(theme) {
+        if (theme === 'default') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+    }
+
+    async function setColorTheme(theme) {
+        colorTheme.value = theme;
+        applyTheme(theme);
+        try {
+            await apiUpdateSettings({ color_theme: theme });
+        } catch (err) {
+            showToast('Failed to save theme', 'error');
+            console.error('setColorTheme error:', err);
         }
     }
 
@@ -286,6 +311,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         autoTagProgress,
         bedConfig,
         bedPreset,
+        colorTheme,
 
         // Actions
         fetchLibraries,
@@ -297,6 +323,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         autoTagAll,
         setBedPreset,
         saveBedSettings,
+        setColorTheme,
         openSettings,
         closeSettings,
     };

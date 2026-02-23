@@ -74,6 +74,20 @@
     right: 8px;
 }
 
+.model-card .card-collection-bar {
+    display: flex;
+    gap: 3px;
+    padding: 0 12px;
+    margin-top: -2px;
+}
+
+.card-collection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
 .model-card .card-body {
     padding: 12px;
 }

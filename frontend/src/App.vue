@@ -164,10 +164,10 @@ const {
     showSettings, libraries, newLibName, newLibPath, addingLibrary,
     thumbnailMode, regeneratingThumbnails, regenProgress,
     autoTagging, autoTagProgress,
-    bedConfig, bedPreset,
-    fetchLibraries, addLibrary, deleteLibrary,
+    bedConfig, bedPreset, colorTheme,
+    fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
     setThumbnailMode, regenerateThumbnails, autoTagAll,
-    setBedPreset, saveBedSettings,
+    setBedPreset, saveBedSettings, setColorTheme,
 } = settingsComposable;
 
 const updatesComposable = useUpdates(showToast, showConfirm);
@@ -1175,6 +1175,7 @@ function onKeydown(e) {
 
 /* ---- Lifecycle ---- */
 onMounted(() => {
+    fetchSettings();
     fetchLibraries();
     fetchModels();
     fetchTags();
@@ -1493,6 +1494,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :credentialInputs="credentialInputs"
         :bedConfig="bedConfig"
         :bedPreset="bedPreset"
+        :colorTheme="colorTheme"
         @close="closeSettings"
         @update:newLibName="newLibName = $event"
         @update:newLibPath="newLibPath = $event"
@@ -1510,6 +1512,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @setBedPreset="setBedPreset"
         @updateBedConfig="updateBedConfig"
         @saveBedSettings="saveBedSettings"
+        @setColorTheme="setColorTheme"
     />
 
     <!-- ============================================================

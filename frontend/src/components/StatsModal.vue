@@ -236,6 +236,24 @@ function tagOpacity(count, tags) {
                     </div>
                 </div>
 
+                <!-- Collections -->
+                <div class="settings-section" v-if="stats.collection_stats && stats.collection_stats.length > 0">
+                    <div class="settings-section-title">Collections</div>
+                    <div class="stats-bar-list">
+                        <div v-for="col in stats.collection_stats" :key="col.id" class="stats-bar-row">
+                            <span class="stats-bar-label stats-bar-label-wide" style="display:flex;align-items:center;gap:6px" :title="col.name">
+                                <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
+                                {{ col.name }}
+                            </span>
+                            <div class="stats-bar-track">
+                                <div class="stats-bar-fill"
+                                     :style="{ width: barWidth(col.count, stats.collection_stats[0]?.count), background: col.color || 'var(--accent)' }"></div>
+                            </div>
+                            <span class="stats-bar-value">{{ col.count }}</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Largest Models -->
                 <div class="settings-section" v-if="stats.largest_models.length > 0">
                     <div class="settings-section-title">Largest Models</div>

@@ -205,6 +205,20 @@ async def list_models(
             )
             model["is_favorite"] = await cursor.fetchone() is not None
 
+            # Collection colors (for card tinting)
+            cursor = await db.execute(
+                """
+                SELECT c.color FROM collections c
+                JOIN collection_models cm ON cm.collection_id = c.id
+                WHERE cm.model_id = ? AND c.color IS NOT NULL
+                """,
+                (model_id,),
+            )
+            col_color_rows = await cursor.fetchall()
+            model["collection_colors"] = [
+                dict(r)["color"] for r in col_color_rows
+            ]
+
             models.append(model)
 
         # Mark duplicates: compute set of hashes that appear more than once

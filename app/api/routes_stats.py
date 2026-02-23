@@ -77,6 +77,17 @@ async def get_stats():
         cursor = await db.execute("SELECT COUNT(*) as count FROM collections")
         total_collections = dict(await cursor.fetchone())["count"]
 
+        # Per-collection model counts (regular collections only)
+        cursor = await db.execute(
+            "SELECT c.id, c.name, c.color, COUNT(cm.model_id) as count "
+            "FROM collections c "
+            "LEFT JOIN collection_models cm ON cm.collection_id = c.id "
+            "LEFT JOIN models m ON m.id = cm.model_id AND m.status = 'active' "
+            "WHERE c.is_smart = 0 "
+            "GROUP BY c.id ORDER BY count DESC"
+        )
+        collection_stats = [dict(r) for r in await cursor.fetchall()]
+
         # Duplicate groups (models sharing the same file_hash)
         cursor = await db.execute(
             "SELECT COUNT(*) as groups FROM ("
@@ -158,4 +169,5 @@ async def get_stats():
         "added_7d": added_7d,
         "added_30d": added_30d,
         "largest_models": largest_models,
+        "collection_stats": collection_stats,
     }
