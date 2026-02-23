@@ -16,6 +16,14 @@ Unified library statistics and system health panel.
 - Largest models, recently added (7d/30d)
 - System health indicators (scanner, watcher, database, thumbnails)
 
+### Smart Collections
+Rule-based collections that auto-populate via live filter evaluation.
+- Extended `collections` table with `is_smart` and `rules` JSON columns
+- Rules: format, tags (AND), categories (OR), library, favorites, duplicates, date range
+- Dynamic model count computed on list; clicking applies rules as live filters
+- Sidebar section with zap icon, create/edit rules modal
+- Backend count query builder mirrors model listing filter logic
+
 ---
 
 ## High Priority
@@ -28,17 +36,9 @@ Link related STLs into a "project" so `base.stl + lid.stl + clip.stl` stay toget
 - UI: Group indicator on cards, grouped view in grid, manage group in detail panel
 - Drag-to-group or multi-select-to-group workflow
 
-### 2. Smart Collections
-Collections that auto-populate based on saved filter rules.
-- New `smart_collections` table (id, name, color, rules JSON)
-- Rules: format, tags, categories, size range, date range, favorites, duplicates
-- API: CRUD for smart collections, query endpoint that evaluates rules
-- UI: Smart collection icon in sidebar, edit rules modal
-- Essentially a saved search that appears as a collection
-
 ## Medium Priority
 
-### 3. PWA / Mobile Layout
+### 2. PWA / Mobile Layout
 Make YASTL installable on phone/tablet for quick reference at the printer.
 - Add manifest.json with app icon and theme color
 - Add service worker for offline shell caching
@@ -47,7 +47,7 @@ Make YASTL installable on phone/tablet for quick reference at the printer.
 
 ## Nice to Have
 
-### 4. Bulk Collection Import
+### 3. Bulk Collection Import
 Import entire Thingiverse/Printables collections by URL.
 - Detect collection URLs in import modal
 - Scrape collection page for individual model URLs

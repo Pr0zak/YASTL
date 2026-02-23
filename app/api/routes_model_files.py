@@ -10,6 +10,8 @@ import aiosqlite
 import trimesh
 
 from app.config import settings
+from app.database import get_setting
+from app.services import thumbnail
 from app.api._helpers import _get_db_path, _resolve_model_file, MIME_TYPES
 
 logger = logging.getLogger(__name__)
@@ -246,3 +248,62 @@ async def serve_thumbnail(request: Request, model_id: int):
         path=thumbnail_path,
         media_type="image/png",
     )
+
+
+# ---------------------------------------------------------------------------
+# Regenerate thumbnail for a single model
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{model_id}/regenerate-thumbnail")
+async def regenerate_model_thumbnail(request: Request, model_id: int):
+    """Regenerate the thumbnail for a single model."""
+    db_path = _get_db_path(request)
+    thumbnail_path = str(settings.MODEL_LIBRARY_THUMBNAIL_PATH)
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT id, file_path, zip_path, zip_entry FROM models WHERE id = ?",
+            (model_id,),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    model = dict(row)
+    actual_path = _resolve_model_file(model)
+
+    if actual_path is None:
+        raise HTTPException(status_code=404, detail="Model file not found on disk")
+
+    thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+    thumb_quality = await get_setting("thumbnail_quality", "fast")
+
+    thumb_filename: str | None = await asyncio.to_thread(
+        thumbnail.generate_thumbnail,
+        actual_path,
+        thumbnail_path,
+        model_id,
+        thumb_mode,
+        thumb_quality,
+    )
+
+    if thumb_filename is None:
+        raise HTTPException(
+            status_code=422, detail="Failed to generate thumbnail"
+        )
+
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "UPDATE models SET thumbnail_path = ?, thumbnail_mode = ?, thumbnail_quality = ?, thumbnail_generated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (thumb_filename, thumb_mode, thumb_quality, model_id),
+        )
+        await db.commit()
+
+    return {
+        "detail": "Thumbnail regenerated",
+        "thumbnail_path": thumb_filename,
+    }

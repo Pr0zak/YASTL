@@ -24,7 +24,7 @@ class TestTriggerScan:
             total_files = 0
             processed_files = 0
 
-            async def scan(self):
+            async def scan(self, **kwargs):
                 pass
 
         app.state.scanner = MockScanner()

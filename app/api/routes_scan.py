@@ -27,12 +27,20 @@ def _get_db_path(request: Request) -> str:
 
 
 @router.post("")
-async def trigger_scan(request: Request, background_tasks: BackgroundTasks):
-    """Trigger a full directory scan in the background.
+async def trigger_scan(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    mode: str = "full",
+):
+    """Trigger a directory scan in the background.
 
     The scan walks the configured directory tree, discovers new 3D model
     files, extracts metadata, generates thumbnails, and indexes them in
     the database.
+
+    Query params:
+        mode: ``full`` (default) runs move detection and orphan reconciliation.
+              ``update`` only discovers and indexes new files (faster).
 
     Returns immediately with a status message. Use ``GET /api/scan/status``
     to monitor progress.
@@ -50,10 +58,12 @@ async def trigger_scan(request: Request, background_tasks: BackgroundTasks):
             detail="A scan is already in progress",
         )
 
-    background_tasks.add_task(scanner.scan)
+    update_only = mode == "update"
+    background_tasks.add_task(scanner.scan, update_only=update_only)
 
+    label = "Update scan" if update_only else "Full scan"
     return {
-        "detail": "Scan started in background",
+        "detail": f"{label} started in background",
         "scanning": True,
     }
 

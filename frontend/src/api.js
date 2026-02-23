@@ -154,8 +154,8 @@ export async function apiRemoveLibrary(id) {
    Scan
    ================================================================== */
 
-export async function apiTriggerScan() {
-    const res = await fetch('/api/scan', { method: 'POST' });
+export async function apiTriggerScan(mode = 'full') {
+    const res = await fetch(`/api/scan?mode=${mode}`, { method: 'POST' });
     const json = await res.json();
     return { ok: res.ok, data: json };
 }
@@ -296,6 +296,13 @@ export async function apiGetRegenStatus() {
     const res = await fetch('/api/settings/regenerate-thumbnails/status');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+}
+
+export async function apiRegenerateThumbnail(id) {
+    const res = await fetch(`/api/models/${id}/regenerate-thumbnail`, { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'Failed to regenerate thumbnail');
+    return json;
 }
 
 export async function apiAutoTagAll() {

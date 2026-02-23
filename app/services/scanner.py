@@ -57,11 +57,15 @@ class Scanner:
     # Public API
     # ------------------------------------------------------------------
 
-    async def scan(self) -> dict:
+    async def scan(self, update_only: bool = False) -> dict:
         """Scan all registered libraries and index supported files.
 
         Uses an asyncio lock to prevent concurrent scans. If a scan is
         already running the method returns immediately with zeroed stats.
+
+        Args:
+            update_only: If True, only discover and index new files without
+                checking for moved/missing files (much faster).
 
         Returns:
             A stats dictionary with keys:
@@ -82,7 +86,7 @@ class Scanner:
             }
 
         async with self._lock:
-            return await self._run_scan()
+            return await self._run_scan(update_only=update_only)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -99,7 +103,7 @@ class Scanner:
         finally:
             await db.close()
 
-    async def _run_scan(self) -> dict:
+    async def _run_scan(self, update_only: bool = False) -> dict:
         """Core scanning logic executed under the lock."""
         self.is_scanning = True
         self.total_files = 0
@@ -121,7 +125,8 @@ class Scanner:
             self.is_scanning = False
             return stats
 
-        logger.info("Starting scan of %d libraries", len(libraries))
+        mode_label = "update-only scan" if update_only else "full scan"
+        logger.info("Starting %s of %d libraries", mode_label, len(libraries))
 
         # 1. Discover files across all libraries
         loop = asyncio.get_running_loop()
@@ -182,38 +187,40 @@ class Scanner:
             # Process regular (non-zip) model files per library with
             # move detection and orphan reconciliation.
             for library_id, items in library_items.items():
-                disk_paths = {str(fp) for fp, _ in items}
-
-                # Load existing DB records for regular (non-zip) models in this library
-                cursor = await db.execute(
-                    "SELECT id, file_path, file_hash, status FROM models WHERE library_id = ? AND zip_path IS NULL",
-                    (library_id,),
-                )
-                db_records = [dict(r) for r in await cursor.fetchall()]
-                db_path_set = {r["file_path"] for r in db_records}
-
-                # Categorise paths
-                orphaned_paths = db_path_set - disk_paths
-
-                # Build orphan hash index: {hash: [record, ...]}
                 orphan_index: dict[str, list[dict]] = {}
-                for rec in db_records:
-                    if rec["file_path"] in orphaned_paths and rec["file_hash"]:
-                        orphan_index.setdefault(rec["file_hash"], []).append(rec)
 
-                # Reactivate previously-missing files found at their original path
-                for rec in db_records:
-                    if rec["file_path"] in disk_paths and rec["status"] == "missing":
-                        await db.execute(
-                            "UPDATE models SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                            (rec["id"],),
-                        )
-                        stats["reactivated_files"] += 1
-                        logger.info(
-                            "Reactivated previously-missing model id=%d  %s",
-                            rec["id"],
-                            rec["file_path"],
-                        )
+                if not update_only:
+                    disk_paths = {str(fp) for fp, _ in items}
+
+                    # Load existing DB records for regular (non-zip) models in this library
+                    cursor = await db.execute(
+                        "SELECT id, file_path, file_hash, status FROM models WHERE library_id = ? AND zip_path IS NULL",
+                        (library_id,),
+                    )
+                    db_records = [dict(r) for r in await cursor.fetchall()]
+                    db_path_set = {r["file_path"] for r in db_records}
+
+                    # Categorise paths
+                    orphaned_paths = db_path_set - disk_paths
+
+                    # Build orphan hash index: {hash: [record, ...]}
+                    for rec in db_records:
+                        if rec["file_path"] in orphaned_paths and rec["file_hash"]:
+                            orphan_index.setdefault(rec["file_hash"], []).append(rec)
+
+                    # Reactivate previously-missing files found at their original path
+                    for rec in db_records:
+                        if rec["file_path"] in disk_paths and rec["status"] == "missing":
+                            await db.execute(
+                                "UPDATE models SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                (rec["id"],),
+                            )
+                            stats["reactivated_files"] += 1
+                            logger.info(
+                                "Reactivated previously-missing model id=%d  %s",
+                                rec["id"],
+                                rec["file_path"],
+                            )
 
                 # Process each file on disk
                 for file_path, scan_root in items:
@@ -233,36 +240,37 @@ class Scanner:
                     finally:
                         self.processed_files += 1
 
-                # Mark remaining orphans (not matched by moves) as missing
-                for records in orphan_index.values():
-                    for rec in records:
-                        await db.execute(
-                            "UPDATE models SET status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                            (rec["id"],),
-                        )
-                        stats["missing_files"] += 1
-                        logger.info(
-                            "Marked model as missing: id=%d  %s",
-                            rec["id"],
-                            rec["file_path"],
-                        )
-                # Also mark orphans that had no hash (NULL file_hash)
-                for rec in db_records:
-                    if (
-                        rec["file_path"] in orphaned_paths
-                        and not rec["file_hash"]
-                        and rec["status"] != "missing"
-                    ):
-                        await db.execute(
-                            "UPDATE models SET status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                            (rec["id"],),
-                        )
-                        stats["missing_files"] += 1
-                        logger.info(
-                            "Marked model as missing (no hash): id=%d  %s",
-                            rec["id"],
-                            rec["file_path"],
-                        )
+                if not update_only:
+                    # Mark remaining orphans (not matched by moves) as missing
+                    for records in orphan_index.values():
+                        for rec in records:
+                            await db.execute(
+                                "UPDATE models SET status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                (rec["id"],),
+                            )
+                            stats["missing_files"] += 1
+                            logger.info(
+                                "Marked model as missing: id=%d  %s",
+                                rec["id"],
+                                rec["file_path"],
+                            )
+                    # Also mark orphans that had no hash (NULL file_hash)
+                    for rec in db_records:
+                        if (
+                            rec["file_path"] in orphaned_paths
+                            and not rec["file_hash"]
+                            and rec["status"] != "missing"
+                        ):
+                            await db.execute(
+                                "UPDATE models SET status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                (rec["id"],),
+                            )
+                            stats["missing_files"] += 1
+                            logger.info(
+                                "Marked model as missing (no hash): id=%d  %s",
+                                rec["id"],
+                                rec["file_path"],
+                            )
 
             # Process model entries inside zip archives
             for zip_path, entry_name, library_id, scan_root in zip_entries:
@@ -281,44 +289,45 @@ class Scanner:
                     self.processed_files += 1
 
             # Reconcile zip entries: mark missing or reactivate
-            discovered_zip_paths = {
-                zip_handler.make_zip_file_path(str(zp), en)
-                for zp, en, _, _ in zip_entries
-            }
-            all_lib_ids = set(library_items.keys()) | {
-                lid for _, _, lid, _ in zip_entries
-            }
-            for lib_id in all_lib_ids:
-                cursor = await db.execute(
-                    "SELECT id, file_path, status FROM models WHERE library_id = ? AND zip_path IS NOT NULL",
-                    (lib_id,),
-                )
-                zip_db_records = [dict(r) for r in await cursor.fetchall()]
-                for rec in zip_db_records:
-                    if rec["file_path"] in discovered_zip_paths:
-                        if rec["status"] == "missing":
-                            await db.execute(
-                                "UPDATE models SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                                (rec["id"],),
-                            )
-                            stats["reactivated_files"] += 1
-                            logger.info(
-                                "Reactivated zip entry: id=%d  %s",
-                                rec["id"],
-                                rec["file_path"],
-                            )
-                    else:
-                        if rec["status"] != "missing":
-                            await db.execute(
-                                "UPDATE models SET status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                                (rec["id"],),
-                            )
-                            stats["missing_files"] += 1
-                            logger.info(
-                                "Marked zip entry as missing: id=%d  %s",
-                                rec["id"],
-                                rec["file_path"],
-                            )
+            if not update_only:
+                discovered_zip_paths = {
+                    zip_handler.make_zip_file_path(str(zp), en)
+                    for zp, en, _, _ in zip_entries
+                }
+                all_lib_ids = set(library_items.keys()) | {
+                    lid for _, _, lid, _ in zip_entries
+                }
+                for lib_id in all_lib_ids:
+                    cursor = await db.execute(
+                        "SELECT id, file_path, status FROM models WHERE library_id = ? AND zip_path IS NOT NULL",
+                        (lib_id,),
+                    )
+                    zip_db_records = [dict(r) for r in await cursor.fetchall()]
+                    for rec in zip_db_records:
+                        if rec["file_path"] in discovered_zip_paths:
+                            if rec["status"] == "missing":
+                                await db.execute(
+                                    "UPDATE models SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                    (rec["id"],),
+                                )
+                                stats["reactivated_files"] += 1
+                                logger.info(
+                                    "Reactivated zip entry: id=%d  %s",
+                                    rec["id"],
+                                    rec["file_path"],
+                                )
+                        else:
+                            if rec["status"] != "missing":
+                                await db.execute(
+                                    "UPDATE models SET status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                    (rec["id"],),
+                                )
+                                stats["missing_files"] += 1
+                                logger.info(
+                                    "Marked zip entry as missing: id=%d  %s",
+                                    rec["id"],
+                                    rec["file_path"],
+                                )
 
             await db.commit()
         finally:

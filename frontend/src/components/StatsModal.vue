@@ -40,6 +40,25 @@ function statusDotClass(status) {
     if (['error', 'stopped', 'unavailable'].includes(status)) return 'status-dot-error';
     return 'status-dot-unknown';
 }
+
+function tagFontSize(count, tags) {
+    if (!tags || tags.length === 0) return '0.8rem';
+    const max = tags[0].count;
+    const min = tags[tags.length - 1].count;
+    if (max === min) return '0.9rem';
+    const t = (count - min) / (max - min);
+    const size = 0.7 + t * 1.1;
+    return size.toFixed(2) + 'rem';
+}
+
+function tagOpacity(count, tags) {
+    if (!tags || tags.length === 0) return 1;
+    const max = tags[0].count;
+    const min = tags[tags.length - 1].count;
+    if (max === min) return 1;
+    const t = (count - min) / (max - min);
+    return (0.5 + t * 0.5).toFixed(2);
+}
 </script>
 
 <template>
@@ -204,12 +223,15 @@ function statusDotClass(status) {
                     </div>
                 </div>
 
-                <!-- Top Tags -->
+                <!-- Tag Cloud -->
                 <div class="settings-section" v-if="stats.top_tags.length > 0">
-                    <div class="settings-section-title">Top Tags</div>
+                    <div class="settings-section-title">Tag Cloud</div>
                     <div class="stats-tag-cloud">
-                        <span v-for="tag in stats.top_tags" :key="tag.name" class="tag-chip">
-                            {{ tag.name }} <span class="tag-count">{{ tag.count }}</span>
+                        <span v-for="tag in stats.top_tags" :key="tag.name"
+                              class="cloud-tag"
+                              :style="{ fontSize: tagFontSize(tag.count, stats.top_tags), opacity: tagOpacity(tag.count, stats.top_tags) }"
+                              :title="tag.name + ': ' + tag.count + ' models'">
+                            {{ tag.name }}
                         </span>
                     </div>
                 </div>
@@ -370,13 +392,22 @@ function statusDotClass(status) {
 .stats-tag-cloud {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 8px 4px;
+    line-height: 1.6;
 }
 
-.tag-count {
-    font-size: 0.65rem;
-    opacity: 0.6;
-    margin-left: 2px;
+.cloud-tag {
+    color: var(--accent);
+    cursor: default;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+}
+
+.cloud-tag:hover {
+    opacity: 1 !important;
+    text-decoration: underline;
 }
 
 /* System health */

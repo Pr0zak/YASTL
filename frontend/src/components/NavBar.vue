@@ -23,6 +23,7 @@ const emit = defineEmits([
     'openStats',
     'searchInput',
     'clearSearch',
+    'quickScan',
 ]);
 
 function statusDotClass(status) {
@@ -84,8 +85,12 @@ function onSearchInput(e) {
                     <span class="status-dot" :class="statusDotClass(systemStatus.health)"></span>
                 </button>
             </div>
+            <button class="btn-icon" @click="emit('quickScan')" :disabled="scanStatus.scanning"
+                    :title="scanStatus.scanning ? 'Scan in progress...' : 'Check for new files'">
+                <span v-html="ICONS.refresh"></span>
+            </button>
             <button class="btn-icon" @click="emit('openImportModal')" title="Import Models">
-                <span v-html="ICONS.link"></span>
+                <span v-html="ICONS.upload"></span>
             </button>
             <button class="btn-icon" :class="{ active: selectionMode }" @click="emit('toggleSelectionMode')" title="Selection mode">
                 <span v-html="ICONS.select"></span>

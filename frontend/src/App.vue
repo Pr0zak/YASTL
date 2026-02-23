@@ -43,6 +43,7 @@ import {
     apiDeleteSavedSearch,
     apiGetSystemStatus,
     apiGetStats,
+    apiRegenerateThumbnail,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -548,11 +549,12 @@ function toggleDuplicatesFilter() {
    Actions
    ============================================================== */
 
-async function triggerScan() {
+async function triggerScan(mode = 'full') {
     try {
-        const { ok, data } = await apiTriggerScan();
+        const { ok, data } = await apiTriggerScan(mode);
         if (ok) {
-            showToast('Library scan started', 'info');
+            const label = mode === 'update' ? 'Quick scan started — checking for new files' : 'Library scan started';
+            showToast(label, 'info');
             scanStatus.scanning = true;
             if (!scanPollTimer) {
                 scanPollTimer = setInterval(fetchScanStatus, 2000);
@@ -564,6 +566,10 @@ async function triggerScan() {
         showToast('Failed to start scan', 'error');
         console.error('triggerScan error:', err);
     }
+}
+
+async function quickScan() {
+    await triggerScan('update');
 }
 
 async function viewModel(model) {
@@ -711,6 +717,22 @@ async function renameModelFile() {
         showToast('File renamed');
     } catch (e) {
         showToast(e.message || 'Failed to rename file', 'error');
+    }
+}
+
+async function regenerateThumbnail() {
+    if (!selectedModel.value) return;
+    const model = selectedModel.value;
+    try {
+        showToast('Regenerating thumbnail...', 'info');
+        await apiRegenerateThumbnail(model.id);
+        // Refresh model data to get new thumbnail info
+        const updated = await apiGetModel(model.id);
+        selectedModel.value = updated;
+        updateModelInList(updated);
+        showToast('Thumbnail regenerated');
+    } catch (e) {
+        showToast(e.message || 'Failed to regenerate thumbnail', 'error');
     }
 }
 
@@ -1218,6 +1240,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @openStats="openStats"
         @searchInput="onSearchInput"
         @clearSearch="clearSearch"
+        @quickScan="quickScan"
     />
 
     <!-- ============================================================
@@ -1447,6 +1470,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @renameModelFile="renameModelFile"
         @deleteModel="deleteModel"
         @toggleBed="toggleBed"
+        @regenerateThumbnail="regenerateThumbnail"
     />
 
     <!-- ============================================================

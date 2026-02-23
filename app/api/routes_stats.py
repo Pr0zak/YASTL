@@ -50,7 +50,7 @@ async def get_stats():
             "FROM tags t "
             "JOIN model_tags mt ON mt.tag_id = t.id "
             "JOIN models m ON m.id = mt.model_id AND m.status = 'active' "
-            "GROUP BY t.id ORDER BY count DESC LIMIT 20"
+            "GROUP BY t.id ORDER BY count DESC LIMIT 50"
         )
         top_tags = [dict(r) for r in await cursor.fetchall()]
 
