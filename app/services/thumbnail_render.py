@@ -176,8 +176,8 @@ def _render_wireframe(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
         vertices_3d, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, WIREFRAME_PADDING
     )
 
-    # Create the image
-    img = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), WIREFRAME_BG_COLOR)
+    # Create the image with transparent background
+    img = Image.new("RGBA", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     # Draw edges
@@ -293,7 +293,7 @@ def _render_solid_fast(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     dot = np.abs(np.dot(normals, light_dir))
     intensity = np.clip(SOLID_AMBIENT + SOLID_DIFFUSE * dot, 0.0, 1.0)
 
-    img = Image.new("RGB", (render_w, render_h), SOLID_BG_COLOR)
+    img = Image.new("RGBA", (render_w, render_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     for fi in sort_order:
@@ -304,7 +304,7 @@ def _render_solid_fast(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
             (float(screen_x[i2]), float(screen_y[i2])),
         ]
         c = (SOLID_BASE_COLOR * intensity[fi]).astype(int)
-        fill_color = (int(c[0]), int(c[1]), int(c[2]))
+        fill_color = (int(c[0]), int(c[1]), int(c[2]), 255)
         draw.polygon(polygon, fill=fill_color, outline=fill_color)
 
     img = img.resize((THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), Image.LANCZOS)
@@ -439,7 +439,7 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     # Sort by depth ascending so closest writes last (wins z-buffer)
     sort_idx = np.argsort(cz)
 
-    color_buf = np.full((H, W, 3), SOLID_BG_COLOR, dtype=np.uint8)
+    color_buf = np.zeros((H, W, 4), dtype=np.uint8)
 
     # Pass 1: write all face centroids -- last (closest) write wins
     sorted_iy = ciy[sort_idx]
@@ -455,6 +455,7 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     color_buf[sorted_iy, sorted_ix, 2] = np.clip(
         SOLID_BASE_COLOR[2] * sorted_int, 0, 255
     ).astype(np.uint8)
+    color_buf[sorted_iy, sorted_ix, 3] = 255
 
     z_buf = np.full((H, W), -np.inf, dtype=np.float64)
     z_buf[sorted_iy, sorted_ix] = cz[sort_idx]
@@ -542,8 +543,9 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
             color_buf[pyc, pxc, 0] = np.clip(SOLID_BASE_COLOR[0] * inten, 0, 255).astype(np.uint8)
             color_buf[pyc, pxc, 1] = np.clip(SOLID_BASE_COLOR[1] * inten, 0, 255).astype(np.uint8)
             color_buf[pyc, pxc, 2] = np.clip(SOLID_BASE_COLOR[2] * inten, 0, 255).astype(np.uint8)
+            color_buf[pyc, pxc, 3] = 255
 
-    img = Image.fromarray(color_buf, "RGB")
+    img = Image.fromarray(color_buf, "RGBA")
     img.save(output_path, "PNG")
     logger.debug("Rendered solid thumbnail (z-buffer): %s", output_path)
     return True

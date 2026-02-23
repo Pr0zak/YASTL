@@ -32,6 +32,14 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["default", "midnight", "forest", "crimson", "ocean", "slate", "light"],
         "default": "default",
     },
+    "favorites_first": {
+        "allowed": ["true", "false"],
+        "default": "false",
+    },
+    "collection_card_tint": {
+        "allowed": ["true", "false"],
+        "default": "false",
+    },
 }
 
 # Numeric settings with min/max validation (stored as strings in DB)

@@ -11,6 +11,7 @@ const props = defineProps({
     selectionMode: { type: Boolean, default: false },
     selectedModels: { type: Set, default: () => new Set() },
     thumbnailMode: { type: String, default: 'wireframe' },
+    collectionCardTint: { type: Boolean, default: false },
 });
 
 const emit = defineEmits([
@@ -49,13 +50,22 @@ function zipName(model) {
 function isSelected(modelId) {
     return props.selectedModels.has(modelId);
 }
+
+function cardStyle(model) {
+    if (!props.collectionCardTint || !model.collection_colors || model.collection_colors.length === 0) return {};
+    const color = model.collection_colors[0];
+    return {
+        backgroundColor: color + '18',
+        borderColor: color + '40',
+    };
+}
 </script>
 
 <template>
     <!-- Grid View -->
     <div v-if="viewMode === 'grid'" class="models-grid">
         <div v-for="model in models" :key="model.id"
-             class="model-card" :class="{ selected: selectionMode && isSelected(model.id) }" @click="emit('viewModel', model)">
+             class="model-card" :class="{ selected: selectionMode && isSelected(model.id) }" :style="cardStyle(model)" @click="emit('viewModel', model)">
             <!-- Thumbnail -->
             <div class="card-thumbnail">
                 <img :src="thumbUrl(model)"
@@ -120,7 +130,7 @@ function isSelected(modelId) {
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="model in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id) }" @click="emit('viewModel', model)">
+                <tr v-for="model in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id) }" :style="cardStyle(model)" @click="emit('viewModel', model)">
                     <td v-if="selectionMode" class="col-select" @click.stop="emit('toggleSelect', model.id)" style="cursor:pointer;text-align:center">
                         <span v-html="ICONS.check" :style="{ opacity: isSelected(model.id) ? 1 : 0.3 }"></span>
                     </td>

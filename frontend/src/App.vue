@@ -164,10 +164,10 @@ const {
     showSettings, libraries, newLibName, newLibPath, addingLibrary,
     thumbnailMode, regeneratingThumbnails, regenProgress,
     autoTagging, autoTagProgress,
-    bedConfig, bedPreset, colorTheme,
+    bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
     setThumbnailMode, regenerateThumbnails, autoTagAll,
-    setBedPreset, saveBedSettings, setColorTheme,
+    setBedPreset, saveBedSettings, setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
 } = settingsComposable;
 
 const updatesComposable = useUpdates(showToast, showConfirm);
@@ -361,6 +361,7 @@ async function fetchModels(append = false) {
         if (filters.collection) params.append('collection', filters.collection);
         params.append('sort_by', filters.sortBy);
         params.append('sort_order', filters.sortOrder);
+        if (favoritesFirst.value) params.append('favorites_first', 'true');
 
         const data = await apiGetModels(params);
 
@@ -1071,6 +1072,12 @@ function toggleFavoritesFilter() {
     fetchModels();
 }
 
+async function handleToggleFavoritesFirst() {
+    await toggleFavoritesFirst();
+    pagination.offset = 0;
+    fetchModels();
+}
+
 function openBulkAddToCollection() {
     addToCollectionModelId.value = null;
     showAddToCollectionModal.value = true;
@@ -1392,6 +1399,7 @@ const { pickNextCollectionColor } = collectionsComposable;
                 :selectionMode="selectionMode"
                 :selectedModels="selectedModels"
                 :thumbnailMode="thumbnailMode"
+                :collectionCardTint="collectionCardTint"
                 @viewModel="viewModel"
                 @toggleSelect="toggleModelSelection"
                 @toggleFavorite="toggleFavorite"
@@ -1495,6 +1503,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :bedConfig="bedConfig"
         :bedPreset="bedPreset"
         :colorTheme="colorTheme"
+        :favoritesFirst="favoritesFirst"
+        :collectionCardTint="collectionCardTint"
         @close="closeSettings"
         @update:newLibName="newLibName = $event"
         @update:newLibPath="newLibPath = $event"
@@ -1513,6 +1523,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         @updateBedConfig="updateBedConfig"
         @saveBedSettings="saveBedSettings"
         @setColorTheme="setColorTheme"
+        @toggleFavoritesFirst="handleToggleFavoritesFirst"
+        @toggleCollectionCardTint="toggleCollectionCardTint"
     />
 
     <!-- ============================================================

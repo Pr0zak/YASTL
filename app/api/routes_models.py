@@ -41,6 +41,7 @@ async def list_models(
     sort_by: str = Query(default="updated_at"),
     sort_order: str = Query(default="desc"),
     library_id: int | None = Query(default=None),
+    favorites_first: bool = Query(default=False),
 ):
     """List models with pagination and filters.
 
@@ -158,10 +159,16 @@ async def list_models(
 
         # Fetch the page of models with sorting
         order_sql = f"m.{sort_by} {sort_order}"
+        fav_prefix = ""
+        fav_join = ""
+        if favorites_first:
+            fav_join = "LEFT JOIN favorites fav ON fav.model_id = m.id"
+            fav_prefix = "CASE WHEN fav.model_id IS NOT NULL THEN 0 ELSE 1 END, "
         query_sql = f"""
             SELECT m.* FROM models m
+            {fav_join}
             {where_sql}
-            ORDER BY {order_sql}
+            ORDER BY {fav_prefix}{order_sql}
             LIMIT ? OFFSET ?
         """
         cursor = await db.execute(query_sql, params + [limit, offset])

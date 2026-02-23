@@ -59,6 +59,12 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     // Color theme
     const colorTheme = ref('default');
 
+    // Favorites first
+    const favoritesFirst = ref(false);
+
+    // Collection card tint
+    const collectionCardTint = ref(false);
+
     let regenPollTimer = null;
     let autoTagPollTimer = null;
 
@@ -128,6 +134,10 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             // Color theme
             colorTheme.value = data.color_theme || 'default';
             applyTheme(colorTheme.value);
+            // Favorites first
+            favoritesFirst.value = data.favorites_first === 'true';
+            // Collection card tint
+            collectionCardTint.value = data.collection_card_tint === 'true';
         } catch (err) {
             console.error('fetchSettings error:', err);
         }
@@ -138,6 +148,26 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             document.documentElement.removeAttribute('data-theme');
         } else {
             document.documentElement.setAttribute('data-theme', theme);
+        }
+    }
+
+    async function toggleFavoritesFirst() {
+        favoritesFirst.value = !favoritesFirst.value;
+        try {
+            await apiUpdateSettings({ favorites_first: favoritesFirst.value ? 'true' : 'false' });
+        } catch (err) {
+            showToast('Failed to save setting', 'error');
+            console.error('toggleFavoritesFirst error:', err);
+        }
+    }
+
+    async function toggleCollectionCardTint() {
+        collectionCardTint.value = !collectionCardTint.value;
+        try {
+            await apiUpdateSettings({ collection_card_tint: collectionCardTint.value ? 'true' : 'false' });
+        } catch (err) {
+            showToast('Failed to save setting', 'error');
+            console.error('toggleCollectionCardTint error:', err);
         }
     }
 
@@ -312,6 +342,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         bedConfig,
         bedPreset,
         colorTheme,
+        favoritesFirst,
+        collectionCardTint,
 
         // Actions
         fetchLibraries,
@@ -324,6 +356,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         setBedPreset,
         saveBedSettings,
         setColorTheme,
+        toggleFavoritesFirst,
+        toggleCollectionCardTint,
         openSettings,
         closeSettings,
     };

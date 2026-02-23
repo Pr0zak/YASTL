@@ -26,6 +26,8 @@ defineProps({
     bedConfig: { type: Object, default: () => ({ enabled: false, shape: 'rectangular', width: 256, depth: 256, height: 256 }) },
     bedPreset: { type: String, default: 'Custom' },
     colorTheme: { type: String, default: 'default' },
+    favoritesFirst: { type: Boolean, default: false },
+    collectionCardTint: { type: Boolean, default: false },
 });
 
 const emit = defineEmits([
@@ -47,6 +49,8 @@ const emit = defineEmits([
     'updateBedConfig',
     'saveBedSettings',
     'setColorTheme',
+    'toggleFavoritesFirst',
+    'toggleCollectionCardTint',
 ]);
 
 const THEMES = [
@@ -87,6 +91,20 @@ const THEMES = [
                             </div>
                             <span class="theme-swatch-label">{{ t.name }}</span>
                         </button>
+                    </div>
+
+                    <!-- Display preferences -->
+                    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light)">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+                            <input type="checkbox" :checked="favoritesFirst"
+                                   @change="emit('toggleFavoritesFirst')">
+                            Show favorites at top of model list
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;margin-top:8px">
+                            <input type="checkbox" :checked="collectionCardTint"
+                                   @change="emit('toggleCollectionCardTint')">
+                            Tint model cards with collection color
+                        </label>
                     </div>
                 </div>
 
