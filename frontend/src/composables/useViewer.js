@@ -34,6 +34,7 @@ export function useViewer() {
     let animationId = null;
     let container = null;
     let resizeObserver = null;
+    let gridHelper = null;
 
     /** Scale factor applied to the model (mm → scene units). */
     let modelScaleFactor = 0;
@@ -158,6 +159,45 @@ export function useViewer() {
     }
 
     /* ==================================================================
+       Theme
+       ================================================================== */
+
+    /** Theme color presets. */
+    const THEME_COLORS = {
+        default: { bg: 0x12182a, gridCenter: 0x2a3a5c, gridLines: 0x1e2a40 },
+        light:   { bg: 0xf5f5f5, gridCenter: 0xcccccc, gridLines: 0xdddddd },
+    };
+
+    /**
+     * Update scene background and grid colors to match the app theme.
+     * @param {'default'|'light'} theme
+     */
+    function setViewerTheme(theme) {
+        const colors = THEME_COLORS[theme] || THEME_COLORS.default;
+        if (scene) {
+            scene.background = new THREE.Color(colors.bg);
+        }
+        if (gridHelper) {
+            gridHelper.material.color.setHex(colors.gridLines);
+            if (gridHelper.material.uniforms) {
+                // GridHelper uses a single material; centerLine color is baked
+                // into the geometry colors — replace the helper entirely.
+            }
+            // GridHelper stores center-line colour in geometry vertex colors.
+            // Cheapest fix: remove old grid and add a new one.
+            if (scene) {
+                scene.remove(gridHelper);
+                gridHelper.geometry.dispose();
+                gridHelper.material.dispose();
+                gridHelper = new THREE.GridHelper(20, 40, colors.gridCenter, colors.gridLines);
+                gridHelper.material.opacity = 0.6;
+                gridHelper.material.transparent = true;
+                scene.add(gridHelper);
+            }
+        }
+    }
+
+    /* ==================================================================
        Public API
        ================================================================== */
 
@@ -166,8 +206,9 @@ export function useViewer() {
      * inside the given container element.
      *
      * @param {string} containerId - The id of the DOM element to render into.
+     * @param {'default'|'light'} [theme='default'] - Color theme for the scene.
      */
-    function initViewer(containerId) {
+    function initViewer(containerId, theme) {
         container = document.getElementById(containerId);
         if (!container) {
             console.warn('YASTL viewer: container not found:', containerId);
@@ -179,7 +220,8 @@ export function useViewer() {
 
         // ---- Scene ----
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x12182a);
+        const initColors = THEME_COLORS[theme] || THEME_COLORS.default;
+        scene.background = new THREE.Color(initColors.bg);
 
         // ---- Camera ----
         camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 10000);
@@ -224,10 +266,11 @@ export function useViewer() {
         scene.add(fillLight);
 
         // ---- Grid ----
-        const grid = new THREE.GridHelper(20, 40, 0x2a3a5c, 0x1e2a40);
-        grid.material.opacity = 0.6;
-        grid.material.transparent = true;
-        scene.add(grid);
+        const themeColors = THEME_COLORS[theme] || THEME_COLORS.default;
+        gridHelper = new THREE.GridHelper(20, 40, themeColors.gridCenter, themeColors.gridLines);
+        gridHelper.material.opacity = 0.6;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
 
         // ---- Resize handling ----
         resizeObserver = new ResizeObserver(() => {
@@ -646,6 +689,7 @@ export function useViewer() {
         initViewer,
         loadModel,
         resetCamera,
+        setViewerTheme,
         setBedOverlay,
         clearBedOverlay,
         dispose,

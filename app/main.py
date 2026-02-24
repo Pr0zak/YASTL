@@ -32,6 +32,7 @@ from app.database import init_db
 from app.services.scanner import Scanner
 from app.services.updater import Updater
 from app.services.watcher import ModelFileWatcher
+from app.workers import init_pool, shutdown_pool
 
 logger = logging.getLogger("yastl")
 logging.basicConfig(
@@ -74,6 +75,9 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db(settings.MODEL_LIBRARY_DB)
     app.state.db_path = settings.MODEL_LIBRARY_DB
+
+    # Start process pool for CPU-bound work (thumbnails, metadata, hashing)
+    init_pool(max_workers=2)
 
     # Backwards compat: import legacy env-var scan path as a library
     if settings.MODEL_LIBRARY_SCAN_PATH is not None:
@@ -119,6 +123,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down YASTL")
+    shutdown_pool()
     try:
         watcher.stop()
     except Exception:

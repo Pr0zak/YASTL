@@ -68,6 +68,7 @@ const {
     initViewer,
     loadModel,
     resetCamera,
+    setViewerTheme,
     setBedOverlay,
     clearBedOverlay,
     dispose: disposeViewer,
@@ -170,8 +171,16 @@ const {
     bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
     setThumbnailMode, regenerateThumbnails, autoTagAll, extractMetadata,
-    setBedPreset, saveBedSettings, setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
+    setBedPreset, saveBedSettings, setColorTheme: _setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
 } = settingsComposable;
+
+function setColorTheme(theme) {
+    _setColorTheme(theme);
+    // Update the 3D viewer if it's currently active
+    if (showDetail.value) {
+        setViewerTheme(theme);
+    }
+}
 
 const updatesComposable = useUpdates(showToast, showConfirm);
 const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
@@ -615,7 +624,7 @@ async function viewModel(model) {
     await nextTick();
 
     viewerLoading.value = true;
-    initViewer('viewer-container');
+    initViewer('viewer-container', colorTheme.value);
 
     const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
     const fmt = (selectedModel.value.file_format || '').toLowerCase();

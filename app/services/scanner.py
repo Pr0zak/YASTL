@@ -17,6 +17,7 @@ from app.services import hasher, processor, thumbnail
 from app.services import zip_handler
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.database import get_setting, update_fts_for_model
+from app.workers import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -424,14 +425,14 @@ class Scanner:
             logger.debug("Skipping already-indexed file: %s", file_path_str)
             return "skipped"
 
-        # Extract metadata (CPU-bound -- run in executor)
+        # Extract metadata (CPU-bound -- run in process pool)
         metadata: dict = await loop.run_in_executor(
-            None, processor.extract_metadata, file_path_str
+            get_pool(), processor.extract_metadata, file_path_str
         )
 
-        # Compute file hash (I/O-bound -- run in executor)
+        # Compute file hash (CPU-bound -- run in process pool)
         file_hash: str = await loop.run_in_executor(
-            None, hasher.compute_file_hash, file_path_str
+            get_pool(), hasher.compute_file_hash, file_path_str
         )
 
         # Check if this file matches an orphaned record (moved file)
@@ -548,11 +549,11 @@ class Scanner:
         )
         model_id = cursor.lastrowid
 
-        # Generate thumbnail (CPU-bound -- run in executor)
+        # Generate thumbnail (CPU-bound -- run in process pool)
         thumb_mode = await get_setting("thumbnail_mode", "wireframe")
         thumb_quality = await get_setting("thumbnail_quality", "fast")
         thumb_filename: str | None = await loop.run_in_executor(
-            None,
+            get_pool(),
             thumbnail.generate_thumbnail,
             file_path_str,
             self.thumbnail_path,
@@ -629,14 +630,14 @@ class Scanner:
             )
             tmp_path_str = str(tmp_path)
 
-            # Extract metadata
+            # Extract metadata (CPU-bound -- process pool)
             metadata: dict = await loop.run_in_executor(
-                None, processor.extract_metadata, tmp_path_str
+                get_pool(), processor.extract_metadata, tmp_path_str
             )
 
-            # Compute hash of the entry content
+            # Compute hash of the entry content (CPU-bound -- process pool)
             file_hash: str = await loop.run_in_executor(
-                None, hasher.compute_file_hash, tmp_path_str
+                get_pool(), hasher.compute_file_hash, tmp_path_str
             )
 
             # Derive fields from the entry name
@@ -689,11 +690,11 @@ class Scanner:
             )
             model_id = cursor.lastrowid
 
-            # Generate thumbnail
+            # Generate thumbnail (CPU-bound -- process pool)
             thumb_mode = await get_setting("thumbnail_mode", "wireframe")
             thumb_quality = await get_setting("thumbnail_quality", "fast")
             thumb_filename: str | None = await loop.run_in_executor(
-                None,
+                get_pool(),
                 thumbnail.generate_thumbnail,
                 tmp_path_str,
                 self.thumbnail_path,
