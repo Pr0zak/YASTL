@@ -19,6 +19,8 @@ defineProps({
     regenProgress: { type: Object, default: () => ({ completed: 0, total: 0 }) },
     autoTagging: { type: Boolean, default: false },
     autoTagProgress: { type: Object, default: () => ({ completed: 0, total: 0, tags_added: 0 }) },
+    extractingMetadata: { type: Boolean, default: false },
+    metadataProgress: { type: Object, default: () => ({ completed: 0, total: 0, updated: 0 }) },
     updateInfo: { type: Object, required: true },
     scanStatus: { type: Object, required: true },
     importCredentials: { type: Object, default: () => ({}) },
@@ -40,6 +42,7 @@ const emit = defineEmits([
     'setThumbnailMode',
     'regenerateThumbnails',
     'autoTagAll',
+    'extractMetadata',
     'checkForUpdates',
     'applyUpdate',
     'saveImportCredential',
@@ -194,13 +197,20 @@ const emit = defineEmits([
                                 @click="emit('regenerateThumbnails')"
                                 :disabled="regeneratingThumbnails">
                             <span v-html="ICONS.refresh"></span>
-                            Regenerate Thumbnails
+                            Regen Thumbnails
                         </button>
                         <button class="btn btn-secondary"
                                 @click="emit('autoTagAll')"
                                 :disabled="autoTagging">
                             <span v-html="ICONS.refresh"></span>
-                            Auto-Tag All Models
+                            Auto-Tag All
+                        </button>
+                        <button class="btn btn-secondary"
+                                @click="emit('extractMetadata')"
+                                :disabled="extractingMetadata"
+                                title="Extract descriptions and tags from README files in zips and folders">
+                            <span v-html="ICONS.refresh"></span>
+                            Extract Metadata
                         </button>
                     </div>
 
@@ -218,6 +228,14 @@ const emit = defineEmits([
                         </div>
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
                             Tags: {{ autoTagProgress.completed }} / {{ autoTagProgress.total }} models &middot; {{ autoTagProgress.tags_added }} tags added
+                        </span>
+                    </div>
+                    <div v-if="extractingMetadata && metadataProgress.total > 0" class="regen-progress" style="margin-top:12px">
+                        <div class="regen-progress-bar">
+                            <div class="regen-progress-fill" :style="{ width: Math.round((metadataProgress.completed / metadataProgress.total) * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                            Metadata: {{ metadataProgress.completed }} / {{ metadataProgress.total }} models &middot; {{ metadataProgress.updated }} updated
                         </span>
                     </div>
                 </div>

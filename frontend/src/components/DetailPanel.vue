@@ -21,6 +21,7 @@ defineProps({
     newTagInput: { type: String, default: '' },
     allCategories: { type: Array, default: () => [] },
     collections: { type: Array, default: () => [] },
+    relatedModels: { type: Array, default: () => [] },
     detailTab: { type: String, default: 'info' },
     showFileDetails: { type: Boolean, default: false },
     bedConfig: { type: Object, default: () => ({ enabled: false, width: 256, depth: 256, height: 256, shape: 'rectangular' }) },
@@ -57,6 +58,7 @@ const emit = defineEmits([
     'deleteModel',
     'toggleBed',
     'regenerateThumbnail',
+    'openRelatedModel',
 ]);
 
 function formatClass(fmt) {
@@ -341,6 +343,31 @@ function formatClass(fmt) {
                                     </span>
                                     <span v-if="!selectedModel.collections || !selectedModel.collections.length"
                                           class="text-muted text-sm">No collections</span>
+                                </div>
+                            </div>
+
+                            <!-- Related Models -->
+                            <div v-if="relatedModels.length > 0" class="info-section">
+                                <div class="info-section-title">
+                                    Related Models
+                                    <span class="text-muted" style="font-weight:normal;font-size:0.75rem;margin-left:6px">
+                                        {{ relatedModels.length }} in same {{ selectedModel.zip_path ? 'zip' : 'folder' }}
+                                    </span>
+                                </div>
+                                <div class="related-models-grid">
+                                    <div v-for="rm in relatedModels" :key="rm.id"
+                                         class="related-model-item"
+                                         @click="emit('openRelatedModel', rm.id)"
+                                         :title="rm.name">
+                                        <img v-if="rm.thumbnail_path"
+                                             :src="'/api/models/' + rm.id + '/thumbnail'"
+                                             class="related-model-thumb"
+                                             loading="lazy" alt="">
+                                        <div v-else class="related-model-thumb related-model-thumb-placeholder">
+                                            <span v-html="ICONS.cube"></span>
+                                        </div>
+                                        <div class="related-model-name">{{ rm.name }}</div>
+                                    </div>
                                 </div>
                             </div>
                         </template>

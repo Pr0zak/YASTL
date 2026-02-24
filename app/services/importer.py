@@ -230,7 +230,7 @@ def extract_zip_metadata(zip_path: Path) -> dict:
     source URL.  Parses the zip name and any attribution/readme files
     for tags, title, and source URL.
 
-    Returns dict with keys: title, source_url, tags, model_files, site.
+    Returns dict with keys: title, source_url, tags, model_files, site, description.
     """
     meta: dict = {
         "title": None,
@@ -238,6 +238,7 @@ def extract_zip_metadata(zip_path: Path) -> dict:
         "tags": [],
         "model_files": [],
         "site": None,
+        "description": None,
     }
 
     stem = zip_path.stem
@@ -272,10 +273,21 @@ def extract_zip_metadata(zip_path: Path) -> dict:
 
                 # Look for attribution / readme / license files
                 basename_lower = PurePosixPath(name).name.lower()
-                if basename_lower in ("attribution.txt", "attribution_card.html", "readme.txt", "license.txt"):
+                if basename_lower in (
+                    "attribution.txt", "attribution_card.html",
+                    "readme.txt", "readme.md", "license.txt",
+                ):
                     try:
                         text = zf.read(name).decode("utf-8", errors="replace")
                         _parse_attribution(text, meta)
+                        # Use README content as description fallback
+                        if (
+                            meta["description"] is None
+                            and basename_lower in ("readme.txt", "readme.md")
+                        ):
+                            desc = _extract_freeform_description(text)
+                            if desc:
+                                meta["description"] = desc
                     except Exception:
                         pass
     except zipfile.BadZipFile:
@@ -364,8 +376,82 @@ def _parse_attribution(text: str, meta: dict) -> None:
         elif key == "tags":
             parsed = [t.strip() for t in val.split(",") if t.strip()]
             meta["tags"].extend(parsed)
+        elif key == "description":
+            if not meta.get("description"):
+                meta["description"] = val
         elif key == "creator":
             meta["tags"].append(val)
+
+
+def _extract_freeform_description(text: str) -> str | None:
+    """Extract a freeform description from README content.
+
+    Strips structured key-value lines and returns the remaining text
+    as a description (max 2000 chars).  Returns None if the text is
+    too short or only contains URLs/structured data.
+    """
+    lines: list[str] = []
+    for line in text.split("\n"):
+        line = line.strip()
+        # Strip HTML tags
+        clean = re.sub(r"<[^>]+>", "", line).strip()
+        if not clean:
+            continue
+        # Skip key-value lines (already parsed by _parse_attribution)
+        if re.match(r"^(Title|URL|Creator|Tags|Description)\s*:", clean, re.IGNORECASE):
+            continue
+        # Skip lines that are just URLs
+        if re.match(r"^https?://\S+$", clean):
+            continue
+        # Skip Thingiverse attribution lines ("X by Y on Thingiverse: URL")
+        if re.match(r".+\s+by\s+\S+\s+on\s+Thingiverse:", clean, re.IGNORECASE):
+            continue
+        lines.append(clean)
+    desc = "\n".join(lines).strip()
+    if len(desc) < 10:
+        return None
+    return desc[:2000]
+
+
+def extract_folder_metadata(folder: Path) -> dict:
+    """Extract metadata from README/attribution files in a folder.
+
+    Looks for common metadata files (README.txt, README.md,
+    attribution.txt, etc.) and parses them for title, source URL,
+    tags, and description.
+
+    Returns dict with keys: title, source_url, tags, description, site.
+    """
+    meta: dict = {
+        "title": None,
+        "source_url": None,
+        "tags": [],
+        "description": None,
+        "site": None,
+    }
+
+    metadata_files = [
+        "attribution.txt", "Attribution_card.html",
+        "README.txt", "README.md", "readme.txt", "readme.md",
+        "license.txt",
+    ]
+
+    for fname in metadata_files:
+        fpath = folder / fname
+        if not fpath.is_file():
+            continue
+        try:
+            text = fpath.read_text(encoding="utf-8", errors="replace")
+            _parse_attribution(text, meta)
+            # Use README content as description fallback
+            if meta["description"] is None and fname.lower() in ("readme.txt", "readme.md"):
+                desc = _extract_freeform_description(text)
+                if desc:
+                    meta["description"] = desc
+        except Exception:
+            logger.debug("Failed to read metadata file: %s", fpath)
+
+    return meta
 
 
 async def process_uploaded_zip(

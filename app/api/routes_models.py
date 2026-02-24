@@ -528,3 +528,55 @@ async def delete_model(request: Request, model_id: int):
         )
 
     return {"detail": f"Model {model_id} deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Related models (same zip or folder)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{model_id}/related")
+async def get_related_models(request: Request, model_id: int):
+    """Return models that share the same zip file or parent folder.
+
+    Returns up to 50 related models excluding the model itself.
+    """
+    db_path = _get_db_path(request)
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Get the model's zip_path and file_path
+        cursor = await db.execute(
+            "SELECT id, file_path, zip_path FROM models WHERE id = ?",
+            (model_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+        model = dict(row)
+        related: list[dict] = []
+
+        if model["zip_path"]:
+            # Find other models in the same zip
+            cursor = await db.execute(
+                "SELECT id, name, file_format, file_size, thumbnail_path, zip_entry "
+                "FROM models WHERE zip_path = ? AND id != ? AND status = 'active' "
+                "ORDER BY name LIMIT 50",
+                (model["zip_path"], model_id),
+            )
+        else:
+            # Find other models in the same parent folder
+            parent_folder = str(Path(model["file_path"]).parent)
+            cursor = await db.execute(
+                "SELECT id, name, file_format, file_size, thumbnail_path, zip_entry "
+                "FROM models WHERE file_path LIKE ? AND id != ? AND status = 'active' "
+                "AND zip_path IS NULL "
+                "ORDER BY name LIMIT 50",
+                (parent_folder + "/%", model_id),
+            )
+
+        related = [dict(r) for r in await cursor.fetchall()]
+
+    return {"related": related, "count": len(related)}

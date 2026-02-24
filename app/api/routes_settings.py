@@ -2,12 +2,14 @@
 
 import asyncio
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from app.config import settings as app_settings
-from app.database import get_all_settings, get_db, get_setting, set_setting
+from app.database import get_all_settings, get_db, get_setting, set_setting, update_fts_for_model
 from app.services import thumbnail
+from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.api._helpers import apply_auto_tags
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,14 @@ _autotag_progress: dict = {
     "total": 0,
     "completed": 0,
     "tags_added": 0,
+}
+
+# Module-level metadata backfill progress state
+_metadata_progress: dict = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+    "updated": 0,
 }
 
 
@@ -274,4 +284,157 @@ async def _auto_tag_all_models() -> None:
         "Auto-tagging complete: %d models, %d tags added",
         _autotag_progress["total"],
         _autotag_progress["tags_added"],
+    )
+
+
+@router.post("/extract-metadata")
+async def extract_metadata_all(background_tasks: BackgroundTasks):
+    """Extract metadata from zip/folder README files for all active models.
+
+    Only updates models that currently have an empty description.
+    Runs in the background and returns immediately.
+    """
+    if _metadata_progress["running"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Metadata extraction is already in progress",
+        )
+
+    background_tasks.add_task(_extract_metadata_all_models)
+
+    return {"detail": "Metadata extraction started in background"}
+
+
+@router.get("/extract-metadata/status")
+async def extract_metadata_status():
+    """Return the current progress of the metadata extraction operation."""
+    return {
+        "running": _metadata_progress["running"],
+        "total": _metadata_progress["total"],
+        "completed": _metadata_progress["completed"],
+        "updated": _metadata_progress["updated"],
+    }
+
+
+async def _extract_metadata_all_models() -> None:
+    """Walk all active models and extract metadata from their zip/folder files."""
+    loop = asyncio.get_event_loop()
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, file_path, zip_path, description, source_url "
+            "FROM models WHERE status = 'active' AND "
+            "(description IS NULL OR description = '')"
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+
+    _metadata_progress["running"] = True
+    _metadata_progress["total"] = len(rows)
+    _metadata_progress["completed"] = 0
+    _metadata_progress["updated"] = 0
+
+    logger.info("Extracting metadata for %d models", len(rows))
+
+    # Caches to avoid re-parsing the same zip/folder
+    zip_cache: dict[str, dict] = {}
+    folder_cache: dict[str, dict] = {}
+
+    try:
+        for row in rows:
+            model_id = row["id"]
+            try:
+                meta: dict = {}
+
+                if row["zip_path"]:
+                    # Zip-based model
+                    zp = row["zip_path"]
+                    if zp not in zip_cache:
+                        try:
+                            zip_cache[zp] = await loop.run_in_executor(
+                                None, extract_zip_metadata, Path(zp)
+                            )
+                        except Exception:
+                            zip_cache[zp] = {}
+                    meta = zip_cache[zp]
+                else:
+                    # Regular file — check parent folder
+                    folder = str(Path(row["file_path"]).parent)
+                    if folder not in folder_cache:
+                        try:
+                            folder_cache[folder] = await loop.run_in_executor(
+                                None, extract_folder_metadata, Path(folder)
+                            )
+                        except Exception:
+                            folder_cache[folder] = {}
+                    meta = folder_cache[folder]
+
+                description = meta.get("description") or ""
+                source_url = meta.get("source_url")
+                tags = meta.get("tags", [])
+                site = meta.get("site")
+
+                if not description and not source_url and not tags:
+                    continue
+
+                async with get_db() as db:
+                    # Update description and source_url
+                    updates = []
+                    params = []
+                    if description:
+                        updates.append("description = ?")
+                        params.append(description)
+                    if source_url and not row["source_url"]:
+                        updates.append("source_url = ?")
+                        params.append(source_url)
+
+                    if updates:
+                        params.append(model_id)
+                        await db.execute(
+                            f"UPDATE models SET {', '.join(updates)} WHERE id = ?",
+                            tuple(params),
+                        )
+
+                    # Apply tags
+                    all_tags = list(tags)
+                    if site and site not in all_tags:
+                        all_tags.append(site)
+                    for tag_name in all_tags:
+                        tag_name = tag_name.strip()
+                        if not tag_name:
+                            continue
+                        await db.execute(
+                            "INSERT OR IGNORE INTO tags (name) VALUES (?)",
+                            (tag_name,),
+                        )
+                        cursor = await db.execute(
+                            "SELECT id FROM tags WHERE name = ? COLLATE NOCASE",
+                            (tag_name,),
+                        )
+                        tag_row = await cursor.fetchone()
+                        if tag_row:
+                            tag_id = tag_row["id"]
+                            await db.execute(
+                                "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
+                                (model_id, tag_id),
+                            )
+
+                    # Update FTS index
+                    await update_fts_for_model(db, model_id)
+                    await db.commit()
+
+                _metadata_progress["updated"] += 1
+
+            except Exception as e:
+                logger.warning(
+                    "Failed to extract metadata for model %d: %s", model_id, e
+                )
+            finally:
+                _metadata_progress["completed"] += 1
+    finally:
+        _metadata_progress["running"] = False
+
+    logger.info(
+        "Metadata extraction complete: %d models checked, %d updated",
+        _metadata_progress["total"],
+        _metadata_progress["updated"],
     )

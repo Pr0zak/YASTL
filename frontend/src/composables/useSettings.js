@@ -14,6 +14,8 @@ import {
     apiGetRegenStatus,
     apiAutoTagAll,
     apiGetAutoTagStatus,
+    apiExtractMetadata,
+    apiGetMetadataStatus,
 } from '../api.js';
 
 import { ref, reactive } from 'vue';
@@ -45,6 +47,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     const regenProgress = reactive({ running: false, total: 0, completed: 0 });
     const autoTagging = ref(false);
     const autoTagProgress = reactive({ running: false, total: 0, completed: 0, tags_added: 0 });
+    const extractingMetadata = ref(false);
+    const metadataProgress = reactive({ running: false, total: 0, completed: 0, updated: 0 });
 
     // Print bed config
     const bedConfig = reactive({
@@ -67,6 +71,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
 
     let regenPollTimer = null;
     let autoTagPollTimer = null;
+    let metadataPollTimer = null;
 
     async function fetchLibraries() {
         try {
@@ -309,6 +314,47 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         }, 2000);
     }
 
+    async function extractMetadata() {
+        if (!await showConfirm({
+            title: 'Extract Metadata',
+            message: 'Extract descriptions and tags from README files in zips and folders? Only updates models with empty descriptions. Runs in background.',
+            action: 'Extract',
+        })) return;
+        extractingMetadata.value = true;
+        try {
+            await apiExtractMetadata();
+            showToast('Metadata extraction started', 'info');
+            startMetadataPolling();
+        } catch (err) {
+            showToast(err.message || 'Failed to start metadata extraction', 'error');
+            console.error('extractMetadata error:', err);
+            extractingMetadata.value = false;
+        }
+    }
+
+    function startMetadataPolling() {
+        if (metadataPollTimer) clearInterval(metadataPollTimer);
+        metadataPollTimer = setInterval(async () => {
+            try {
+                const data = await apiGetMetadataStatus();
+                metadataProgress.running = data.running;
+                metadataProgress.total = data.total;
+                metadataProgress.completed = data.completed;
+                metadataProgress.updated = data.updated;
+                if (!data.running) {
+                    clearInterval(metadataPollTimer);
+                    metadataPollTimer = null;
+                    extractingMetadata.value = false;
+                    showToast(`Metadata extraction complete: ${data.updated} models updated`);
+                    fetchModelsFn();
+                    if (fetchTagsFn) fetchTagsFn();
+                }
+            } catch (err) {
+                console.error('metadataPoll error:', err);
+            }
+        }, 2000);
+    }
+
     function openSettings(checkForUpdatesFn, updateInfo) {
         fetchLibraries();
         fetchSettings();
@@ -339,6 +385,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         regenProgress,
         autoTagging,
         autoTagProgress,
+        extractingMetadata,
+        metadataProgress,
         bedConfig,
         bedPreset,
         colorTheme,
@@ -353,6 +401,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         setThumbnailMode,
         regenerateThumbnails,
         autoTagAll,
+        extractMetadata,
         setBedPreset,
         saveBedSettings,
         setColorTheme,

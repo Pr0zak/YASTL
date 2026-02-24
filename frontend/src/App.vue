@@ -44,6 +44,7 @@ import {
     apiGetSystemStatus,
     apiGetStats,
     apiRegenerateThumbnail,
+    apiGetRelatedModels,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -84,6 +85,7 @@ const allCategories = ref([]);
 const newTagInput = ref('');
 const tagSuggestions = ref([]);
 const tagSuggestionsLoading = ref(false);
+const relatedModels = ref([]);
 const sidebarOpen = ref(window.innerWidth > 768);
 
 // Editable field state
@@ -164,9 +166,10 @@ const {
     showSettings, libraries, newLibName, newLibPath, addingLibrary,
     thumbnailMode, regeneratingThumbnails, regenProgress,
     autoTagging, autoTagProgress,
+    extractingMetadata, metadataProgress,
     bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
-    setThumbnailMode, regenerateThumbnails, autoTagAll,
+    setThumbnailMode, regenerateThumbnails, autoTagAll, extractMetadata,
     setBedPreset, saveBedSettings, setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
 } = settingsComposable;
 
@@ -588,9 +591,15 @@ async function viewModel(model) {
     isEditingDesc.value = false;
     isEditingSourceUrl.value = false;
     tagSuggestions.value = [];
+    relatedModels.value = [];
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
+
+    // Fetch related models in background
+    apiGetRelatedModels(selectedModel.value.id).then(data => {
+        relatedModels.value = data.related || [];
+    }).catch(() => {});
     document.body.classList.add('modal-open');
 
     await nextTick();
@@ -637,6 +646,15 @@ async function viewModel(model) {
     } else {
         bedVisible.value = false;
     }
+}
+
+async function openRelatedModel(modelId) {
+    // Close current and open the related model
+    bedVisible.value = false;
+    disposeViewer();
+    viewerLoading.value = false;
+    const fakeModel = { id: modelId };
+    await viewModel(fakeModel);
 }
 
 function closeDetail() {
@@ -1447,6 +1465,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :newTagInput="newTagInput"
         :allCategories="allCategories"
         :collections="collections"
+        :relatedModels="relatedModels"
         :detailTab="detailTab"
         :showFileDetails="showFileDetails"
         :bedConfig="bedConfig"
@@ -1479,6 +1498,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @renameModelFile="renameModelFile"
         @deleteModel="deleteModel"
         @toggleBed="toggleBed"
+        @openRelatedModel="openRelatedModel"
         @regenerateThumbnail="regenerateThumbnail"
     />
 
@@ -1496,6 +1516,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :regenProgress="regenProgress"
         :autoTagging="autoTagging"
         :autoTagProgress="autoTagProgress"
+        :extractingMetadata="extractingMetadata"
+        :metadataProgress="metadataProgress"
         :updateInfo="updateInfo"
         :scanStatus="scanStatus"
         :importCredentials="importCredentials"
@@ -1514,6 +1536,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @setThumbnailMode="setThumbnailMode"
         @regenerateThumbnails="regenerateThumbnails"
         @autoTagAll="autoTagAll"
+        @extractMetadata="extractMetadata"
         @checkForUpdates="checkForUpdates"
         @applyUpdate="applyUpdate"
         @saveImportCredential="saveImportCredential"

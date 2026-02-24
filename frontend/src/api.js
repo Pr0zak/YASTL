@@ -32,6 +32,12 @@ export async function apiUpdateModel(id, data) {
     return json;
 }
 
+export async function apiGetRelatedModels(id) {
+    const res = await fetch(`/api/models/${id}/related`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
 export async function apiDeleteModel(id) {
     const res = await fetch(`/api/models/${id}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -316,6 +322,21 @@ export async function apiAutoTagAll() {
 
 export async function apiGetAutoTagStatus() {
     const res = await fetch('/api/settings/auto-tag-all/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+export async function apiExtractMetadata() {
+    const res = await fetch('/api/settings/extract-metadata', { method: 'POST' });
+    if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.detail || 'Failed to start metadata extraction');
+    }
+    return res.json();
+}
+
+export async function apiGetMetadataStatus() {
+    const res = await fetch('/api/settings/extract-metadata/status');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
 }

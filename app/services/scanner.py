@@ -15,6 +15,7 @@ import aiosqlite
 
 from app.services import hasher, processor, thumbnail
 from app.services import zip_handler
+from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.database import get_setting, update_fts_for_model
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,7 @@ class Scanner:
         try:
             # Process regular (non-zip) model files per library with
             # move detection and orphan reconciliation.
+            folder_meta_cache: dict[str, dict] = {}
             for library_id, items in library_items.items():
                 orphan_index: dict[str, list[dict]] = {}
 
@@ -226,7 +228,8 @@ class Scanner:
                 for file_path, scan_root in items:
                     try:
                         result = await self._process_file(
-                            db, file_path, loop, library_id, scan_root, orphan_index
+                            db, file_path, loop, library_id, scan_root, orphan_index,
+                            folder_meta_cache=folder_meta_cache,
                         )
                         if result == "new":
                             stats["new_files"] += 1
@@ -272,11 +275,26 @@ class Scanner:
                                 rec["file_path"],
                             )
 
+            # Pre-compute zip metadata (once per zip file)
+            zip_meta_cache: dict[str, dict] = {}
+            for zip_path, entry_name, library_id, scan_root in zip_entries:
+                zp_str = str(zip_path)
+                if zp_str not in zip_meta_cache:
+                    try:
+                        zip_meta_cache[zp_str] = await loop.run_in_executor(
+                            None, extract_zip_metadata, zip_path
+                        )
+                    except Exception:
+                        logger.debug("Failed to extract zip metadata: %s", zp_str)
+                        zip_meta_cache[zp_str] = {}
+
             # Process model entries inside zip archives
             for zip_path, entry_name, library_id, scan_root in zip_entries:
                 try:
+                    zip_meta = zip_meta_cache.get(str(zip_path), {})
                     added = await self._process_zip_entry(
-                        db, zip_path, entry_name, loop, library_id, scan_root
+                        db, zip_path, entry_name, loop, library_id, scan_root,
+                        zip_meta=zip_meta,
                     )
                     if added:
                         stats["new_files"] += 1
@@ -376,6 +394,7 @@ class Scanner:
         library_id: int,
         scan_root: Path,
         orphan_index: dict[str, list[dict]] | None = None,
+        folder_meta_cache: dict[str, dict] | None = None,
     ) -> str:
         """Process a single file.
 
@@ -384,6 +403,10 @@ class Scanner:
         existing orphaned record if the hash matches a moved file), creates
         category associations derived from the directory hierarchy, and
         updates the FTS index.
+
+        Args:
+            folder_meta_cache: Shared cache of folder metadata dicts keyed
+                by directory path string.  Populated lazily.
 
         Returns:
             ``"new"`` if the file was newly inserted, ``"moved"`` if an
@@ -479,6 +502,23 @@ class Scanner:
         )
         file_size = metadata.get("file_size") or os.path.getsize(file_path)
 
+        # Extract folder metadata (README, attribution files)
+        folder_meta: dict = {}
+        if folder_meta_cache is not None:
+            folder_key = str(file_path.parent)
+            if folder_key not in folder_meta_cache:
+                try:
+                    folder_meta_cache[folder_key] = await loop.run_in_executor(
+                        None, extract_folder_metadata, file_path.parent
+                    )
+                except Exception:
+                    logger.debug("Failed to extract folder metadata: %s", folder_key)
+                    folder_meta_cache[folder_key] = {}
+            folder_meta = folder_meta_cache[folder_key]
+
+        description = folder_meta.get("description") or ""
+        source_url = folder_meta.get("source_url")
+
         # Insert model row (we need the id for the thumbnail filename)
         cursor = await db.execute(
             """
@@ -486,12 +526,12 @@ class Scanner:
                 name, description, file_path, file_format, file_size,
                 file_hash, vertex_count, face_count,
                 dimensions_x, dimensions_y, dimensions_z,
-                thumbnail_path, library_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                thumbnail_path, library_id, source_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
-                "",
+                description,
                 file_path_str,
                 file_format,
                 file_size,
@@ -503,6 +543,7 @@ class Scanner:
                 metadata.get("dimensions_z"),
                 None,  # thumbnail set after generation
                 library_id,
+                source_url,
             ),
         )
         model_id = cursor.lastrowid
@@ -527,6 +568,13 @@ class Scanner:
                 (thumb_filename, thumb_mode, thumb_quality, model_id),
             )
 
+        # Apply tags from folder metadata
+        if folder_meta:
+            await self._apply_tags(db, model_id, folder_meta.get("tags", []))
+            site = folder_meta.get("site")
+            if site:
+                await self._apply_tags(db, model_id, [site])
+
         # Auto-create categories from directory structure
         await self._create_categories_from_path(db, file_path, model_id, scan_root)
 
@@ -548,11 +596,16 @@ class Scanner:
         loop: asyncio.AbstractEventLoop,
         library_id: int,
         scan_root: Path,
+        zip_meta: dict | None = None,
     ) -> bool:
         """Process a single model entry inside a zip archive.
 
         Extracts the entry to a temporary file, runs metadata extraction,
         hashing, and thumbnail generation against it, then cleans up.
+
+        Args:
+            zip_meta: Pre-extracted zip metadata (title, source_url, tags,
+                description) from ``extract_zip_metadata()``.
 
         Returns:
             True if the entry was newly inserted, False if skipped.
@@ -597,6 +650,13 @@ class Scanner:
             )
             file_size = metadata.get("file_size") or os.path.getsize(tmp_path)
 
+            # Extract description and source_url from zip metadata
+            description = ""
+            source_url = None
+            if zip_meta:
+                description = zip_meta.get("description") or ""
+                source_url = zip_meta.get("source_url")
+
             # Insert model row
             cursor = await db.execute(
                 """
@@ -604,12 +664,13 @@ class Scanner:
                     name, description, file_path, file_format, file_size,
                     file_hash, vertex_count, face_count,
                     dimensions_x, dimensions_y, dimensions_z,
-                    thumbnail_path, library_id, zip_path, zip_entry
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    thumbnail_path, library_id, zip_path, zip_entry,
+                    source_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
-                    "",
+                    description,
                     synthetic_path,
                     file_format,
                     file_size,
@@ -623,6 +684,7 @@ class Scanner:
                     library_id,
                     zip_path_str,
                     entry_name,
+                    source_url,
                 ),
             )
             model_id = cursor.lastrowid
@@ -646,6 +708,14 @@ class Scanner:
                     (thumb_filename, thumb_mode, thumb_quality, model_id),
                 )
 
+            # Apply tags from zip metadata
+            if zip_meta:
+                await self._apply_tags(db, model_id, zip_meta.get("tags", []))
+                # Add site name as tag
+                site = zip_meta.get("site")
+                if site:
+                    await self._apply_tags(db, model_id, [site])
+
             # Categories: use zip file's directory + entry's internal path
             await self._create_categories_for_zip_entry(
                 db, zip_path, entry_name, model_id, scan_root
@@ -664,6 +734,31 @@ class Scanner:
                     tmp_path.unlink()
                 except OSError:
                     pass
+
+    async def _apply_tags(
+        self,
+        db: aiosqlite.Connection,
+        model_id: int,
+        tags: list[str],
+    ) -> None:
+        """Insert tags for a model, creating tag records as needed."""
+        for tag_name in tags:
+            tag_name = tag_name.strip()
+            if not tag_name:
+                continue
+            await db.execute(
+                "INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,)
+            )
+            cursor = await db.execute(
+                "SELECT id FROM tags WHERE name = ? COLLATE NOCASE", (tag_name,)
+            )
+            tag_row = await cursor.fetchone()
+            if tag_row:
+                tag_id = tag_row[0] if not isinstance(tag_row, dict) else tag_row["id"]
+                await db.execute(
+                    "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
+                    (model_id, tag_id),
+                )
 
     async def _create_categories_for_zip_entry(
         self,
