@@ -25,7 +25,7 @@ YASTL (Yet Another STL) is a full-stack web application for browsing, searching,
 app/                    # Main application package
   main.py               # FastAPI app init and lifespan (serves Vite dist/)
   config.py             # Pydantic settings (YASTL_ env prefix)
-  workers.py            # Shared ProcessPoolExecutor (init/get/shutdown)
+  workers.py            # Shared ProcessPoolExecutor + memory diagnostics
   database.py           # Runtime DB logic (imports schema from database_schema.py)
   database_schema.py    # SCHEMA_SQL, FTS_SCHEMA_SQL, migrations, indexes
   api/                  # Route modules (split into focused files)
@@ -124,7 +124,8 @@ docker compose up -d
 - **Vite frontend** — SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/
 - **SQLite with WAL mode** — concurrent reads, FTS5 for full-text search (porter tokenizer)
 - **Service layer pattern** — business logic in `app/services/`, routes in `app/api/`
-- **Process pool** — `app/workers.py` manages a shared `ProcessPoolExecutor(max_workers=1)` created at startup. CPU-bound work (thumbnail rendering, metadata extraction, file hashing) uses `loop.run_in_executor(get_pool(), ...)` to bypass the GIL — CPU work runs on core 1 while the asyncio event loop stays responsive on core 0. Only 1 worker to avoid OOM on CT333 (4GB RAM); each worker process loads ~300MB of Python+trimesh+numpy. I/O-bound work (zip extraction, file discovery) stays on the default thread pool.
+- **Process pool** — `app/workers.py` manages a shared `ProcessPoolExecutor(max_workers=1)` created at startup. CPU-bound work (thumbnail rendering, metadata extraction, file hashing) uses `loop.run_in_executor(get_pool(), ...)` to bypass the GIL — CPU work runs on core 1 while the asyncio event loop stays responsive on core 0. **Only 1 worker** to avoid OOM on CT333 (4GB RAM); each worker process loads ~300MB of Python+trimesh+numpy — 2 workers caused OOM. I/O-bound work (zip extraction, file discovery) stays on the default thread pool.
+- **Memory diagnostics** — `app/workers.py` provides `log_memory(context)` which logs process RSS + system available/total/swap via `/proc/meminfo`. Called at scan start/end, thumbnail regen start/end, every 50 models during regen, and on any model taking >10s (logged as `WARNING: Slow thumbnail: model <id> took <N>s <path>`). View with `journalctl -u yastl | grep -E 'Memory:|Slow thumbnail'`.
 - **Background tasks** — directory scanning and file watching run off the request/response thread
 - **Server-side thumbnails** — trimesh rendering with Pillow wireframe fallback (256x256 PNG)
 - **GLB conversion** — server-side trimesh conversion for formats Three.js can't load natively (3MF, STEP)
