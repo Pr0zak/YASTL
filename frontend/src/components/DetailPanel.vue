@@ -360,10 +360,12 @@ function formatClass(fmt) {
                                          @click="emit('openRelatedModel', rm.id)"
                                          :title="rm.name">
                                         <img v-if="rm.thumbnail_path"
-                                             :src="'/api/models/' + rm.id + '/thumbnail'"
+                                             :src="'/thumbnails/' + rm.thumbnail_path"
                                              class="related-model-thumb"
-                                             loading="lazy" alt="">
-                                        <div v-else class="related-model-thumb related-model-thumb-placeholder">
+                                             loading="lazy" alt=""
+                                             @error="$event.target.style.display='none'; $event.target.nextElementSibling && ($event.target.nextElementSibling.style.display='flex')">
+                                        <div :style="rm.thumbnail_path ? {display:'none'} : {}"
+                                             class="related-model-thumb related-model-thumb-placeholder">
                                             <span v-html="ICONS.cube"></span>
                                         </div>
                                         <div class="related-model-name">{{ rm.name }}</div>
