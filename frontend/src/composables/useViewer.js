@@ -74,6 +74,31 @@ export function useViewer() {
     }
 
     /**
+     * Check if a vertex color buffer is too dark to be visible on a dark background.
+     * Samples up to 100 evenly-spaced vertices and computes average luminance.
+     * @param {THREE.BufferAttribute} colorAttr - The geometry's 'color' attribute.
+     * @returns {boolean} True if the average color is below the visibility threshold.
+     */
+    function isVertexColorDark(colorAttr) {
+        const count = colorAttr.count;
+        if (count === 0) return true;
+        const step = Math.max(1, Math.floor(count / 100));
+        let totalLum = 0;
+        let samples = 0;
+        for (let i = 0; i < count; i += step) {
+            const r = colorAttr.getX(i);
+            const g = colorAttr.getY(i);
+            const b = colorAttr.getZ(i);
+            // Relative luminance (ITU-R BT.709)
+            totalLum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            samples++;
+        }
+        const avgLum = totalLum / samples;
+        // Threshold: luminance below 0.15 is hard to see on the dark background
+        return avgLum < 0.15;
+    }
+
+    /**
      * Remove and dispose the current model from the scene.
      */
     function clearCurrentModel() {
@@ -398,6 +423,14 @@ export function useViewer() {
                                 if (child.isMesh) {
                                     if (!child.material || (!child.material.vertexColors && !child.material.map)) {
                                         child.material = DEFAULT_MATERIAL.clone();
+                                    } else if (child.material.vertexColors && child.geometry) {
+                                        // 3MF files embed slicer filament colors as vertex colors.
+                                        // Dark filament colors (e.g. dark green) are nearly invisible
+                                        // on the dark viewer background — replace with default material.
+                                        const colorAttr = child.geometry.getAttribute('color');
+                                        if (colorAttr && isVertexColorDark(colorAttr)) {
+                                            child.material = DEFAULT_MATERIAL.clone();
+                                        }
                                     }
                                     child.material.side = THREE.DoubleSide;
                                     child.castShadow = true;
