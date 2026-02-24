@@ -9,6 +9,7 @@ are auto-created from the directory hierarchy (folder names become categories).
 import asyncio
 import logging
 import os
+import time
 from pathlib import Path
 
 import aiosqlite
@@ -554,6 +555,7 @@ class Scanner:
         # Generate thumbnail (CPU-bound -- run in process pool)
         thumb_mode = await get_setting("thumbnail_mode", "wireframe")
         thumb_quality = await get_setting("thumbnail_quality", "fast")
+        t0 = time.monotonic()
         thumb_filename: str | None = await loop.run_in_executor(
             get_pool(),
             thumbnail.generate_thumbnail,
@@ -563,6 +565,12 @@ class Scanner:
             thumb_mode,
             thumb_quality,
         )
+        elapsed = time.monotonic() - t0
+        if elapsed > 10:
+            logger.warning(
+                "Slow thumbnail: model %d took %.1fs  %s", model_id, elapsed, file_path_str
+            )
+            log_memory(f"slow_scan_model_{model_id}")
 
         # Update the model row with the thumbnail path and tracking columns
         if thumb_filename is not None:

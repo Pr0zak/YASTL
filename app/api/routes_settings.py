@@ -201,10 +201,13 @@ async def _regenerate_all_thumbnails(
 
     async def _process_one(row: dict) -> None:
         """Regenerate a single model's thumbnail."""
+        import time
+
         model_id = row["id"]
         zip_path = row["zip_path"]
         zip_entry = row["zip_entry"]
         tmp_path = None
+        t0 = time.monotonic()
         try:
             if zip_path and zip_entry:
                 tmp_path = await loop.run_in_executor(
@@ -236,12 +239,20 @@ async def _regenerate_all_thumbnails(
                 "Failed to regenerate thumbnail for model %d: %s", model_id, e
             )
         finally:
+            elapsed = time.monotonic() - t0
             if tmp_path is not None:
                 try:
                     tmp_path.unlink(missing_ok=True)
                 except OSError:
                     pass
             _regen_progress["completed"] += 1
+            # Flag slow models and check memory pressure
+            if elapsed > 10:
+                logger.warning(
+                    "Slow thumbnail: model %d took %.1fs (%s)",
+                    model_id, elapsed, row["file_path"],
+                )
+                log_memory(f"slow_model_{model_id}")
 
     try:
         for idx, row in enumerate(rows):
