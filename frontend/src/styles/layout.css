@@ -69,41 +69,46 @@
 /* ---- Background Task Progress Bar ---- */
 .bg-task-bar {
     position: fixed;
-    top: 53px;
+    bottom: 0;
     left: 0;
     right: 0;
-    z-index: 1001;
-    height: 3px;
-    pointer-events: none;
+    z-index: 2000;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.bg-task-label {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .bg-task-track {
-    width: 100%;
-    height: 100%;
-    background: transparent;
+    flex: 1;
+    height: 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    overflow: hidden;
 }
 
 .bg-task-fill {
     height: 100%;
     background: var(--accent);
+    border-radius: 4px;
     transition: width 0.5s ease;
-    box-shadow: 0 0 8px var(--accent);
 }
 
-.bg-task-label {
-    position: fixed;
-    top: 57px;
-    right: 20px;
-    z-index: 1001;
-    font-size: 0.7rem;
+.bg-task-percent {
+    font-size: 0.8rem;
     color: var(--text-secondary);
-    background: var(--bg-secondary);
-    padding: 2px 8px;
-    border-radius: 0 0 4px 4px;
-    border: 1px solid var(--border);
-    border-top: none;
     white-space: nowrap;
-    pointer-events: none;
+    min-width: 36px;
+    text-align: right;
 }
 
 /* ---- Search Bar ---- */
