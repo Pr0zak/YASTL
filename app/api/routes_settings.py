@@ -172,9 +172,14 @@ async def _regenerate_all_thumbnails(
     thumbnail_path: str, mode: str, quality: str = "fast"
 ) -> None:
     """Walk all models and regenerate their thumbnails."""
+    from app.services import zip_handler
+
     loop = asyncio.get_event_loop()
     async with get_db() as db:
-        cursor = await db.execute("SELECT id, file_path FROM models")
+        cursor = await db.execute(
+            "SELECT id, file_path, zip_path, zip_entry FROM models "
+            "WHERE status = 'active'"
+        )
         rows = await cursor.fetchall()
 
     _regen_progress["running"] = True
@@ -189,12 +194,24 @@ async def _regenerate_all_thumbnails(
     try:
         for row in rows:
             model_id = row["id"]
-            file_path = row["file_path"]
+            zip_path = row["zip_path"]
+            zip_entry = row["zip_entry"]
+            tmp_path = None
             try:
+                if zip_path and zip_entry:
+                    # Zip-based model: extract to temp file
+                    tmp_path = await loop.run_in_executor(
+                        None, zip_handler.extract_entry_to_temp,
+                        zip_path, zip_entry,
+                    )
+                    render_path = str(tmp_path)
+                else:
+                    render_path = row["file_path"]
+
                 thumb_filename: str | None = await loop.run_in_executor(
                     None,
                     thumbnail.generate_thumbnail,
-                    file_path,
+                    render_path,
                     thumbnail_path,
                     model_id,
                     mode,
@@ -212,9 +229,16 @@ async def _regenerate_all_thumbnails(
                     "Failed to regenerate thumbnail for model %d: %s", model_id, e
                 )
             finally:
+                # Clean up temp file from zip extraction
+                if tmp_path is not None:
+                    try:
+                        tmp_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
                 _regen_progress["completed"] += 1
-                # Yield to event loop so HTTP requests stay responsive
-                await asyncio.sleep(0.05)
+                # Yield to event loop so HTTP requests stay responsive.
+                # Thumbnail rendering is CPU-heavy; generous pause needed.
+                await asyncio.sleep(0.25)
     finally:
         _regen_progress["running"] = False
 

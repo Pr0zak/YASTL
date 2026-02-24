@@ -1279,23 +1279,25 @@ const { pickNextCollectionColor } = collectionsComposable;
         @quickScan="quickScan"
     />
 
-    <!-- Global background task progress bar -->
-    <div v-if="regeneratingThumbnails || autoTagging || extractingMetadata" class="bg-task-bar">
+    <!-- Global background task progress bar (YouTube-style thin bar + floating label) -->
+    <template v-if="regeneratingThumbnails || autoTagging || extractingMetadata">
+        <div class="bg-task-bar">
+            <div class="bg-task-track">
+                <div class="bg-task-fill" :style="{ width: bgTaskPercent + '%' }"></div>
+            </div>
+        </div>
         <div class="bg-task-label">
             <template v-if="regeneratingThumbnails">
-                Regenerating thumbnails... {{ regenProgress.completed }} / {{ regenProgress.total }}
+                Thumbnails {{ regenProgress.completed }}/{{ regenProgress.total }}
             </template>
             <template v-else-if="autoTagging">
-                Auto-tagging... {{ autoTagProgress.completed }} / {{ autoTagProgress.total }}
+                Tagging {{ autoTagProgress.completed }}/{{ autoTagProgress.total }}
             </template>
             <template v-else-if="extractingMetadata">
-                Extracting metadata... {{ metadataProgress.completed }} / {{ metadataProgress.total }}
+                Metadata {{ metadataProgress.completed }}/{{ metadataProgress.total }}
             </template>
         </div>
-        <div class="bg-task-track">
-            <div class="bg-task-fill" :style="{ width: bgTaskPercent + '%' }"></div>
-        </div>
-    </div>
+    </template>
 
     <!-- ============================================================
          Breadcrumb Bar
