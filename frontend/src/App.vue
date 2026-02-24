@@ -1279,19 +1279,6 @@ const { pickNextCollectionColor } = collectionsComposable;
         @quickScan="quickScan"
     />
 
-    <!-- Global background task progress bar (fixed bottom banner) -->
-    <div v-if="regeneratingThumbnails || autoTagging || extractingMetadata" class="bg-task-bar">
-        <div class="bg-task-label">
-            <template v-if="regeneratingThumbnails">Regenerating thumbnails...</template>
-            <template v-else-if="autoTagging">Auto-tagging models...</template>
-            <template v-else-if="extractingMetadata">Extracting metadata...</template>
-        </div>
-        <div class="bg-task-track">
-            <div class="bg-task-fill" :style="{ width: bgTaskPercent + '%' }"></div>
-        </div>
-        <div class="bg-task-percent">{{ bgTaskPercent }}%</div>
-    </div>
-
     <!-- ============================================================
          Breadcrumb Bar
          ============================================================ -->
@@ -1391,6 +1378,20 @@ const { pickNextCollectionColor } = collectionsComposable;
                 <span class="scan-stats">
                     {{ scanStatus.processed_files }} / {{ scanStatus.total_files }} files
                 </span>
+            </div>
+
+            <!-- Background Task Progress Banner -->
+            <div v-if="regeneratingThumbnails || autoTagging || extractingMetadata" class="scan-banner">
+                <div class="spinner spinner-sm"></div>
+                <span class="scan-text">
+                    <template v-if="regeneratingThumbnails">Regenerating thumbnails...</template>
+                    <template v-else-if="autoTagging">Auto-tagging models...</template>
+                    <template v-else-if="extractingMetadata">Extracting metadata...</template>
+                </span>
+                <div class="scan-progress-bar">
+                    <div class="scan-progress-fill" :style="{ width: bgTaskPercent + '%' }"></div>
+                </div>
+                <span class="scan-stats">{{ bgTaskPercent }}%</span>
             </div>
 
             <!-- Loading State -->
