@@ -29,7 +29,7 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "default": "false",
     },
     "color_theme": {
-        "allowed": ["default", "midnight", "forest", "crimson", "ocean", "slate", "light"],
+        "allowed": ["default", "light"],
         "default": "default",
     },
     "favorites_first": {
