@@ -17,7 +17,7 @@ from app.services import hasher, processor, thumbnail
 from app.services import zip_handler
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.database import get_setting, update_fts_for_model
-from app.workers import get_pool
+from app.workers import get_pool, log_memory
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,7 @@ class Scanner:
 
         mode_label = "update-only scan" if update_only else "full scan"
         logger.info("Starting %s of %d libraries", mode_label, len(libraries))
+        log_memory("scan_start")
 
         # 1. Discover files across all libraries
         loop = asyncio.get_running_loop()
@@ -353,6 +354,7 @@ class Scanner:
             await db.close()
 
         self.is_scanning = False
+        log_memory("scan_complete")
         logger.info(
             "Scan complete -- total=%d new=%d moved=%d skipped=%d missing=%d reactivated=%d errors=%d",
             stats["total_files"],

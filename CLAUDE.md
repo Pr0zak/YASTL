@@ -124,7 +124,7 @@ docker compose up -d
 - **Vite frontend** — SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/
 - **SQLite with WAL mode** — concurrent reads, FTS5 for full-text search (porter tokenizer)
 - **Service layer pattern** — business logic in `app/services/`, routes in `app/api/`
-- **Process pool** — `app/workers.py` manages a shared `ProcessPoolExecutor(max_workers=2)` created at startup. CPU-bound work (thumbnail rendering, metadata extraction, file hashing) uses `loop.run_in_executor(get_pool(), ...)` to bypass the GIL and utilise multiple cores. Thumbnail regeneration processes 2 models in parallel via `asyncio.gather()`. I/O-bound work (zip extraction, file discovery) stays on the default thread pool.
+- **Process pool** — `app/workers.py` manages a shared `ProcessPoolExecutor(max_workers=1)` created at startup. CPU-bound work (thumbnail rendering, metadata extraction, file hashing) uses `loop.run_in_executor(get_pool(), ...)` to bypass the GIL — CPU work runs on core 1 while the asyncio event loop stays responsive on core 0. Only 1 worker to avoid OOM on CT333 (4GB RAM); each worker process loads ~300MB of Python+trimesh+numpy. I/O-bound work (zip extraction, file discovery) stays on the default thread pool.
 - **Background tasks** — directory scanning and file watching run off the request/response thread
 - **Server-side thumbnails** — trimesh rendering with Pillow wireframe fallback (256x256 PNG)
 - **GLB conversion** — server-side trimesh conversion for formats Three.js can't load natively (3MF, STEP)

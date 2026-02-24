@@ -11,7 +11,7 @@ from app.database import get_all_settings, get_db, get_setting, set_setting, upd
 from app.services import thumbnail
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.api._helpers import apply_auto_tags
-from app.workers import get_pool
+from app.workers import get_pool, log_memory
 
 logger = logging.getLogger(__name__)
 
@@ -174,8 +174,8 @@ async def _regenerate_all_thumbnails(
 ) -> None:
     """Walk all models and regenerate their thumbnails.
 
-    Processes models in batches of 2, running thumbnail generation in a
-    ProcessPoolExecutor so that both CPU cores can work simultaneously.
+    Runs thumbnail generation in a ProcessPoolExecutor so the event loop
+    stays responsive on another core while CPU-bound rendering happens.
     """
     from app.services import zip_handler
 
@@ -197,6 +197,7 @@ async def _regenerate_all_thumbnails(
         "Regenerating thumbnails for %d models (mode=%s, quality=%s)",
         len(rows), mode, quality,
     )
+    log_memory("regen_start")
 
     async def _process_one(row: dict) -> None:
         """Regenerate a single model's thumbnail."""
@@ -242,16 +243,18 @@ async def _regenerate_all_thumbnails(
                     pass
             _regen_progress["completed"] += 1
 
-    batch_size = 2
     try:
-        for i in range(0, len(rows), batch_size):
-            batch = rows[i : i + batch_size]
-            await asyncio.gather(*(_process_one(row) for row in batch))
+        for idx, row in enumerate(rows):
+            await _process_one(row)
+            # Log memory every 50 models for diagnostics
+            if (idx + 1) % 50 == 0:
+                log_memory(f"regen_progress_{idx + 1}/{len(rows)}")
             # Brief yield so the event loop stays responsive
             await asyncio.sleep(0.05)
     finally:
         _regen_progress["running"] = False
 
+    log_memory("regen_complete")
     logger.info("Thumbnail regeneration complete")
 
 

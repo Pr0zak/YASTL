@@ -76,8 +76,10 @@ async def lifespan(app: FastAPI):
     await init_db(settings.MODEL_LIBRARY_DB)
     app.state.db_path = settings.MODEL_LIBRARY_DB
 
-    # Start process pool for CPU-bound work (thumbnails, metadata, hashing)
-    init_pool(max_workers=2)
+    # Start process pool for CPU-bound work (thumbnails, metadata, hashing).
+    # Single worker: avoids OOM on CT333 (4GB) while still freeing the event
+    # loop core — CPU work runs on core 1, asyncio on core 0.
+    init_pool(max_workers=1)
 
     # Backwards compat: import legacy env-var scan path as a library
     if settings.MODEL_LIBRARY_SCAN_PATH is not None:
