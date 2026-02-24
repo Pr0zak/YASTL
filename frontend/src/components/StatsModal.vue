@@ -165,6 +165,14 @@ function tagOpacity(count, tags) {
                         <span class="stats-coverage-value">{{ stats.thumbnail_coverage }}%</span>
                     </div>
                     <div class="stats-coverage-row">
+                        <span class="stats-coverage-label">Tagged</span>
+                        <div class="stats-bar-track">
+                            <div class="stats-bar-fill stats-bar-accent"
+                                 :style="{ width: (stats.total_models ? (stats.tagged_models / stats.total_models * 100) : 0) + '%' }"></div>
+                        </div>
+                        <span class="stats-coverage-value">{{ stats.tagged_models }} / {{ stats.total_models }}</span>
+                    </div>
+                    <div class="stats-coverage-row">
                         <span class="stats-coverage-label">Source URLs</span>
                         <div class="stats-bar-track">
                             <div class="stats-bar-fill stats-bar-accent"

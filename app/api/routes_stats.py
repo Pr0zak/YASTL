@@ -108,6 +108,13 @@ async def get_stats():
         )
         duplicate_models = dict(await cursor.fetchone())["count"]
 
+        # Models with at least one tag
+        cursor = await db.execute(
+            "SELECT COUNT(DISTINCT mt.model_id) as count FROM model_tags mt "
+            "JOIN models m ON m.id = mt.model_id AND m.status = 'active'"
+        )
+        tagged_models = dict(await cursor.fetchone())["count"]
+
         # Thumbnail coverage
         cursor = await db.execute(
             "SELECT COUNT(*) as count FROM models "
@@ -164,6 +171,7 @@ async def get_stats():
         "duplicate_models": duplicate_models,
         "thumbnails_generated": thumbnails_generated,
         "thumbnail_coverage": round(thumbnails_generated / total_models * 100, 1) if total_models > 0 else 0,
+        "tagged_models": tagged_models,
         "zip_models": zip_models,
         "sourced_models": sourced_models,
         "added_7d": added_7d,

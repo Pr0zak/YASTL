@@ -1,6 +1,6 @@
 <script setup>
 /**
- * SettingsModal - Settings panel with libraries, thumbnails, print bed, import credentials, and updates.
+ * SettingsModal - Settings panel with libraries, display, thumbnails, print bed, and updates.
  */
 import { ref } from 'vue';
 import { ICONS } from '../icons.js';
@@ -52,7 +52,6 @@ const emit = defineEmits([
     'toggleFavoritesFirst',
     'toggleCollectionCardTint',
 ]);
-
 </script>
 
 <template>
@@ -65,42 +64,6 @@ const emit = defineEmits([
             </div>
 
             <div class="settings-content">
-                <!-- Display Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                        Display
-                    </div>
-                    <div style="display:flex;gap:8px;margin-bottom:12px">
-                        <label class="thumbnail-mode-option" style="flex:0;padding:6px 14px"
-                               :class="{ active: colorTheme === 'default' }"
-                               @click="emit('setColorTheme', 'default')">
-                            <input type="radio" name="colorTheme" value="default" :checked="colorTheme === 'default'" style="display:none">
-                            Dark
-                        </label>
-                        <label class="thumbnail-mode-option" style="flex:0;padding:6px 14px"
-                               :class="{ active: colorTheme === 'light' }"
-                               @click="emit('setColorTheme', 'light')">
-                            <input type="radio" name="colorTheme" value="light" :checked="colorTheme === 'light'" style="display:none">
-                            Light
-                        </label>
-                    </div>
-
-                    <!-- Display preferences -->
-                    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-light)">
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
-                            <input type="checkbox" :checked="favoritesFirst"
-                                   @change="emit('toggleFavoritesFirst')">
-                            Show favorites at top of model list
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;margin-top:8px">
-                            <input type="checkbox" :checked="collectionCardTint"
-                                   @change="emit('toggleCollectionCardTint')">
-                            Tint model cards with collection color
-                        </label>
-                    </div>
-                </div>
-
                 <!-- Libraries Section -->
                 <div class="settings-section">
                     <div class="settings-section-title">
@@ -108,7 +71,7 @@ const emit = defineEmits([
                         Libraries
                     </div>
                     <div class="settings-section-desc">
-                        Add local directories containing your 3D model files. YASTL will scan these paths to discover and index models.
+                        Add local directories containing your 3D model files.
                     </div>
 
                     <!-- Existing Libraries -->
@@ -169,16 +132,46 @@ const emit = defineEmits([
                     </div>
                 </div>
 
-                <!-- Thumbnails Section -->
+                <!-- Display Section -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                        Display
+                    </div>
+                    <div style="display:flex;gap:8px;margin-bottom:12px">
+                        <label class="thumbnail-mode-option" style="flex:0;padding:6px 14px"
+                               :class="{ active: colorTheme === 'default' }"
+                               @click="emit('setColorTheme', 'default')">
+                            <input type="radio" name="colorTheme" value="default" :checked="colorTheme === 'default'" style="display:none">
+                            Dark
+                        </label>
+                        <label class="thumbnail-mode-option" style="flex:0;padding:6px 14px"
+                               :class="{ active: colorTheme === 'light' }"
+                               @click="emit('setColorTheme', 'light')">
+                            <input type="radio" name="colorTheme" value="light" :checked="colorTheme === 'light'" style="display:none">
+                            Light
+                        </label>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+                        <input type="checkbox" :checked="favoritesFirst"
+                               @change="emit('toggleFavoritesFirst')">
+                        Show favorites at top of model list
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;margin-top:8px">
+                        <input type="checkbox" :checked="collectionCardTint"
+                               @change="emit('toggleCollectionCardTint')">
+                        Tint model cards with collection color
+                    </label>
+                </div>
+
+                <!-- Thumbnails & Tags Section -->
                 <div class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.image"></span>
-                        Thumbnails
-                    </div>
-                    <div class="settings-section-desc">
-                        Choose how model preview thumbnails are rendered. Solid mode shows filled faces with lighting; wireframe shows edges only.
+                        Thumbnails & Tags
                     </div>
 
+                    <div class="settings-section-desc">Thumbnail rendering mode</div>
                     <div class="thumbnail-mode-options">
                         <label class="thumbnail-mode-option" :class="{ active: thumbnailMode === 'wireframe' }" @click="emit('setThumbnailMode', 'wireframe')">
                             <input type="radio" name="thumbnailMode" value="wireframe" :checked="thumbnailMode === 'wireframe'">
@@ -196,50 +189,35 @@ const emit = defineEmits([
                         </label>
                     </div>
 
-                    <div class="thumbnail-regen-row">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
                         <button class="btn btn-secondary"
                                 @click="emit('regenerateThumbnails')"
                                 :disabled="regeneratingThumbnails">
                             <span v-html="ICONS.refresh"></span>
-                            Regenerate All Thumbnails
+                            Regenerate Thumbnails
                         </button>
-                        <span class="text-muted text-sm">Re-render existing thumbnails with the current mode</span>
-                    </div>
-                    <div v-if="regeneratingThumbnails && regenProgress.total > 0" class="regen-progress" style="margin-top:12px">
-                        <div class="regen-progress-bar">
-                            <div class="regen-progress-fill" :style="{ width: Math.round((regenProgress.completed / regenProgress.total) * 100) + '%' }"></div>
-                        </div>
-                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
-                            {{ regenProgress.completed }} / {{ regenProgress.total }} models
-                        </span>
-                    </div>
-                </div>
-
-                <!-- Tags Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                        Tags
-                    </div>
-                    <div class="settings-section-desc">
-                        Generate and apply suggested tags to all models based on filenames, categories, and metadata.
-                    </div>
-
-                    <div class="thumbnail-regen-row">
                         <button class="btn btn-secondary"
                                 @click="emit('autoTagAll')"
                                 :disabled="autoTagging">
                             <span v-html="ICONS.refresh"></span>
                             Auto-Tag All Models
                         </button>
-                        <span class="text-muted text-sm">Suggest and apply tags for every model in the library</span>
+                    </div>
+
+                    <div v-if="regeneratingThumbnails && regenProgress.total > 0" class="regen-progress" style="margin-top:12px">
+                        <div class="regen-progress-bar">
+                            <div class="regen-progress-fill" :style="{ width: Math.round((regenProgress.completed / regenProgress.total) * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                            Thumbnails: {{ regenProgress.completed }} / {{ regenProgress.total }} models
+                        </span>
                     </div>
                     <div v-if="autoTagging && autoTagProgress.total > 0" class="regen-progress" style="margin-top:12px">
                         <div class="regen-progress-bar">
                             <div class="regen-progress-fill" :style="{ width: Math.round((autoTagProgress.completed / autoTagProgress.total) * 100) + '%' }"></div>
                         </div>
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
-                            {{ autoTagProgress.completed }} / {{ autoTagProgress.total }} models &middot; {{ autoTagProgress.tags_added }} tags added
+                            Tags: {{ autoTagProgress.completed }} / {{ autoTagProgress.total }} models &middot; {{ autoTagProgress.tags_added }} tags added
                         </span>
                     </div>
                 </div>
@@ -251,19 +229,17 @@ const emit = defineEmits([
                         Print Bed
                     </div>
                     <div class="settings-section-desc">
-                        Configure your printer's build plate dimensions. The bed overlay shows in the 3D viewer to help you check if a model fits.
+                        Configure your printer's build plate dimensions for the 3D viewer overlay.
                     </div>
 
-                    <!-- Enable toggle -->
                     <div class="form-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                             <input type="checkbox" :checked="bedConfig.enabled"
                                    @change="emit('updateBedConfig', 'enabled', $event.target.checked)">
-                            <span style="font-size:0.85rem">Show bed overlay by default when viewing models</span>
+                            <span style="font-size:0.85rem">Show bed overlay by default</span>
                         </label>
                     </div>
 
-                    <!-- Preset dropdown -->
                     <div class="form-row">
                         <label class="form-label">Printer Preset</label>
                         <select class="form-input"
@@ -275,7 +251,6 @@ const emit = defineEmits([
                         </select>
                     </div>
 
-                    <!-- Dimension inputs -->
                     <div style="display:flex;gap:8px;margin-top:8px">
                         <div class="form-row" style="flex:1">
                             <label class="form-label">Width (mm)</label>
@@ -294,7 +269,6 @@ const emit = defineEmits([
                         </div>
                     </div>
 
-                    <!-- Shape toggle -->
                     <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
                         <span class="form-label" style="margin-bottom:0">Shape:</span>
                         <label class="thumbnail-mode-option" style="flex:0;padding:6px 14px"
@@ -311,7 +285,6 @@ const emit = defineEmits([
                         </label>
                     </div>
 
-                    <!-- Save button -->
                     <div style="margin-top:12px">
                         <button class="btn btn-primary" @click="emit('saveBedSettings')">
                             Save Bed Settings
@@ -329,7 +302,7 @@ const emit = defineEmits([
                     </div>
                     <template v-if="showCredentials">
                     <div class="settings-section-desc">
-                        Configure API keys or cookies for 3D model hosting sites to enable richer metadata extraction during URL import.
+                        API keys or cookies for 3D model hosting sites to enable richer metadata extraction during URL import.
                     </div>
 
                     <div class="import-cred-list">
@@ -386,9 +359,6 @@ const emit = defineEmits([
                         <span v-html="ICONS.refresh"></span>
                         Updates
                     </div>
-                    <div class="settings-section-desc">
-                        Check for and apply updates from the remote repository. The service will restart automatically after updating.
-                    </div>
 
                     <!-- Not a git repo -->
                     <div v-if="updateInfo.checked && !updateInfo.is_git_repo" class="update-status update-status-unavailable">
@@ -398,7 +368,7 @@ const emit = defineEmits([
                         <div class="update-status-text">
                             <div class="update-status-title">Updates unavailable</div>
                             <div class="update-status-detail">
-                                Not running from a git repository. Updates require a git-based installation.
+                                Not running from a git repository.
                             </div>
                         </div>
                     </div>
@@ -411,7 +381,7 @@ const emit = defineEmits([
                         <div class="update-status-text">
                             <div class="update-status-title">Restarting...</div>
                             <div class="update-status-detail">
-                                YASTL is restarting with the latest changes. This page will reload automatically.
+                                This page will reload automatically.
                             </div>
                         </div>
                     </div>
@@ -423,9 +393,6 @@ const emit = defineEmits([
                         </div>
                         <div class="update-status-text">
                             <div class="update-status-title">Applying update...</div>
-                            <div class="update-status-detail">
-                                Pulling changes and reinstalling dependencies.
-                            </div>
                         </div>
                     </div>
 
@@ -453,7 +420,6 @@ const emit = defineEmits([
                                 </div>
                             </div>
                         </div>
-                        <!-- Commit list -->
                         <div v-if="updateInfo.commits.length" class="update-commits">
                             <div v-for="commit in updateInfo.commits" :key="commit.sha" class="update-commit">
                                 <code class="commit-sha">{{ commit.sha }}</code>
@@ -480,9 +446,6 @@ const emit = defineEmits([
                                 v{{ updateInfo.current_version }}
                                 <span v-if="updateInfo.current_sha" class="text-muted">
                                     &middot; {{ updateInfo.current_sha.substring(0, 8) }}
-                                </span>
-                                <span v-if="updateInfo.branch" class="text-muted">
-                                    &middot; {{ updateInfo.branch }}
                                 </span>
                             </div>
                         </div>
