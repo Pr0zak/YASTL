@@ -90,11 +90,6 @@ function cardStyle(model) {
                     <span v-html="ICONS.check"></span>
                 </button>
             </div>
-            <!-- Collection color bar -->
-            <div v-if="model.collection_colors && model.collection_colors.length" class="card-collection-bar">
-                <span v-for="(color, i) in model.collection_colors" :key="i"
-                      class="card-collection-dot" :style="{ background: color }"></span>
-            </div>
             <!-- Body -->
             <div class="card-body">
                 <div class="card-name" :title="model.name">{{ model.name }}</div>
@@ -109,6 +104,11 @@ function cardStyle(model) {
                         +{{ model.tags.length - 3 }}
                     </span>
                 </div>
+            </div>
+            <!-- Collection color bar -->
+            <div v-if="model.collection_colors && model.collection_colors.length" class="card-collection-bar">
+                <span v-for="(color, i) in model.collection_colors" :key="i"
+                      class="card-collection-segment" :style="{ background: color }"></span>
             </div>
         </div>
     </div>
@@ -137,11 +137,8 @@ function cardStyle(model) {
                     <td class="col-fav" @click.stop="emit('toggleFavorite', model, $event)" style="cursor:pointer;text-align:center">
                         <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
                     </td>
-                    <td class="col-name">
-                        <span v-if="model.collection_colors && model.collection_colors.length" style="display:inline-flex;gap:2px;margin-right:4px;vertical-align:middle">
-                            <span v-for="(color, i) in model.collection_colors" :key="i"
-                                  class="collection-dot" :style="{ background: color, width: '8px', height: '8px' }"></span>
-                        </span>{{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span>
+                    <td class="col-name" :style="model.collection_colors && model.collection_colors.length ? { borderLeft: '3px solid ' + model.collection_colors[0] } : {}">
+                        {{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span>
                     </td>
                     <td class="col-format">
                         <span class="format-badge" :class="formatClass(model.file_format)">
