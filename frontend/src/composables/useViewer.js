@@ -41,10 +41,13 @@ export function useViewer() {
     /** Group holding all bed overlay meshes. */
     let bedGroup = null;
 
-    /** Default material for models that don't carry their own (teal accent). */
+    /** Default material for models that don't carry their own (brighter teal accent).
+     *  Note: ACES tone mapping darkens mid-tones significantly — use a bright
+     *  base color and a subtle emissive so models are always clearly visible. */
     const DEFAULT_MATERIAL = new THREE.MeshPhongMaterial({
-        color: 0x0f9b8e,
-        specular: 0x333333,
+        color: 0x2ec4b6,
+        emissive: 0x0a3d38,
+        specular: 0x444444,
         shininess: 50,
         flatShading: false,
         side: THREE.DoubleSide,
