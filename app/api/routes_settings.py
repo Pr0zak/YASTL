@@ -213,6 +213,8 @@ async def _regenerate_all_thumbnails(
                 )
             finally:
                 _regen_progress["completed"] += 1
+                # Yield to event loop so HTTP requests stay responsive
+                await asyncio.sleep(0.05)
     finally:
         _regen_progress["running"] = False
 
@@ -277,6 +279,7 @@ async def _auto_tag_all_models() -> None:
                 )
             finally:
                 _autotag_progress["completed"] += 1
+                await asyncio.sleep(0.01)
     finally:
         _autotag_progress["running"] = False
 
@@ -430,6 +433,7 @@ async def _extract_metadata_all_models() -> None:
                 )
             finally:
                 _metadata_progress["completed"] += 1
+                await asyncio.sleep(0.01)
     finally:
         _metadata_progress["running"] = False
 

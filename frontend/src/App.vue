@@ -287,6 +287,16 @@ const scanProgress = computed(() => {
     );
 });
 
+const bgTaskPercent = computed(() => {
+    if (regeneratingThumbnails.value && regenProgress.total > 0)
+        return Math.round((regenProgress.completed / regenProgress.total) * 100);
+    if (autoTagging.value && autoTagProgress.total > 0)
+        return Math.round((autoTagProgress.completed / autoTagProgress.total) * 100);
+    if (extractingMetadata.value && metadataProgress.total > 0)
+        return Math.round((metadataProgress.completed / metadataProgress.total) * 100);
+    return 0;
+});
+
 const hasMore = computed(() => {
     return pagination.offset + pagination.limit < pagination.total;
 });
@@ -1268,6 +1278,24 @@ const { pickNextCollectionColor } = collectionsComposable;
         @clearSearch="clearSearch"
         @quickScan="quickScan"
     />
+
+    <!-- Global background task progress bar -->
+    <div v-if="regeneratingThumbnails || autoTagging || extractingMetadata" class="bg-task-bar">
+        <div class="bg-task-label">
+            <template v-if="regeneratingThumbnails">
+                Regenerating thumbnails... {{ regenProgress.completed }} / {{ regenProgress.total }}
+            </template>
+            <template v-else-if="autoTagging">
+                Auto-tagging... {{ autoTagProgress.completed }} / {{ autoTagProgress.total }}
+            </template>
+            <template v-else-if="extractingMetadata">
+                Extracting metadata... {{ metadataProgress.completed }} / {{ metadataProgress.total }}
+            </template>
+        </div>
+        <div class="bg-task-track">
+            <div class="bg-task-fill" :style="{ width: bgTaskPercent + '%' }"></div>
+        </div>
+    </div>
 
     <!-- ============================================================
          Breadcrumb Bar

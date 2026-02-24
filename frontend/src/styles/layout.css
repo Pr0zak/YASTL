@@ -66,6 +66,43 @@
     color: var(--accent);
 }
 
+/* ---- Background Task Progress Bar ---- */
+.bg-task-bar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    z-index: 999;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 4px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.bg-task-label {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.bg-task-track {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-primary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.bg-task-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
 /* ---- Search Bar ---- */
 .search-container {
     flex: 1;
