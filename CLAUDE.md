@@ -25,6 +25,7 @@ YASTL (Yet Another STL) is a full-stack web application for browsing, searching,
 app/                    # Main application package
   main.py               # FastAPI app init and lifespan (serves Vite dist/)
   config.py             # Pydantic settings (YASTL_ env prefix)
+  workers.py            # Shared ProcessPoolExecutor (init/get/shutdown)
   database.py           # Runtime DB logic (imports schema from database_schema.py)
   database_schema.py    # SCHEMA_SQL, FTS_SCHEMA_SQL, migrations, indexes
   api/                  # Route modules (split into focused files)
@@ -110,7 +111,7 @@ docker compose up -d
 ## Code Conventions
 
 - **Async-first:** All I/O operations use async/await (aiosqlite, FastAPI async endpoints)
-- **CPU-bound work:** Use `asyncio.to_thread()` or `loop.run_in_executor()` for trimesh ops
+- **CPU-bound work:** Use `loop.run_in_executor(get_pool(), ...)` with the shared `ProcessPoolExecutor` from `app.workers` for CPU-bound ops (trimesh, hashing); use default thread pool (`None`) for I/O-bound work
 - **Type hints:** Python 3.10+ union syntax (`str | None`, `list[str]`)
 - **Naming:** snake_case for functions/variables, PascalCase for classes
 - **No ORM:** Direct SQL with parameterized queries (`?` placeholders) and context managers
@@ -123,6 +124,7 @@ docker compose up -d
 - **Vite frontend** — SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/
 - **SQLite with WAL mode** — concurrent reads, FTS5 for full-text search (porter tokenizer)
 - **Service layer pattern** — business logic in `app/services/`, routes in `app/api/`
+- **Process pool** — `app/workers.py` manages a shared `ProcessPoolExecutor(max_workers=2)` created at startup. CPU-bound work (thumbnail rendering, metadata extraction, file hashing) uses `loop.run_in_executor(get_pool(), ...)` to bypass the GIL and utilise multiple cores. Thumbnail regeneration processes 2 models in parallel via `asyncio.gather()`. I/O-bound work (zip extraction, file discovery) stays on the default thread pool.
 - **Background tasks** — directory scanning and file watching run off the request/response thread
 - **Server-side thumbnails** — trimesh rendering with Pillow wireframe fallback (256x256 PNG)
 - **GLB conversion** — server-side trimesh conversion for formats Three.js can't load natively (3MF, STEP)
@@ -131,6 +133,7 @@ docker compose up -d
 - **Stats & status** — `/api/stats` returns aggregate library statistics; `/api/status` returns system health. Both displayed in a unified Stats modal (bar chart icon in navbar with health dot). Replaced the old separate status dropdown.
 - **Print bed overlay** — configurable bed dimensions stored as settings (`bed_width`, `bed_depth`, `bed_height`, `bed_shape`, `bed_enabled`). Viewer renders a wireframe build volume at correct scale; shows "Fits" / "Too large" indicator. Presets for common printers (Ender 3, Prusa MK3S+, Bambu Lab P1S/A1, Voron 2.4).
 - **Detail panel tabs** — Model detail overlay uses a tabbed layout (Info, Tags, More) to reduce clutter; file details (vertices, faces, dimensions, path, hash) are collapsed by default behind a toggle; Download/Delete actions are pinned at the bottom across all tabs
+- **Theme-aware 3D viewer** — `useViewer.js` exposes `setViewerTheme(theme)` which updates the Three.js scene background and grid colors. `initViewer()` accepts an optional theme parameter. `App.vue` passes `colorTheme` on init and calls `setViewerTheme()` when the theme changes while the viewer is open. Dark theme: navy background (`0x12182a`), blue grid. Light theme: light gray background (`0xf5f5f5`), subtle gray grid.
 - **File upload drag-and-drop** — Import modal file upload area supports both click-to-browse and drag-and-drop; drop events feed `dataTransfer.files` into `onFilesSelected` via a synthetic event
 
 ## Database Migrations
