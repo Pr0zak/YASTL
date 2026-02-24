@@ -98,6 +98,10 @@ function cardStyle(model) {
                     <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span>
                     <span v-if="model.is_duplicate" class="dup-badge" title="Duplicate file (same hash)">dup</span>
                 </div>
+                <div class="card-collections" v-if="model.collections && model.collections.length">
+                    <span v-for="col in model.collections" :key="col.name"
+                          class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
+                </div>
                 <div class="card-tags" v-if="model.tags && model.tags.length">
                     <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
                     <span v-if="model.tags.length > 3" class="tag-chip" style="opacity:0.7">
@@ -139,6 +143,10 @@ function cardStyle(model) {
                     </td>
                     <td class="col-name" :style="model.collection_colors && model.collection_colors.length ? { borderLeft: '3px solid ' + model.collection_colors[0] } : {}">
                         {{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span>
+                        <span v-if="model.collections && model.collections.length" style="margin-left:6px">
+                            <span v-for="col in model.collections" :key="col.name"
+                                  class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
+                        </span>
                     </td>
                     <td class="col-format">
                         <span class="format-badge" :class="formatClass(model.file_format)">

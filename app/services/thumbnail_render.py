@@ -24,13 +24,13 @@ THUMBNAIL_HEIGHT = 256
 
 # Wireframe rendering settings
 WIREFRAME_BG_COLOR = (45, 45, 48)
-WIREFRAME_LINE_COLOR = (0, 180, 220)
-WIREFRAME_EDGE_COLOR = (0, 120, 160)
+WIREFRAME_LINE_COLOR = (180, 185, 190)
+WIREFRAME_EDGE_COLOR = (140, 145, 150)
 WIREFRAME_PADDING = 20
 
 # Solid rendering settings
 SOLID_BG_COLOR = (45, 45, 48)
-SOLID_BASE_COLOR = np.array([0, 150, 200], dtype=np.float64)
+SOLID_BASE_COLOR = np.array([170, 175, 180], dtype=np.float64)
 SOLID_AMBIENT = 0.25
 SOLID_DIFFUSE = 0.75
 SOLID_LIGHT_DIR = np.array([0.3, 0.8, 0.5])  # normalised at use-time

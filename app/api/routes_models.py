@@ -212,18 +212,22 @@ async def list_models(
             )
             model["is_favorite"] = await cursor.fetchone() is not None
 
-            # Collection colors (for card tinting)
+            # Collections (name + color for card display)
             cursor = await db.execute(
                 """
-                SELECT c.color FROM collections c
+                SELECT c.name, c.color FROM collections c
                 JOIN collection_models cm ON cm.collection_id = c.id
-                WHERE cm.model_id = ? AND c.color IS NOT NULL
+                WHERE cm.model_id = ?
                 """,
                 (model_id,),
             )
-            col_color_rows = await cursor.fetchall()
+            col_rows = await cursor.fetchall()
+            model["collections"] = [
+                {"name": dict(r)["name"], "color": dict(r)["color"]}
+                for r in col_rows
+            ]
             model["collection_colors"] = [
-                dict(r)["color"] for r in col_color_rows
+                c["color"] for c in model["collections"] if c["color"]
             ]
 
             models.append(model)
