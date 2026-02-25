@@ -9,6 +9,14 @@ export default defineConfig({
   build: {
     outDir: '../app/static/dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Include build timestamp in chunk filenames to bust caches on every deploy
+        entryFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        chunkFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        assetFileNames: `assets/[name]-[hash]-${Date.now()}.[ext]`,
+      },
+    },
   },
   server: {
     port: 5173,

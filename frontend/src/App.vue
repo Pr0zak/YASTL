@@ -3,9 +3,6 @@
  * YASTL - Yet Another STL Library
  * Main Vue 3 Application (Vite SFC)
  */
-/* eslint-disable no-unused-vars */
-const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev';
-/* eslint-enable no-unused-vars */
 import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { debounce } from './search.js';
 import { ICONS } from './icons.js';

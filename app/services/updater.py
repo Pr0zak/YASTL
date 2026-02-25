@@ -243,10 +243,11 @@ class Updater:
                         "install",
                         "--no-cache-dir",
                         "-q",
+                        "-e",
                         ".",
                     ]
                 else:
-                    pip_args = [pip_exe, "install", "--no-cache-dir", "-q", "."]
+                    pip_args = [pip_exe, "install", "--no-cache-dir", "-q", "-e", "."]
 
                 repo = self._find_repo_root()
                 result = await loop.run_in_executor(
