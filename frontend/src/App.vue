@@ -369,7 +369,10 @@ const breadcrumbTrail = computed(() => {
    Core data fetching
    ============================================================== */
 
+let fetchGeneration = 0;
+
 async function fetchModels(append = false) {
+    const myGen = ++fetchGeneration;
     loading.value = true;
     try {
         const params = new URLSearchParams({
@@ -402,6 +405,7 @@ async function fetchModels(append = false) {
 
         const data = await apiGetModels(params);
 
+        if (myGen !== fetchGeneration) return; // stale response, discard
         if (append) {
             models.value = [...models.value, ...(data.models || [])];
         } else {
@@ -409,10 +413,11 @@ async function fetchModels(append = false) {
         }
         pagination.total = data.total || 0;
     } catch (err) {
+        if (myGen !== fetchGeneration) return;
         showToast('Failed to load models', 'error');
         console.error('fetchModels error:', err);
     } finally {
-        loading.value = false;
+        if (myGen === fetchGeneration) loading.value = false;
     }
 }
 
@@ -421,6 +426,7 @@ async function searchModels(append = false) {
         pagination.offset = 0;
         return fetchModels();
     }
+    const myGen = ++fetchGeneration;
     loading.value = true;
     try {
         const params = new URLSearchParams({
@@ -441,6 +447,7 @@ async function searchModels(append = false) {
 
         const data = await apiSearchModels(params);
 
+        if (myGen !== fetchGeneration) return; // stale response, discard
         if (append) {
             models.value = [...models.value, ...(data.models || [])];
         } else {
@@ -448,10 +455,11 @@ async function searchModels(append = false) {
         }
         pagination.total = data.total || 0;
     } catch (err) {
+        if (myGen !== fetchGeneration) return;
         showToast('Search failed', 'error');
         console.error('searchModels error:', err);
     } finally {
-        loading.value = false;
+        if (myGen === fetchGeneration) loading.value = false;
     }
 }
 
@@ -859,7 +867,11 @@ function clearFilters() {
 function setZipFilter(zipPathValue) {
     if (!zipPathValue) return;
     filters.zipPath = zipPathValue;
-    // Clear filters that might hide zip contents
+    // Clear all other filters so drill-in shows full zip contents
+    filters.format = '';
+    filters.tags = [];
+    filters.categories = [];
+    filters.library_id = null;
     filters.collection = null;
     filters.favoritesOnly = false;
     filters.duplicatesOnly = false;
