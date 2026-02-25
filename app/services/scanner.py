@@ -179,7 +179,12 @@ class Scanner:
         )
         self.total_files = all_count
         stats["total_files"] = all_count
-        logger.info("Found %d supported files across all libraries.", all_count)
+        logger.info(
+            "Found %d supported files across all libraries (%d regular, %d zip entries).",
+            all_count,
+            all_count - len(zip_entries),
+            len(zip_entries),
+        )
 
         # 2. Process each library with reconciliation
         db = await aiosqlite.connect(self.db_path)
@@ -236,8 +241,11 @@ class Scanner:
                         )
                         if result == "new":
                             stats["new_files"] += 1
+                            # Commit after each new file so progress survives restarts
+                            await db.commit()
                         elif result == "moved":
                             stats["moved_files"] += 1
+                            await db.commit()
                         else:
                             stats["skipped_files"] += 1
                     except Exception:
@@ -245,6 +253,15 @@ class Scanner:
                         stats["errors"] += 1
                     finally:
                         self.processed_files += 1
+                        if self.processed_files % 100 == 0:
+                            logger.info(
+                                "Scan progress: %d/%d files (new=%d skipped=%d errors=%d)",
+                                self.processed_files,
+                                self.total_files,
+                                stats["new_files"],
+                                stats["skipped_files"],
+                                stats["errors"],
+                            )
 
                 if not update_only:
                     # Mark remaining orphans (not matched by moves) as missing
@@ -301,6 +318,8 @@ class Scanner:
                     )
                     if added:
                         stats["new_files"] += 1
+                        # Commit after each new zip entry so progress survives restarts
+                        await db.commit()
                     else:
                         stats["skipped_files"] += 1
                 except Exception:
