@@ -22,6 +22,11 @@ from app.workers import get_pool, log_memory, tick_job, maybe_recycle
 
 logger = logging.getLogger(__name__)
 
+# Files larger than this are skipped during scanning to prevent OOM.
+# trimesh can expand a 330MB 3MF to 4-6GB in memory, which crashes the
+# single-worker process pool on memory-constrained containers.
+MAX_FILE_SIZE_MB: int = 200
+
 
 class Scanner:
     """Scans library directories for 3D model files and indexes them in the database.
@@ -447,6 +452,20 @@ class Scanner:
             logger.debug("Skipping already-indexed file: %s", file_path_str)
             return "skipped"
 
+        # Skip files that are too large (would OOM the worker process)
+        try:
+            file_size_mb = file_path.stat().st_size / (1024 * 1024)
+            if file_size_mb > MAX_FILE_SIZE_MB:
+                logger.warning(
+                    "Skipping oversized file (%.0f MB > %d MB limit): %s",
+                    file_size_mb,
+                    MAX_FILE_SIZE_MB,
+                    file_path_str,
+                )
+                return "skipped"
+        except OSError:
+            pass  # stat failed, try processing anyway
+
         # Extract metadata (CPU-bound -- run in process pool)
         metadata: dict = await loop.run_in_executor(
             get_pool(), processor.extract_metadata, file_path_str
@@ -656,6 +675,25 @@ class Scanner:
         if await cursor.fetchone() is not None:
             logger.debug("Skipping already-indexed zip entry: %s", synthetic_path)
             return False
+
+        # Check entry size before extracting (avoid OOM on huge entries)
+        try:
+            import zipfile
+
+            with zipfile.ZipFile(zip_path_str, "r") as zf:
+                info = zf.getinfo(entry_name)
+                entry_size_mb = info.file_size / (1024 * 1024)
+                if entry_size_mb > MAX_FILE_SIZE_MB:
+                    logger.warning(
+                        "Skipping oversized zip entry (%.0f MB > %d MB limit): %s::%s",
+                        entry_size_mb,
+                        MAX_FILE_SIZE_MB,
+                        zip_path_str,
+                        entry_name,
+                    )
+                    return False
+        except Exception:
+            pass  # if we can't check size, try processing anyway
 
         # Extract to temp file for processing
         tmp_path: Path | None = None
