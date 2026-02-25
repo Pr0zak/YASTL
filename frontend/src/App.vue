@@ -857,9 +857,15 @@ function clearFilters() {
 }
 
 function setZipFilter(zipPathValue) {
+    if (!zipPathValue) return;
     filters.zipPath = zipPathValue;
+    // Clear filters that might hide zip contents
+    filters.collection = null;
+    filters.favoritesOnly = false;
+    filters.duplicatesOnly = false;
+    searchQuery.value = '';
     pagination.offset = 0;
-    refreshCurrentView();
+    fetchModels();
 }
 
 function clearZipFilter() {
