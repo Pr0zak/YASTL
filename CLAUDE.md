@@ -125,11 +125,14 @@ docker compose up -d
 - **SQLite with WAL mode** — concurrent reads, FTS5 for full-text search (porter tokenizer)
 - **Service layer pattern** — business logic in `app/services/`, routes in `app/api/`
 - **Process pool** — `app/workers.py` manages a shared `ProcessPoolExecutor(max_workers=1)` created at startup. CPU-bound work (thumbnail rendering, metadata extraction, file hashing) uses `loop.run_in_executor(get_pool(), ...)` to bypass the GIL — CPU work runs on core 1 while the asyncio event loop stays responsive on core 0. **Only 1 worker** to avoid OOM on CT333 (4GB RAM); each worker process loads ~300MB of Python+trimesh+numpy — 2 workers caused OOM. I/O-bound work (zip extraction, file discovery) stays on the default thread pool.
-- **Memory diagnostics** — `app/workers.py` provides `log_memory(context)` which logs process RSS + system available/total/swap via `/proc/meminfo`. Called at scan start/end, thumbnail regen start/end, every 50 models during regen, and on any model taking >10s (logged as `WARNING: Slow thumbnail: model <id> took <N>s <path>`). View with `journalctl -u yastl | grep -E 'Memory:|Slow thumbnail'`.
+- **Worker recycling** — `app/workers.py` provides `tick_job()` and `maybe_recycle()`. After every 50 CPU-bound jobs the worker pool is shut down and recreated via `recycle_pool()`, shedding accumulated memory from trimesh/numpy loads. All CPU-bound callers (scanner, thumbnail regen) call `tick_job()` after each job and `maybe_recycle()` after thumbnail generation. Always use `get_pool()` fresh before each `run_in_executor` call (never cache the pool reference) since recycling replaces the pool instance.
+- **Memory cleanup** — `processor.py` and `thumbnail.py` wrap trimesh loads in try/finally blocks that clear `loaded._cache`, iterate scene geometries to clear their caches, `del` references, and call `gc.collect()`. This prevents Python's allocator from holding freed numpy arrays indefinitely.
+- **Memory diagnostics** — `app/workers.py` provides `log_memory(context)` which logs process RSS + system available/total/swap via `/proc/meminfo`. Called at scan start/end, thumbnail regen start/end, every 50 models during regen, on worker recycle, and on any model taking >10s (logged as `WARNING: Slow thumbnail: model <id> took <N>s <path>`). View with `journalctl -u yastl | grep -E 'Memory:|Slow thumbnail|recycle'`.
 - **Background tasks** — directory scanning and file watching run off the request/response thread
 - **Server-side thumbnails** — trimesh rendering with Pillow wireframe fallback (256x256 PNG)
-- **GLB conversion** — server-side trimesh conversion for formats Three.js can't load natively (3MF, STEP)
-- **Zip archive support** — models inside zip files are extracted on demand and cached; shown with purple ZIP badge in UI
+- **GLB conversion** — server-side trimesh conversion for formats Three.js can't load natively (3MF, STEP). GLB preview cache in `preview_cache/` directory is capped at 500 MB with LRU eviction by mtime.
+- **Zip archive support** — models inside zip files are extracted on demand and cached; shown with purple ZIP badge in UI. Multi-model zips are grouped into a single card with a count badge; clicking drills into individual models with breadcrumb navigation.
+- **Unified collections** — regular and smart collections share a single sidebar section. Every collection can optionally have smart filter rules. Collections without rules are manual (add models explicitly); collections with rules auto-match models. `is_smart` flag is auto-detected from rules content.
 - **Thumbnail tracking** — `thumbnail_mode`, `thumbnail_quality`, `thumbnail_generated_at` columns track generation settings per model; UI shows colored status dots (green=current, amber=stale, red=missing)
 - **Stats & status** — `/api/stats` returns aggregate library statistics; `/api/status` returns system health. Both displayed in a unified Stats modal (bar chart icon in navbar with health dot). Replaced the old separate status dropdown.
 - **Print bed overlay** — configurable bed dimensions stored as settings (`bed_width`, `bed_depth`, `bed_height`, `bed_shape`, `bed_enabled`). Viewer renders a wireframe build volume at correct scale; shows "Fits" / "Too large" indicator. Presets for common printers (Ender 3, Prusa MK3S+, Bambu Lab P1S/A1, Voron 2.4).
@@ -177,10 +180,10 @@ Libraries (scan directories) are now managed via the web UI Settings page rather
 
 Tests use `pytest-asyncio` with `asyncio_mode = "auto"` and shared fixtures from `tests/conftest.py` that provide temporary directories, an in-memory database, and an async HTTP client. All route tests use `httpx.AsyncClient` against the FastAPI test app.
 
-## Deployment (CT333 on PVE3)
+## Deployment (CT333 on PVE4)
 
-- **Host:** Proxmox LXC container CT333 on PVE3 (Debian 12 bookworm)
-- **SSH access:** `ssh root@pve3 "pct exec 333 -- <cmd>"`
+- **Host:** Proxmox LXC container CT333 on PVE4 (Debian 12 bookworm)
+- **SSH access:** `ssh root@pve4 "pct exec 333 -- <cmd>"`
 - **Install path:** `/opt/yastl/` (src/, venv/, data/)
 - **Systemd service:** `yastl.service` — restart with `systemctl restart yastl`
 - **Database:** `/opt/yastl/data/library.db`
