@@ -2,10 +2,11 @@
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 import aiosqlite
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -157,6 +158,26 @@ app.include_router(collections_router)
 app.include_router(saved_searches_router)
 app.include_router(bulk_router)
 app.include_router(import_router)
+
+# Log slow requests (>1s) with timing info
+SLOW_REQUEST_THRESHOLD = 1.0  # seconds
+
+
+@app.middleware("http")
+async def log_slow_requests(request: Request, call_next):
+    start = time.monotonic()
+    response = await call_next(request)
+    elapsed = time.monotonic() - start
+    if elapsed >= SLOW_REQUEST_THRESHOLD:
+        logger.warning(
+            "Slow request: %s %s took %.1fs (status %d)",
+            request.method,
+            request.url.path,
+            elapsed,
+            response.status_code,
+        )
+    return response
+
 
 # Serve static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")
