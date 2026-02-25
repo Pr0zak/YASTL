@@ -121,7 +121,7 @@ docker compose up -d
 
 ## Architecture Notes
 
-- **Vite frontend** — SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/
+- **Vite frontend** — SFC build in `frontend/` outputs to `app/static/dist/`; `main.py` serves dist/. Build filenames include `Date.now()` timestamp via rollup config to guarantee unique filenames on every deploy (prevents browser cache collisions). `index.html` is served with `Cache-Control: no-store` to prevent browsers from caching stale asset references.
 - **SQLite with WAL mode** — concurrent reads, FTS5 for full-text search (porter tokenizer)
 - **Service layer pattern** — business logic in `app/services/`, routes in `app/api/`
 - **Process pool** — `app/workers.py` manages a shared `ProcessPoolExecutor(max_workers=1)` created at startup. CPU-bound work (thumbnail rendering, metadata extraction, file hashing) uses `loop.run_in_executor(get_pool(), ...)` to bypass the GIL — CPU work runs on core 1 while the asyncio event loop stays responsive on core 0. **Only 1 worker** to avoid OOM on CT333 (4GB RAM); each worker process loads ~300MB of Python+trimesh+numpy — 2 workers caused OOM. I/O-bound work (zip extraction, file discovery) stays on the default thread pool.
@@ -183,12 +183,14 @@ Tests use `pytest-asyncio` with `asyncio_mode = "auto"` and shared fixtures from
 ## Deployment (CT333 on PVE4)
 
 - **Host:** Proxmox LXC container CT333 on PVE4 (Debian 12 bookworm)
-- **SSH access:** `ssh root@pve4 "pct exec 333 -- <cmd>"`
+- **SSH access:** `ssh root@pve4 "lxc-attach -n 333 -- <cmd>"` (preferred over `pct exec` which can hang)
 - **Install path:** `/opt/yastl/` (src/, venv/, data/)
+- **Editable install:** Package MUST be installed with `pip install -e .` (editable mode) so Python imports from the source tree. Non-editable `pip install .` copies files to site-packages and `git pull`/`npm run build` changes won't take effect. The `yastl-update` script and in-app updater both use `-e`.
 - **Systemd service:** `yastl.service` — restart with `systemctl restart yastl`
 - **Database:** `/opt/yastl/data/library.db`
 - **Thumbnails:** `/opt/yastl/data/thumbnails/`
 - **Model source files:** NFS mount at `/mnt/DATA/3dPrinting`
 - **Port:** 8000
-- **Resources:** 4GB RAM, 1GB swap (needed for large 3MF processing)
-- **Update from main:** `cd /opt/yastl/src && git checkout -- . && git pull origin main && systemctl restart yastl`
+- **Resources:** 8GB RAM (previously 4GB, upgraded to avoid OOM)
+- **Update from main:** `yastl-update` script (git pull + npm build + pip install -e + restart)
+- **Manual update:** `cd /opt/yastl/src && git checkout -- . && git pull origin main && cd frontend && npm run build && cd .. && /opt/yastl/venv/bin/pip install -e . && systemctl restart yastl`
