@@ -25,6 +25,15 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 # ---------------------------------------------------------------------------
 
 
+def _zip_display_name(zip_path: str) -> str:
+    """Extract a display name from a zip path (filename without .zip extension)."""
+    import posixpath
+    basename = posixpath.basename(zip_path.replace("\\", "/"))
+    if basename.lower().endswith(".zip"):
+        return basename[:-4]
+    return basename
+
+
 @router.get("")
 async def list_models(
     request: Request,
@@ -42,6 +51,8 @@ async def list_models(
     sort_order: str = Query(default="desc"),
     library_id: int | None = Query(default=None),
     favorites_first: bool = Query(default=False),
+    group_zips: bool = Query(default=False),
+    zip_path: str | None = Query(default=None),
 ):
     """List models with pagination and filters.
 
@@ -147,6 +158,47 @@ async def list_models(
             where_clauses.append("m.library_id = ?")
             params.append(library_id)
 
+        # Zip path filter — show only models from a specific zip archive
+        if zip_path is not None:
+            where_clauses.append("m.zip_path = ?")
+            params.append(zip_path)
+
+        # Zip grouping — collapse zip models into one representative per zip
+        zip_group_map: dict[int, dict] = {}  # rep_id -> {count, zip_path, name}
+        if group_zips and zip_path is None:
+            # Pre-query: find representative models for each zip
+            # Build same WHERE for the pre-query (minus any group_zips clause)
+            zip_where_sql = ""
+            if where_clauses:
+                zip_where_sql = "WHERE " + " AND ".join(where_clauses)
+            zip_sql = f"""
+                SELECT m.zip_path, MIN(m.id) AS rep_id, COUNT(*) AS cnt
+                FROM models m
+                {zip_where_sql}
+                AND m.zip_path IS NOT NULL
+                GROUP BY m.zip_path
+                HAVING COUNT(*) > 1
+            """
+            cursor = await db.execute(zip_sql, params)
+            zip_rows = await cursor.fetchall()
+            rep_ids = set()
+            for zr in zip_rows:
+                zd = dict(zr)
+                rep_ids.add(zd["rep_id"])
+                zip_group_map[zd["rep_id"]] = {
+                    "count": zd["cnt"],
+                    "zip_path": zd["zip_path"],
+                    "name": _zip_display_name(zd["zip_path"]),
+                }
+
+            if rep_ids:
+                # Hide non-representative zip models
+                rep_placeholders = ", ".join("?" for _ in rep_ids)
+                where_clauses.append(
+                    f"(m.zip_path IS NULL OR m.id IN ({rep_placeholders}))"
+                )
+                params.extend(rep_ids)
+
         where_sql = ""
         if where_clauses:
             where_sql = "WHERE " + " AND ".join(where_clauses)
@@ -250,6 +302,14 @@ async def list_models(
 
         for m in models:
             m["is_duplicate"] = bool(m.get("file_hash") and m["file_hash"] in dup_hashes)
+
+        # Attach zip group info to representative models
+        if zip_group_map:
+            for m in models:
+                if m["id"] in zip_group_map:
+                    info = zip_group_map[m["id"]]
+                    m["zip_model_count"] = info["count"]
+                    m["zip_group_name"] = info["name"]
 
         return {"models": models, "total": total, "limit": limit, "offset": offset}
 

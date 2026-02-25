@@ -1,6 +1,7 @@
 """API routes for serving 3D model files, downloads, GLB conversion, and thumbnails."""
 
 import asyncio
+import gc
 import logging
 import os
 
@@ -17,6 +18,43 @@ from app.api._helpers import _get_db_path, _resolve_model_file, MIME_TYPES
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/models", tags=["model-files"])
+
+# Maximum total size of the GLB preview cache in bytes (500 MB)
+_GLB_CACHE_MAX_BYTES = 500 * 1024 * 1024
+
+
+def _evict_glb_cache(cache_dir: str) -> None:
+    """Evict oldest GLB cache entries if total size exceeds the limit."""
+    try:
+        entries = []
+        total_size = 0
+        for name in os.listdir(cache_dir):
+            if not name.endswith(".glb"):
+                continue
+            path = os.path.join(cache_dir, name)
+            try:
+                stat = os.stat(path)
+                entries.append((path, stat.st_mtime, stat.st_size))
+                total_size += stat.st_size
+            except OSError:
+                continue
+
+        if total_size <= _GLB_CACHE_MAX_BYTES:
+            return
+
+        # Sort by mtime ascending (oldest first) and delete until under limit
+        entries.sort(key=lambda e: e[1])
+        for path, _, size in entries:
+            if total_size <= _GLB_CACHE_MAX_BYTES:
+                break
+            try:
+                os.remove(path)
+                total_size -= size
+                logger.debug("Evicted GLB cache: %s (%.1f MB)", path, size / 1024 / 1024)
+            except OSError:
+                continue
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -181,19 +219,28 @@ async def serve_model_glb(request: Request, model_id: int):
         if loaded is None:
             raise ValueError(f"Cannot load file for GLB conversion: {file_path}")
 
-        if isinstance(loaded, trimesh.Trimesh):
-            return loaded.export(file_type="glb")
-        elif isinstance(loaded, trimesh.Scene):
-            try:
+        try:
+            if isinstance(loaded, trimesh.Trimesh):
                 return loaded.export(file_type="glb")
-            except Exception:
-                # Scene GLB export failed; concatenate into a single mesh
-                concatenated = trimesh.load(file_path, force="mesh")
-                return concatenated.export(file_type="glb")
-        else:
-            raise ValueError(
-                f"Cannot convert to GLB: unsupported type {type(loaded).__name__}"
-            )
+            elif isinstance(loaded, trimesh.Scene):
+                try:
+                    return loaded.export(file_type="glb")
+                except Exception:
+                    # Scene GLB export failed; concatenate into a single mesh
+                    concatenated = trimesh.load(file_path, force="mesh")
+                    result = concatenated.export(file_type="glb")
+                    del concatenated
+                    return result
+            else:
+                raise ValueError(
+                    f"Cannot convert to GLB: unsupported type {type(loaded).__name__}"
+                )
+        finally:
+            if loaded is not None:
+                if hasattr(loaded, '_cache'):
+                    loaded._cache.clear()
+                del loaded
+            gc.collect()
 
     try:
         glb_data = await asyncio.to_thread(_convert)
@@ -209,6 +256,9 @@ async def serve_model_glb(request: Request, model_id: int):
     # Write to cache
     with open(cache_path, "wb") as f:
         f.write(glb_data)
+
+    # Evict old cache entries if over size limit
+    _evict_glb_cache(cache_dir)
 
     return FileResponse(
         path=cache_path,

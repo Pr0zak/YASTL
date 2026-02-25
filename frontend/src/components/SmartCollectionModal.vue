@@ -1,6 +1,6 @@
 <script setup>
 /**
- * SmartCollectionModal - Create/edit smart collection rules.
+ * SmartCollectionModal - Unified collection modal (supports optional smart rules).
  */
 import { ref, computed } from 'vue';
 import { ICONS } from '../icons.js';
@@ -28,6 +28,7 @@ const emit = defineEmits([
 ]);
 
 const tagInput = ref('');
+const showRules = ref(false);
 
 const FORMATS = ['stl', 'obj', 'gltf', 'glb', '3mf', 'step', 'stp', 'ply', 'fbx', 'dae', 'off'];
 const DATE_RANGES = [
@@ -71,6 +72,15 @@ function hasActiveRules() {
     return r.format || (r.tags && r.tags.length) || (r.categories && r.categories.length) ||
         r.library_id || r.favoritesOnly || r.duplicatesOnly || r.sizeMin || r.sizeMax || r.dateRange;
 }
+
+// Auto-expand rules section when editing a smart collection or when rules are active
+const rulesExpanded = computed(() => {
+    return showRules.value || hasActiveRules();
+});
+
+function toggleRules() {
+    showRules.value = !showRules.value;
+}
 </script>
 
 <template>
@@ -79,8 +89,7 @@ function hasActiveRules() {
             <!-- Header -->
             <div class="detail-header">
                 <div class="detail-title">
-                    <span v-html="ICONS.zap"></span>
-                    {{ editing ? 'Edit Smart Collection' : 'New Smart Collection' }}
+                    {{ editing ? 'Edit Collection' : 'New Collection' }}
                 </div>
                 <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
             </div>
@@ -91,7 +100,7 @@ function hasActiveRules() {
                     <label class="form-label">Name</label>
                     <input class="form-input" :value="form.name"
                            @input="emit('updateName', $event.target.value)"
-                           placeholder="Smart collection name">
+                           placeholder="Collection name">
                 </div>
                 <div class="form-row">
                     <label class="form-label">Color</label>
@@ -104,10 +113,19 @@ function hasActiveRules() {
                     </div>
                 </div>
 
+                <!-- Smart Rules (collapsible, optional) -->
                 <div class="settings-section">
-                    <div class="settings-section-title">Filter Rules</div>
-                    <p class="text-muted text-sm" style="margin-bottom:12px">
-                        Models matching all rules below will appear in this collection.
+                    <div class="settings-section-title sidebar-section-toggle" @click="toggleRules"
+                         style="cursor:pointer;display:flex;align-items:center;gap:6px">
+                        <span v-html="ICONS.zap" style="opacity:0.6;width:14px;height:14px"></span>
+                        <span>Smart Rules (optional)</span>
+                        <span v-if="hasActiveRules()" class="sidebar-section-active-badge">active</span>
+                        <span class="sidebar-section-chevron" :class="{ expanded: rulesExpanded }"
+                              v-html="ICONS.chevron" style="margin-left:auto"></span>
+                    </div>
+                    <template v-if="rulesExpanded">
+                    <p class="text-muted text-sm" style="margin-bottom:12px;margin-top:8px">
+                        Models matching all rules below will automatically appear in this collection.
                     </p>
 
                     <!-- Format -->
@@ -193,13 +211,14 @@ function hasActiveRules() {
                             <option v-for="dr in DATE_RANGES" :key="dr.value" :value="dr.value">{{ dr.label }}</option>
                         </select>
                     </div>
+                    </template>
                 </div>
 
                 <!-- Actions -->
                 <div class="form-actions" style="margin-top:16px">
                     <button class="btn btn-secondary" @click="emit('close')">Cancel</button>
                     <button class="btn btn-primary" @click="emit('save')"
-                            :disabled="!form.name.trim() || !hasActiveRules()">
+                            :disabled="!form.name.trim()">
                         {{ editing ? 'Save Changes' : 'Create' }}
                     </button>
                 </div>

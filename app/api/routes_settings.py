@@ -11,7 +11,7 @@ from app.database import get_all_settings, get_db, get_setting, set_setting, upd
 from app.services import thumbnail
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.api._helpers import apply_auto_tags
-from app.workers import get_pool, log_memory
+from app.workers import get_pool, log_memory, tick_job, maybe_recycle
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,6 @@ async def _regenerate_all_thumbnails(
     from app.services import zip_handler
 
     loop = asyncio.get_event_loop()
-    pool = get_pool()
 
     async with get_db() as db:
         cursor = await db.execute(
@@ -219,7 +218,7 @@ async def _regenerate_all_thumbnails(
                 render_path = row["file_path"]
 
             thumb_filename: str | None = await loop.run_in_executor(
-                pool,
+                get_pool(),
                 thumbnail.generate_thumbnail,
                 render_path,
                 thumbnail_path,
@@ -227,6 +226,8 @@ async def _regenerate_all_thumbnails(
                 mode,
                 quality,
             )
+            tick_job()
+            maybe_recycle()
             if thumb_filename is not None:
                 async with get_db() as db:
                     await db.execute(

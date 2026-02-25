@@ -5,6 +5,7 @@ Uses trimesh to load 3D files and extract geometric metadata such as
 vertex count, face count, bounding box dimensions, and file format.
 """
 
+import gc
 import logging
 import os
 from pathlib import Path
@@ -146,6 +147,7 @@ def extract_metadata(file_path: str) -> dict:
         return metadata
 
     # Attempt to load with trimesh
+    loaded = None
     try:
         logger.debug("Loading 3D file with trimesh: %s", file_path)
         loaded = trimesh.load(file_path, force=None)
@@ -184,6 +186,7 @@ def extract_metadata(file_path: str) -> dict:
                 e,
             )
             # Try the dedicated STEP converter
+            mesh = None
             try:
                 from app.services.step_converter import load_step
 
@@ -207,11 +210,25 @@ def extract_metadata(file_path: str) -> dict:
                 logger.debug(
                     "STEP converter failed for %s: %s", file_path, conv_err
                 )
+            finally:
+                del mesh
         else:
             logger.warning(
                 "Failed to extract mesh data from %s: %s. Returning partial metadata.",
                 file_path,
                 e,
             )
+    finally:
+        # Explicitly free trimesh objects and numpy arrays to prevent
+        # memory accumulation in the long-running worker process.
+        if loaded is not None:
+            if hasattr(loaded, '_cache'):
+                loaded._cache.clear()
+            if isinstance(loaded, trimesh.Scene):
+                for geom in loaded.geometry.values():
+                    if hasattr(geom, '_cache'):
+                        geom._cache.clear()
+            del loaded
+        gc.collect()
 
     return metadata

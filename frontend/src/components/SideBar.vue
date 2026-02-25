@@ -34,12 +34,10 @@ const emit = defineEmits([
     'toggleCategory',
     'toggleCollapsedSection',
     'setCollectionFilter',
-    'setSmartCollectionFilter',
     'toggleFavoritesFilter',
     'toggleDuplicatesFilter',
     'openCollectionModal',
-    'openSmartCollectionModal',
-    'editSmartCollection',
+    'editCollection',
     'startEditCollection',
     'saveCollectionName',
     'cancelEditCollection',
@@ -73,12 +71,9 @@ const hasMoreTags = computed(() => {
     return !tagShowAll.value && !tagSearch.value.trim() && filteredTags.value.length > TAG_PAGE_SIZE;
 });
 
-const regularCollections = computed(() =>
+// Filter out smart collections that also have no models (for add-to-collection filtering)
+const manualCollections = computed(() =>
     props.collections.filter(c => !c.is_smart)
-);
-
-const smartCollections = computed(() =>
-    props.collections.filter(c => c.is_smart)
 );
 </script>
 
@@ -229,7 +224,7 @@ const smartCollections = computed(() =>
             </template>
         </div>
 
-        <!-- Collections -->
+        <!-- Collections (unified — regular and smart) -->
         <div class="sidebar-section">
             <div class="sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between">
                 Collections
@@ -245,7 +240,7 @@ const smartCollections = computed(() =>
                 <span v-html="ICONS.copy"></span>
                 <span>Duplicates</span>
             </div>
-            <div v-for="col in regularCollections" :key="col.id"
+            <div v-for="col in collections" :key="col.id"
                  class="sidebar-item" :class="{ active: filters.collection === col.id }"
                  @click="emit('setCollectionFilter', col.id)">
                 <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
@@ -258,32 +253,12 @@ const smartCollections = computed(() =>
                            @click.stop
                            autofocus>
                 </template>
-                <span v-else class="truncate" @dblclick.stop="emit('startEditCollection', col)">{{ col.name }}</span>
+                <template v-else>
+                    <span class="truncate" @dblclick.stop="emit('startEditCollection', col)">{{ col.name }}</span>
+                    <span v-if="col.is_smart" class="sidebar-smart-icon" v-html="ICONS.zap" title="Smart collection"></span>
+                </template>
                 <span class="item-count">{{ col.model_count }}</span>
-                <button class="sidebar-item-delete" @click.stop="emit('deleteCollection', col.id)">&times;</button>
-            </div>
-        </div>
-
-        <!-- Smart Collections -->
-        <div class="sidebar-section">
-            <div class="sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between">
-                <span style="display:flex;align-items:center;gap:4px">
-                    <span v-html="ICONS.zap" style="opacity:0.6"></span>
-                    Smart
-                </span>
-                <button class="btn-icon" style="width:20px;height:20px" @click="emit('openSmartCollectionModal')"
-                        title="New smart collection"><span v-html="ICONS.plus"></span></button>
-            </div>
-            <div v-if="smartCollections.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
-                No smart collections
-            </div>
-            <div v-for="col in smartCollections" :key="col.id"
-                 class="sidebar-item" :class="{ active: filters.smartCollection === col.id }"
-                 @click="emit('setSmartCollectionFilter', col.id)">
-                <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
-                <span class="truncate">{{ col.name }}</span>
-                <span class="item-count">{{ col.model_count }}</span>
-                <button class="sidebar-item-action" @click.stop="emit('editSmartCollection', col)"
+                <button v-if="col.is_smart" class="sidebar-item-action" @click.stop="emit('editCollection', col)"
                         title="Edit rules" v-html="ICONS.settings"></button>
                 <button class="sidebar-item-delete" @click.stop="emit('deleteCollection', col.id)">&times;</button>
             </div>

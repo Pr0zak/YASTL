@@ -5,6 +5,8 @@ import re
 from fastapi import APIRouter, Query, Request
 import aiosqlite
 
+from app.api.routes_models import _zip_display_name
+
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 # Characters that have special meaning in FTS5 query syntax
@@ -55,6 +57,8 @@ async def search_models(
     library_id: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    group_zips: bool = Query(default=False),
+    zip_path: str | None = Query(default=None),
 ):
     """Search models using full-text search with optional filters.
 
@@ -143,6 +147,44 @@ async def search_models(
         if library_id is not None:
             where_clauses.append("m.library_id = ?")
             params.append(library_id)
+
+        # Zip path filter
+        if zip_path is not None:
+            where_clauses.append("m.zip_path = ?")
+            params.append(zip_path)
+
+        # Zip grouping
+        zip_group_map: dict[int, dict] = {}
+        if group_zips and zip_path is None:
+            zip_where_sql = ""
+            if where_clauses:
+                zip_where_sql = "WHERE " + " AND ".join(where_clauses)
+            zip_sql = f"""
+                SELECT m.zip_path, MIN(m.id) AS rep_id, COUNT(*) AS cnt
+                FROM models m
+                {zip_where_sql}
+                AND m.zip_path IS NOT NULL
+                GROUP BY m.zip_path
+                HAVING COUNT(*) > 1
+            """
+            cursor = await db.execute(zip_sql, params)
+            zip_rows = await cursor.fetchall()
+            rep_ids = set()
+            for zr in zip_rows:
+                zd = dict(zr)
+                rep_ids.add(zd["rep_id"])
+                zip_group_map[zd["rep_id"]] = {
+                    "count": zd["cnt"],
+                    "zip_path": zd["zip_path"],
+                    "name": _zip_display_name(zd["zip_path"]),
+                }
+
+            if rep_ids:
+                rep_placeholders = ", ".join("?" for _ in rep_ids)
+                where_clauses.append(
+                    f"(m.zip_path IS NULL OR m.id IN ({rep_placeholders}))"
+                )
+                params.extend(rep_ids)
 
         where_sql = ""
         if where_clauses:
@@ -234,6 +276,14 @@ async def search_models(
             ]
 
             models.append(model)
+
+        # Attach zip group info to representative models
+        if zip_group_map:
+            for m in models:
+                if m["id"] in zip_group_map:
+                    info = zip_group_map[m["id"]]
+                    m["zip_model_count"] = info["count"]
+                    m["zip_group_name"] = info["name"]
 
     return {
         "models": models,

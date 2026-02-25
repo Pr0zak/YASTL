@@ -18,7 +18,7 @@ from app.services import hasher, processor, thumbnail
 from app.services import zip_handler
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.database import get_setting, update_fts_for_model
-from app.workers import get_pool, log_memory
+from app.workers import get_pool, log_memory, tick_job, maybe_recycle
 
 logger = logging.getLogger(__name__)
 
@@ -432,11 +432,13 @@ class Scanner:
         metadata: dict = await loop.run_in_executor(
             get_pool(), processor.extract_metadata, file_path_str
         )
+        tick_job()
 
         # Compute file hash (CPU-bound -- run in process pool)
         file_hash: str = await loop.run_in_executor(
             get_pool(), hasher.compute_file_hash, file_path_str
         )
+        tick_job()
 
         # Check if this file matches an orphaned record (moved file)
         if orphan_index and file_hash in orphan_index and orphan_index[file_hash]:
@@ -565,12 +567,16 @@ class Scanner:
             thumb_mode,
             thumb_quality,
         )
+        tick_job()
         elapsed = time.monotonic() - t0
         if elapsed > 10:
             logger.warning(
                 "Slow thumbnail: model %d took %.1fs  %s", model_id, elapsed, file_path_str
             )
             log_memory(f"slow_scan_model_{model_id}")
+
+        # Recycle worker process if it has accumulated too many jobs
+        maybe_recycle()
 
         # Update the model row with the thumbnail path and tracking columns
         if thumb_filename is not None:
@@ -644,11 +650,13 @@ class Scanner:
             metadata: dict = await loop.run_in_executor(
                 get_pool(), processor.extract_metadata, tmp_path_str
             )
+            tick_job()
 
             # Compute hash of the entry content (CPU-bound -- process pool)
             file_hash: str = await loop.run_in_executor(
                 get_pool(), hasher.compute_file_hash, tmp_path_str
             )
+            tick_job()
 
             # Derive fields from the entry name
             from pathlib import PurePosixPath
@@ -712,6 +720,8 @@ class Scanner:
                 thumb_mode,
                 thumb_quality,
             )
+            tick_job()
+            maybe_recycle()
 
             if thumb_filename is not None:
                 await db.execute(

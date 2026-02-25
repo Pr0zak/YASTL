@@ -18,8 +18,9 @@ import { ref, reactive, computed } from 'vue';
 
 /**
  * @param {Function} showToast - Toast notification function
+ * @param {Function} showConfirm - Confirm dialog function
  */
-export function useCollections(showToast) {
+export function useCollections(showToast, showConfirm) {
     const collections = ref([]);
     const COLLECTION_COLORS = [
         '#0f9b8e', '#e06c75', '#61afef', '#e5c07b', '#c678dd',
@@ -55,14 +56,7 @@ export function useCollections(showToast) {
         },
     });
 
-    // Split collections into regular and smart
-    const regularCollections = computed(() =>
-        collections.value.filter(c => !c.is_smart)
-    );
-
-    const smartCollections = computed(() =>
-        collections.value.filter(c => c.is_smart)
-    );
+    // All collections in a single list (unified — no regular/smart split)
 
     function pickNextCollectionColor() {
         const used = new Set(collections.value.map(c => (c.color || '').toLowerCase()));
@@ -128,13 +122,18 @@ export function useCollections(showToast) {
     }
 
     async function deleteCollection(id, filters) {
+        const col = collections.value.find(c => c.id === id);
+        const colName = col ? col.name : 'this collection';
+        if (showConfirm && !await showConfirm({
+            title: 'Delete Collection',
+            message: `Delete "${colName}"? Models will not be removed.`,
+            action: 'Delete',
+            danger: true,
+        })) return;
         try {
             await apiDeleteCollection(id);
             if (filters && filters.collection === id) {
                 filters.collection = null;
-            }
-            if (filters && filters.smartCollection === id) {
-                filters.smartCollection = null;
             }
             await fetchCollections();
             showToast('Collection deleted', 'success');
@@ -243,6 +242,9 @@ export function useCollections(showToast) {
         if (smartCollectionForm.rules.sizeMax) rules.sizeMax = smartCollectionForm.rules.sizeMax;
         if (smartCollectionForm.rules.dateRange) rules.dateRange = smartCollectionForm.rules.dateRange;
 
+        // Auto-detect smart: is_smart if rules have any active filter
+        const hasSomeRule = Object.keys(rules).length > 0;
+
         try {
             if (editingSmartCollection.value) {
                 // Update existing
@@ -250,29 +252,28 @@ export function useCollections(showToast) {
                     name,
                     color: smartCollectionForm.color,
                     rules,
+                    is_smart: hasSomeRule,
                 });
             } else {
                 // Create new
                 await apiCreateCollection({
                     name,
                     color: smartCollectionForm.color,
-                    is_smart: true,
+                    is_smart: hasSomeRule,
                     rules,
                 });
             }
             showSmartCollectionModal.value = false;
             await fetchCollections();
-            showToast(editingSmartCollection.value ? 'Smart collection updated' : 'Smart collection created', 'success');
+            showToast(editingSmartCollection.value ? 'Collection updated' : 'Collection created', 'success');
         } catch (e) {
-            showToast('Failed to save smart collection', 'error');
+            showToast('Failed to save collection', 'error');
         }
     }
 
     return {
         // State
         collections,
-        regularCollections,
-        smartCollections,
         COLLECTION_COLORS,
         showCollectionModal,
         newCollectionName,

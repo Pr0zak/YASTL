@@ -13,6 +13,12 @@ Usage::
 The pool is initialised at app startup via ``init_pool()`` and shut down
 gracefully via ``shutdown_pool()`` — both called from the FastAPI lifespan
 in ``main.py``.
+
+Worker processes accumulate memory over time (trimesh, numpy arrays, etc.)
+because Python's allocator doesn't return freed memory to the OS.  To prevent
+OOM on memory-constrained hosts, call ``recycle_pool()`` periodically (e.g.
+every 50 models during scans/thumbnail regen) or use ``maybe_recycle()``
+which tracks job count automatically.
 """
 
 import logging
@@ -23,6 +29,12 @@ from concurrent.futures import ProcessPoolExecutor
 logger = logging.getLogger("yastl")
 
 _pool: ProcessPoolExecutor | None = None
+_max_workers: int = 1
+
+# Worker recycling: track how many CPU-bound jobs have been dispatched
+# and recycle the pool after a threshold to shed accumulated memory.
+_job_count: int = 0
+_RECYCLE_EVERY: int = 50  # recycle worker after this many jobs
 
 
 def _get_memory_mb() -> float:
@@ -70,10 +82,12 @@ def log_memory(context: str = "") -> None:
 
 def init_pool(max_workers: int = 1) -> None:
     """Create the shared process pool."""
-    global _pool
+    global _pool, _max_workers, _job_count
     if _pool is not None:
         logger.warning("Process pool already initialised — skipping")
         return
+    _max_workers = max_workers
+    _job_count = 0
     _pool = ProcessPoolExecutor(max_workers=max_workers)
     logger.info("Process pool started (max_workers=%d)", max_workers)
     log_memory("pool_init")
@@ -82,6 +96,40 @@ def init_pool(max_workers: int = 1) -> None:
 def get_pool() -> ProcessPoolExecutor | None:
     """Return the shared process pool (or None if not initialised)."""
     return _pool
+
+
+def recycle_pool() -> None:
+    """Shut down the current pool and create a fresh one.
+
+    This kills the worker process(es), releasing all accumulated memory
+    back to the OS (numpy arrays, trimesh caches, etc.).  The new pool
+    starts with a clean worker that only loads ~300 MB on first use.
+    """
+    global _pool, _job_count
+    if _pool is None:
+        return
+    log_memory("recycle_before")
+    _pool.shutdown(wait=True)
+    _pool = ProcessPoolExecutor(max_workers=_max_workers)
+    _job_count = 0
+    logger.info("Process pool recycled (max_workers=%d)", _max_workers)
+    log_memory("recycle_after")
+
+
+def tick_job() -> None:
+    """Increment the job counter.  Called after each CPU-bound job completes."""
+    global _job_count
+    _job_count += 1
+
+
+def maybe_recycle() -> None:
+    """Recycle the pool if the job counter has reached the threshold.
+
+    Call this after each CPU-bound job (metadata extraction, thumbnail
+    generation, hashing) to automatically shed accumulated memory.
+    """
+    if _job_count >= _RECYCLE_EVERY:
+        recycle_pool()
 
 
 def shutdown_pool() -> None:

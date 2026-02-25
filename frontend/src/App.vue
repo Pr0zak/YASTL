@@ -115,7 +115,7 @@ const filters = reactive({
     favoritesOnly: false,
     duplicatesOnly: false,
     collection: null,
-    smartCollection: null,
+    zipPath: null,
     sortBy: 'updated_at',
     sortOrder: 'desc',
 });
@@ -185,7 +185,7 @@ function setColorTheme(theme) {
 const updatesComposable = useUpdates(showToast, showConfirm);
 const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
 
-const collectionsComposable = useCollections(showToast);
+const collectionsComposable = useCollections(showToast, showConfirm);
 const {
     collections, COLLECTION_COLORS,
     showCollectionModal, newCollectionName, newCollectionColor,
@@ -315,7 +315,7 @@ const shownCount = computed(() => {
 });
 
 const hasActiveFilters = computed(() => {
-    return !!(filters.format || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection || filters.smartCollection);
+    return !!(filters.format || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection || filters.zipPath);
 });
 
 // Find the library object for the currently selected library_id
@@ -331,15 +331,17 @@ const breadcrumbTrail = computed(() => {
     if (selectedLibrary.value) {
         trail.push({ type: 'library', label: selectedLibrary.value.name });
     }
-    // Collection
+    // Collection (regular or smart)
     if (filters.collection) {
         const col = collections.value.find(c => c.id === filters.collection);
         trail.push({ type: 'collection', label: col ? col.name : 'Collection' });
     }
-    // Smart Collection
-    if (filters.smartCollection) {
-        const sc = collections.value.find(c => c.id === filters.smartCollection);
-        trail.push({ type: 'smartCollection', label: sc ? sc.name : 'Smart Collection' });
+    // Zip group
+    if (filters.zipPath) {
+        const parts = filters.zipPath.replace(/\\/g, '/').split('/');
+        const filename = parts[parts.length - 1] || '';
+        const zipLabel = filename.replace(/\.zip$/i, '') || 'Zip';
+        trail.push({ type: 'zip', label: zipLabel });
     }
     // Favorites / Duplicates
     if (filters.favoritesOnly) {
@@ -380,7 +382,20 @@ async function fetchModels(append = false) {
         if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
         if (filters.favoritesOnly) params.append('favorites_only', 'true');
         if (filters.duplicatesOnly) params.append('duplicates_only', 'true');
-        if (filters.collection) params.append('collection', filters.collection);
+        // For non-smart collections, pass collection id to API
+        // (smart collections apply rules as filters instead)
+        if (filters.collection) {
+            const col = collections.value.find(c => c.id === filters.collection);
+            if (!col || !col.is_smart) {
+                params.append('collection', filters.collection);
+            }
+        }
+        // Zip grouping / filtering
+        if (filters.zipPath) {
+            params.append('zip_path', filters.zipPath);
+        } else {
+            params.append('group_zips', 'true');
+        }
         params.append('sort_by', filters.sortBy);
         params.append('sort_order', filters.sortOrder);
         if (favoritesFirst.value) params.append('favorites_first', 'true');
@@ -417,6 +432,12 @@ async function searchModels(append = false) {
         if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
         if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
         if (filters.library_id) params.append('library_id', String(filters.library_id));
+        // Zip grouping / filtering
+        if (filters.zipPath) {
+            params.append('zip_path', filters.zipPath);
+        } else {
+            params.append('group_zips', 'true');
+        }
 
         const data = await apiSearchModels(params);
 
@@ -828,9 +849,21 @@ function clearFilters() {
     filters.favoritesOnly = false;
     filters.duplicatesOnly = false;
     filters.collection = null;
-    filters.smartCollection = null;
+    filters.zipPath = null;
     filters.sortBy = 'updated_at';
     filters.sortOrder = 'desc';
+    pagination.offset = 0;
+    refreshCurrentView();
+}
+
+function setZipFilter(zipPathValue) {
+    filters.zipPath = zipPathValue;
+    pagination.offset = 0;
+    refreshCurrentView();
+}
+
+function clearZipFilter() {
+    filters.zipPath = null;
     pagination.offset = 0;
     refreshCurrentView();
 }
@@ -847,15 +880,19 @@ function removeBreadcrumb(crumb) {
     } else if (crumb.type === 'library') {
         filters.library_id = null;
     } else if (crumb.type === 'collection') {
+        // If it was a smart collection, also clear the applied rules
+        const col = collections.value.find(c => c.id === filters.collection);
+        if (col && col.is_smart) {
+            filters.format = '';
+            filters.tags = [];
+            filters.categories = [];
+            filters.library_id = null;
+            filters.favoritesOnly = false;
+            filters.duplicatesOnly = false;
+        }
         filters.collection = null;
-    } else if (crumb.type === 'smartCollection') {
-        filters.smartCollection = null;
-        filters.format = '';
-        filters.tags = [];
-        filters.categories = [];
-        filters.library_id = null;
-        filters.favoritesOnly = false;
-        filters.duplicatesOnly = false;
+    } else if (crumb.type === 'zip') {
+        filters.zipPath = null;
     } else if (crumb.type === 'favorites') {
         filters.favoritesOnly = false;
     } else if (crumb.type === 'duplicates') {
@@ -993,38 +1030,31 @@ async function fetchFavoritesCount() {
 
 function setCollectionFilter(collectionId) {
     if (filters.collection === collectionId) {
+        // Deselect: if smart, clear applied rules too
+        const col = collections.value.find(c => c.id === collectionId);
+        if (col && col.is_smart) {
+            filters.format = '';
+            filters.tags = [];
+            filters.categories = [];
+            filters.library_id = null;
+            filters.favoritesOnly = false;
+            filters.duplicatesOnly = false;
+        }
         filters.collection = null;
     } else {
+        const col = collections.value.find(c => c.id === collectionId);
+        if (!col) return;
         filters.collection = collectionId;
-        filters.smartCollection = null; // clear smart collection
-    }
-    pagination.offset = 0;
-    fetchModels();
-}
-
-function setSmartCollectionFilter(collectionId) {
-    if (filters.smartCollection === collectionId) {
-        // Deselect: clear smart collection and restore default filters
-        filters.smartCollection = null;
-        filters.format = '';
-        filters.tags = [];
-        filters.categories = [];
-        filters.library_id = null;
-        filters.favoritesOnly = false;
-        filters.duplicatesOnly = false;
-    } else {
-        // Apply smart collection rules as filters
-        const sc = collections.value.find(c => c.id === collectionId);
-        if (!sc) return;
-        const rules = typeof sc.rules === 'string' ? JSON.parse(sc.rules || '{}') : (sc.rules || {});
-        filters.smartCollection = collectionId;
-        filters.collection = null; // clear regular collection
-        filters.format = rules.format || '';
-        filters.tags = rules.tags ? [...rules.tags] : [];
-        filters.categories = rules.categories ? [...rules.categories] : [];
-        filters.library_id = rules.library_id || null;
-        filters.favoritesOnly = rules.favoritesOnly || false;
-        filters.duplicatesOnly = rules.duplicatesOnly || false;
+        // If smart, apply rules as filters
+        if (col.is_smart) {
+            const rules = typeof col.rules === 'string' ? JSON.parse(col.rules || '{}') : (col.rules || {});
+            filters.format = rules.format || '';
+            filters.tags = rules.tags ? [...rules.tags] : [];
+            filters.categories = rules.categories ? [...rules.categories] : [];
+            filters.library_id = rules.library_id || null;
+            filters.favoritesOnly = rules.favoritesOnly || false;
+            filters.duplicatesOnly = rules.duplicatesOnly || false;
+        }
     }
     pagination.offset = 0;
     fetchModels();
@@ -1360,12 +1390,10 @@ const { pickNextCollectionColor } = collectionsComposable;
             @toggleCategory="toggleCategory"
             @toggleCollapsedSection="(section) => collapsedSections[section] = !collapsedSections[section]"
             @setCollectionFilter="setCollectionFilter"
-            @setSmartCollectionFilter="setSmartCollectionFilter"
             @toggleFavoritesFilter="toggleFavoritesFilter"
             @toggleDuplicatesFilter="toggleDuplicatesFilter"
-            @openCollectionModal="openCollectionModal"
-            @openSmartCollectionModal="() => openSmartCollectionModal()"
-            @editSmartCollection="editSmartCollection"
+            @openCollectionModal="() => openSmartCollectionModal()"
+            @editCollection="editSmartCollection"
             @startEditCollection="startEditCollection"
             @saveCollectionName="saveCollectionName"
             @cancelEditCollection="editingCollectionId = null"
@@ -1454,6 +1482,7 @@ const { pickNextCollectionColor } = collectionsComposable;
                 @viewModel="viewModel"
                 @toggleSelect="toggleModelSelection"
                 @toggleFavorite="toggleFavorite"
+                @expandZipGroup="setZipFilter"
             />
 
             <!-- Load More / Pagination Info -->
@@ -1636,7 +1665,7 @@ const { pickNextCollectionColor } = collectionsComposable;
     />
 
     <!-- ============================================================
-         Smart Collection Modal
+         Collection Modal (unified — supports optional smart rules)
          ============================================================ -->
     <SmartCollectionModal
         :show="showSmartCollectionModal"

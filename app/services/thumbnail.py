@@ -6,6 +6,7 @@ simple wireframe rendering with Pillow when trimesh's built-in rendering
 (which depends on pyrender/pyglet) is unavailable.
 """
 
+import gc
 import logging
 from pathlib import Path
 
@@ -61,75 +62,87 @@ def generate_thumbnail(
         logger.warning("Could not create thumbnail directory %s: %s", output_dir, e)
         return None
 
-    # Load the 3D file
+    loaded = None
+    scene = None
+    meshes = None
     try:
-        loaded = trimesh.load(file_path, force=None)
-    except Exception as e:
-        # For STEP/STP files, try the dedicated converter
-        from app.services.step_converter import is_step_file, load_step
+        # Load the 3D file
+        try:
+            loaded = trimesh.load(file_path, force=None)
+        except Exception as e:
+            # For STEP/STP files, try the dedicated converter
+            from app.services.step_converter import is_step_file, load_step
 
-        if is_step_file(file_path):
-            logger.debug(
-                "trimesh could not load STEP file %s, trying step converter", file_path
-            )
-            mesh = load_step(file_path)
-            if mesh is not None:
-                loaded = mesh
+            if is_step_file(file_path):
+                logger.debug(
+                    "trimesh could not load STEP file %s, trying step converter", file_path
+                )
+                mesh = load_step(file_path)
+                if mesh is not None:
+                    loaded = mesh
+                else:
+                    logger.warning(
+                        "Could not load STEP file for thumbnail: %s: %s", file_path, e
+                    )
+                    return None
             else:
                 logger.warning(
-                    "Could not load STEP file for thumbnail: %s: %s", file_path, e
+                    "Could not load 3D file for thumbnail: %s: %s", file_path, e
                 )
                 return None
+
+        # Ensure we have a Scene for trimesh rendering attempt
+        if isinstance(loaded, trimesh.Trimesh):
+            scene = trimesh.Scene(loaded)
+        elif isinstance(loaded, trimesh.Scene):
+            scene = loaded
         else:
             logger.warning(
-                "Could not load 3D file for thumbnail: %s: %s", file_path, e
+                "Unexpected trimesh type %s for thumbnail: %s",
+                type(loaded).__name__,
+                file_path,
             )
             return None
 
-    # Ensure we have a Scene for trimesh rendering attempt
-    if isinstance(loaded, trimesh.Trimesh):
-        scene = trimesh.Scene(loaded)
-    elif isinstance(loaded, trimesh.Scene):
-        scene = loaded
-    else:
-        logger.warning(
-            "Unexpected trimesh type %s for thumbnail: %s",
-            type(loaded).__name__,
-            file_path,
-        )
-        return None
+        # Check for empty scene
+        if len(scene.geometry) == 0:
+            logger.warning("Empty scene (no geometry) in file: %s", file_path)
+            return None
 
-    # Check for empty scene
-    if len(scene.geometry) == 0:
-        logger.warning("Empty scene (no geometry) in file: %s", file_path)
-        return None
-
-    # Strategy 1: Try trimesh's built-in rendering (needs pyrender/pyglet)
-    # Only attempt for wireframe mode -- the built-in renderer produces its own
-    # shaded output which is effectively "solid", but we want consistent
-    # user-controlled rendering when solid mode is explicitly chosen.
-    if render_mode == "wireframe" and _try_trimesh_render(scene, str(output_path)):
-        return output_filename
-
-    # Strategy 2: Pillow-based rendering (wireframe or solid)
-    logger.debug(
-        "Rendering %s thumbnail for: %s", render_mode, file_path
-    )
-    meshes = _collect_meshes(loaded)
-
-    if not meshes:
-        logger.warning("No renderable meshes found in: %s", file_path)
-        return None
-
-    if render_mode == "solid":
-        solid_fn = _render_solid if render_quality == "quality" else _render_solid_fast
-        if solid_fn(meshes, str(output_path)):
+        # Strategy 1: Try trimesh's built-in rendering (needs pyrender/pyglet)
+        if render_mode == "wireframe" and _try_trimesh_render(scene, str(output_path)):
             return output_filename
-        # Fall back to wireframe if solid fails (e.g. no faces)
-        logger.debug("Solid render failed, falling back to wireframe: %s", file_path)
 
-    if _render_wireframe(meshes, str(output_path)):
-        return output_filename
+        # Strategy 2: Pillow-based rendering (wireframe or solid)
+        logger.debug(
+            "Rendering %s thumbnail for: %s", render_mode, file_path
+        )
+        meshes = _collect_meshes(loaded)
 
-    logger.warning("All thumbnail rendering strategies failed for: %s", file_path)
-    return None
+        if not meshes:
+            logger.warning("No renderable meshes found in: %s", file_path)
+            return None
+
+        if render_mode == "solid":
+            solid_fn = _render_solid if render_quality == "quality" else _render_solid_fast
+            if solid_fn(meshes, str(output_path)):
+                return output_filename
+            logger.debug("Solid render failed, falling back to wireframe: %s", file_path)
+
+        if _render_wireframe(meshes, str(output_path)):
+            return output_filename
+
+        logger.warning("All thumbnail rendering strategies failed for: %s", file_path)
+        return None
+    finally:
+        # Explicitly free trimesh objects and numpy arrays to prevent
+        # memory accumulation in the long-running worker process.
+        if loaded is not None:
+            if hasattr(loaded, '_cache'):
+                loaded._cache.clear()
+            if isinstance(loaded, trimesh.Scene):
+                for geom in loaded.geometry.values():
+                    if hasattr(geom, '_cache'):
+                        geom._cache.clear()
+        del loaded, scene, meshes
+        gc.collect()

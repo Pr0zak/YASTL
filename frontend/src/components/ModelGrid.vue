@@ -18,7 +18,20 @@ const emit = defineEmits([
     'viewModel',
     'toggleSelect',
     'toggleFavorite',
+    'expandZipGroup',
 ]);
+
+function isZipGroup(model) {
+    return model.zip_model_count != null && model.zip_model_count > 1;
+}
+
+function onCardClick(model) {
+    if (isZipGroup(model)) {
+        emit('expandZipGroup', model.zip_path);
+    } else {
+        emit('viewModel', model);
+    }
+}
 
 function thumbUrl(model) {
     if (model.thumbnail_path) {
@@ -65,7 +78,7 @@ function cardStyle(model) {
     <!-- Grid View -->
     <div v-if="viewMode === 'grid'" class="models-grid">
         <div v-for="model in models" :key="model.id"
-             class="model-card" :class="{ selected: selectionMode && isSelected(model.id) }" :style="cardStyle(model)" @click="emit('viewModel', model)">
+             class="model-card" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-card': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model)">
             <!-- Thumbnail -->
             <div class="card-thumbnail">
                 <img :src="thumbUrl(model)"
@@ -76,41 +89,55 @@ function cardStyle(model) {
                     <span v-html="ICONS.cube"></span>
                     <span>{{ model.file_format }}</span>
                 </div>
-                <span class="card-format">
+                <span v-if="!isZipGroup(model)" class="card-format">
                     <span class="format-badge" :class="formatClass(model.file_format)">
                         {{ model.file_format }}
                     </span>
                 </span>
-                <button v-if="!selectionMode" class="card-fav-btn" :class="{ active: model.is_favorite }"
+                <!-- Zip group count badge -->
+                <span v-if="isZipGroup(model)" class="card-zip-group-badge">
+                    {{ model.zip_model_count }} models
+                </span>
+                <button v-if="!selectionMode && !isZipGroup(model)" class="card-fav-btn" :class="{ active: model.is_favorite }"
                         @click.stop="emit('toggleFavorite', model, $event)" title="Toggle favorite">
                     <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
                 </button>
-                <button v-if="selectionMode" class="card-select-check"
+                <button v-if="selectionMode && !isZipGroup(model)" class="card-select-check"
                         @click.stop="emit('toggleSelect', model.id)">
                     <span v-html="ICONS.check"></span>
                 </button>
             </div>
             <!-- Body -->
             <div class="card-body">
-                <div class="card-name" :title="model.name">{{ model.name }}</div>
+                <div class="card-name" :title="isZipGroup(model) ? model.zip_group_name : model.name">
+                    {{ isZipGroup(model) ? model.zip_group_name : model.name }}
+                </div>
                 <div class="card-meta">
-                    {{ formatFileSize(model.file_size) }}
-                    <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span>
-                    <span v-if="model.is_duplicate" class="dup-badge" title="Duplicate file (same hash)">dup</span>
+                    <template v-if="isZipGroup(model)">
+                        <span class="zip-badge">zip</span>
+                        {{ model.zip_model_count }} models
+                    </template>
+                    <template v-else>
+                        {{ formatFileSize(model.file_size) }}
+                        <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span>
+                        <span v-if="model.is_duplicate" class="dup-badge" title="Duplicate file (same hash)">dup</span>
+                    </template>
                 </div>
-                <div class="card-collections" v-if="model.collections && model.collections.length">
-                    <span v-for="col in model.collections" :key="col.name"
-                          class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
-                </div>
-                <div class="card-tags" v-if="model.tags && model.tags.length">
-                    <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
-                    <span v-if="model.tags.length > 3" class="tag-chip" style="opacity:0.7">
-                        +{{ model.tags.length - 3 }}
-                    </span>
-                </div>
+                <template v-if="!isZipGroup(model)">
+                    <div class="card-collections" v-if="model.collections && model.collections.length">
+                        <span v-for="col in model.collections" :key="col.name"
+                              class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
+                    </div>
+                    <div class="card-tags" v-if="model.tags && model.tags.length">
+                        <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
+                        <span v-if="model.tags.length > 3" class="tag-chip" style="opacity:0.7">
+                            +{{ model.tags.length - 3 }}
+                        </span>
+                    </div>
+                </template>
             </div>
             <!-- Collection color bar -->
-            <div v-if="model.collection_colors && model.collection_colors.length" class="card-collection-bar">
+            <div v-if="!isZipGroup(model) && model.collection_colors && model.collection_colors.length" class="card-collection-bar">
                 <span v-for="(color, i) in model.collection_colors" :key="i"
                       class="card-collection-segment" :style="{ background: color }"></span>
             </div>
@@ -134,19 +161,25 @@ function cardStyle(model) {
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="model in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id) }" :style="cardStyle(model)" @click="emit('viewModel', model)">
-                    <td v-if="selectionMode" class="col-select" @click.stop="emit('toggleSelect', model.id)" style="cursor:pointer;text-align:center">
-                        <span v-html="ICONS.check" :style="{ opacity: isSelected(model.id) ? 1 : 0.3 }"></span>
+                <tr v-for="model in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-row': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model)">
+                    <td v-if="selectionMode" class="col-select" @click.stop="!isZipGroup(model) && emit('toggleSelect', model.id)" style="cursor:pointer;text-align:center">
+                        <span v-if="!isZipGroup(model)" v-html="ICONS.check" :style="{ opacity: isSelected(model.id) ? 1 : 0.3 }"></span>
                     </td>
-                    <td class="col-fav" @click.stop="emit('toggleFavorite', model, $event)" style="cursor:pointer;text-align:center">
-                        <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
+                    <td class="col-fav" @click.stop="!isZipGroup(model) && emit('toggleFavorite', model, $event)" style="cursor:pointer;text-align:center">
+                        <span v-if="!isZipGroup(model)" v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart" :style="{ color: model.is_favorite ? 'var(--danger)' : 'var(--text-muted)' }"></span>
                     </td>
-                    <td class="col-name" :style="model.collection_colors && model.collection_colors.length ? { borderLeft: '3px solid ' + model.collection_colors[0] } : {}">
-                        {{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span>
-                        <span v-if="model.collections && model.collections.length" style="margin-left:6px">
-                            <span v-for="col in model.collections" :key="col.name"
-                                  class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
-                        </span>
+                    <td class="col-name" :style="!isZipGroup(model) && model.collection_colors && model.collection_colors.length ? { borderLeft: '3px solid ' + model.collection_colors[0] } : {}">
+                        <template v-if="isZipGroup(model)">
+                            <span class="zip-badge">zip</span> {{ model.zip_group_name }}
+                            <span class="text-muted text-sm" style="margin-left:6px">{{ model.zip_model_count }} models</span>
+                        </template>
+                        <template v-else>
+                            {{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span>
+                            <span v-if="model.collections && model.collections.length" style="margin-left:6px">
+                                <span v-for="col in model.collections" :key="col.name"
+                                      class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
+                            </span>
+                        </template>
                     </td>
                     <td class="col-format">
                         <span class="format-badge" :class="formatClass(model.file_format)">

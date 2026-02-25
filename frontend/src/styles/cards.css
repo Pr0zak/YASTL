@@ -304,6 +304,32 @@
     box-shadow: 0 0 0 2px var(--accent-dim), 0 4px 20px var(--shadow);
 }
 
+/* ============================================================
+   Zip Group Cards
+   ============================================================ */
+
+.zip-group-card {
+    border-color: rgba(155, 89, 182, 0.35);
+}
+
+.zip-group-card:hover {
+    border-color: rgba(155, 89, 182, 0.7);
+}
+
+.card-zip-group-badge {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(155, 89, 182, 0.85);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    z-index: 2;
+    backdrop-filter: blur(4px);
+}
+
 /* ---- Thumbnail Status Dots ---- */
 .thumb-status-dot {
     position: absolute;

@@ -295,8 +295,9 @@ async def update_collection(request: Request, collection_id: int):
     description = body.get("description")
     color = body.get("color")
     rules = body.get("rules")
+    has_is_smart = "is_smart" in body
 
-    if name is None and description is None and color is None and rules is None:
+    if name is None and description is None and color is None and rules is None and not has_is_smart:
         raise HTTPException(
             status_code=400,
             detail="At least one of 'name', 'description', 'color', or 'rules' is required",
@@ -326,8 +327,18 @@ async def update_collection(request: Request, collection_id: int):
             set_clauses.append("color = ?")
             params.append(color)
         if rules is not None:
+            rules_json = json.dumps(rules) if isinstance(rules, dict) else "{}"
             set_clauses.append("rules = ?")
-            params.append(json.dumps(rules) if isinstance(rules, dict) else "{}")
+            params.append(rules_json)
+            # Auto-detect is_smart based on whether rules have active filters
+            has_rules = bool(rules) if isinstance(rules, dict) else False
+            set_clauses.append("is_smart = ?")
+            params.append(1 if has_rules else 0)
+
+        # Also accept explicit is_smart from client
+        if "is_smart" in body and rules is None:
+            set_clauses.append("is_smart = ?")
+            params.append(1 if body["is_smart"] else 0)
 
         set_clauses.append("updated_at = CURRENT_TIMESTAMP")
         params.append(collection_id)
