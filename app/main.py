@@ -180,8 +180,15 @@ app.mount(
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """Serve the Vite frontend."""
-    return FileResponse(os.path.join(dist_dir, "index.html"))
+    """Serve the Vite frontend.
+
+    index.html must not be cached so browsers always fetch the latest
+    asset references after a deploy.
+    """
+    return FileResponse(
+        os.path.join(dist_dir, "index.html"),
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/health")
