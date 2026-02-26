@@ -786,6 +786,9 @@ class Scanner:
                     (thumb_filename, thumb_mode, thumb_quality, model_id),
                 )
 
+            # Tag as zip-sourced model
+            await self._apply_tags(db, model_id, ["zip"])
+
             # Apply tags from zip metadata
             if zip_meta:
                 await self._apply_tags(db, model_id, zip_meta.get("tags", []))
