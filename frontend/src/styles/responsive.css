@@ -72,7 +72,16 @@
     }
 
     .navbar-actions {
-        gap: 4px;
+        gap: 2px;
+    }
+
+    .navbar-actions .btn-icon {
+        width: 34px;
+        height: 34px;
+    }
+
+    .view-toggle .btn-ghost {
+        padding: 6px 8px;
     }
 
     .breadcrumb-bar {
@@ -106,9 +115,11 @@
 
     .detail-panel {
         max-width: 100%;
-        max-height: 92vh;
+        max-height: 88vh;
+        max-height: 88dvh;
         border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         animation: slideUpSheet 0.3s ease;
+        padding-bottom: env(safe-area-inset-bottom);
     }
 
     .detail-content {
@@ -203,7 +214,9 @@
     .settings-panel {
         max-width: 100%;
         max-height: 100vh;
+        max-height: 100dvh;
         height: 100vh;
+        height: 100dvh;
         border-radius: 0;
     }
 
@@ -214,6 +227,7 @@
 
     .settings-content {
         padding: 16px;
+        padding-bottom: calc(16px + env(safe-area-inset-bottom));
     }
 
     /* Thumbnail mode options: stack vertically */
@@ -293,7 +307,21 @@
     /* Navbar tighter */
     .navbar {
         padding: 0 8px;
-        gap: 6px;
+        gap: 4px;
+    }
+
+    .navbar-actions .btn-icon {
+        width: 32px;
+        height: 32px;
+    }
+
+    .navbar-actions .btn-icon svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .view-toggle .btn-ghost {
+        padding: 5px 6px;
     }
 
     .detail-header {
