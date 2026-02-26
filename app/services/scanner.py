@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 # single-worker process pool on memory-constrained containers (8GB).
 MAX_FILE_SIZE_MB: int = 80
 
+# Per-file processing timeout in seconds.  If a single file (metadata
+# extraction + hashing + thumbnail) takes longer than this, the worker
+# process is killed and the file is recorded as an error.
+FILE_TIMEOUT_SECONDS: int = 300  # 5 minutes
+
 
 class Scanner:
     """Scans library directories for 3D model files and indexes them in the database.
@@ -284,11 +289,15 @@ class Scanner:
                     if self._cancel_requested:
                         logger.info("Scan cancelled by user")
                         break
+                    logger.debug("Processing file: %s", file_path)
                     try:
-                        result = await self._process_file(
-                            db, file_path, loop, library_id, scan_root, orphan_index,
-                            folder_meta_cache=folder_meta_cache,
-                            error_collection_cache=error_collection_cache,
+                        result = await asyncio.wait_for(
+                            self._process_file(
+                                db, file_path, loop, library_id, scan_root, orphan_index,
+                                folder_meta_cache=folder_meta_cache,
+                                error_collection_cache=error_collection_cache,
+                            ),
+                            timeout=FILE_TIMEOUT_SECONDS,
                         )
                         if result == "new":
                             stats["new_files"] += 1
@@ -302,6 +311,25 @@ class Scanner:
                             await db.commit()
                         else:
                             stats["skipped_files"] += 1
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            "Timeout (%ds) processing %s — killing worker",
+                            FILE_TIMEOUT_SECONDS,
+                            file_path,
+                        )
+                        recover_pool()
+                        try:
+                            file_size = file_path.stat().st_size
+                        except OSError:
+                            file_size = None
+                        await self._insert_error_model(
+                            db, str(file_path),
+                            f"Processing timeout ({FILE_TIMEOUT_SECONDS}s)",
+                            library_id, file_size=file_size,
+                            error_collection_cache=error_collection_cache,
+                        )
+                        await db.commit()
+                        stats["errors"] += 1
                     except concurrent.futures.process.BrokenProcessPool:
                         logger.error(
                             "Worker crashed processing %s — recovering pool",
@@ -399,13 +427,17 @@ class Scanner:
                 if self._cancel_requested:
                     logger.info("Scan cancelled by user (zip phase)")
                     break
+                logger.debug("Processing zip entry: %s::%s", zip_path, entry_name)
                 try:
                     zip_meta = zip_meta_cache.get(str(zip_path), {})
-                    result = await self._process_zip_entry(
-                        db, zip_path, entry_name, loop, library_id, scan_root,
-                        zip_meta=zip_meta,
-                        zip_collection_cache=zip_collection_cache,
-                        error_collection_cache=error_collection_cache,
+                    result = await asyncio.wait_for(
+                        self._process_zip_entry(
+                            db, zip_path, entry_name, loop, library_id, scan_root,
+                            zip_meta=zip_meta,
+                            zip_collection_cache=zip_collection_cache,
+                            error_collection_cache=error_collection_cache,
+                        ),
+                        timeout=FILE_TIMEOUT_SECONDS,
                     )
                     if result is True:
                         stats["new_files"] += 1
@@ -416,6 +448,23 @@ class Scanner:
                         await db.commit()
                     else:
                         stats["skipped_files"] += 1
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "Timeout (%ds) processing %s::%s — killing worker",
+                        FILE_TIMEOUT_SECONDS,
+                        zip_path,
+                        entry_name,
+                    )
+                    recover_pool()
+                    synthetic_path = zip_handler.make_zip_file_path(str(zip_path), entry_name)
+                    await self._insert_error_model(
+                        db, synthetic_path,
+                        f"Processing timeout ({FILE_TIMEOUT_SECONDS}s)",
+                        library_id, zip_path=str(zip_path), zip_entry=entry_name,
+                        error_collection_cache=error_collection_cache,
+                    )
+                    await db.commit()
+                    stats["errors"] += 1
                 except concurrent.futures.process.BrokenProcessPool:
                     logger.error(
                         "Worker crashed processing %s in %s — recovering pool",
@@ -570,6 +619,8 @@ class Scanner:
         if existing is not None:
             logger.debug("Skipping already-indexed file: %s", file_path_str)
             return "skipped"
+
+        logger.info("Processing new file: %s", file_path_str)
 
         # Skip files that are too large (would OOM the worker process)
         try:
@@ -803,6 +854,8 @@ class Scanner:
         if await cursor.fetchone() is not None:
             logger.debug("Skipping already-indexed zip entry: %s", synthetic_path)
             return False
+
+        logger.info("Processing new zip entry: %s::%s", zip_path_str, entry_name)
 
         # Check entry size before extracting (avoid OOM on huge entries)
         try:
