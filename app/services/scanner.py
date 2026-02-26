@@ -429,7 +429,6 @@ class Scanner:
                         zip_meta_cache[zp_str] = {}
 
             # Process model entries inside zip archives
-            zip_collection_cache: dict[str, int] = {}
             for zip_path, entry_name, library_id, scan_root in zip_entries:
                 if self._cancel_requested:
                     logger.info("Scan cancelled by user (zip phase)")
@@ -441,7 +440,6 @@ class Scanner:
                         self._process_zip_entry(
                             db, zip_path, entry_name, loop, library_id, scan_root,
                             zip_meta=zip_meta,
-                            zip_collection_cache=zip_collection_cache,
                             error_collection_cache=error_collection_cache,
                             auto_tag=auto_tag,
                         ),
@@ -904,7 +902,6 @@ class Scanner:
         library_id: int,
         scan_root: Path,
         zip_meta: dict | None = None,
-        zip_collection_cache: dict[str, int] | None = None,
         error_collection_cache: dict[str, int] | None = None,
         auto_tag: bool = False,
     ) -> bool | str:
@@ -1103,16 +1100,6 @@ class Scanner:
                 db, zip_path, entry_name, model_id, scan_root
             )
 
-            # Add to zip collection
-            if zip_collection_cache is not None:
-                coll_id = await self._get_or_create_zip_collection(
-                    db, zip_path_str, zip_collection_cache, zip_meta,
-                )
-                await db.execute(
-                    "INSERT OR IGNORE INTO collection_models (collection_id, model_id, position) VALUES (?, ?, 0)",
-                    (coll_id, model_id),
-                )
-
             await update_fts_for_model(db, model_id)
 
             # Auto-tag from metadata if enabled
@@ -1147,66 +1134,6 @@ class Scanner:
                     tmp_path.unlink()
                 except OSError:
                     pass
-
-    @staticmethod
-    def _zip_collection_name(zip_path_str: str) -> str:
-        """Derive a clean collection name from a zip file path.
-
-        Strips the ``.zip`` extension, decodes URL-encoded characters
-        (``+`` and ``%20``), and removes trailing site-ID suffixes like
-        ``" - 2543763"``.
-        """
-        import posixpath
-        import re
-        import urllib.parse
-
-        basename = posixpath.basename(zip_path_str.replace("\\", "/"))
-        if basename.lower().endswith(".zip"):
-            basename = basename[:-4]
-        name = urllib.parse.unquote_plus(basename)
-        # Strip trailing " - <digits>" site-ID suffix
-        name = re.sub(r"\s*-\s*\d{5,}$", "", name)
-        return name.strip()
-
-    async def _get_or_create_zip_collection(
-        self,
-        db: aiosqlite.Connection,
-        zip_path_str: str,
-        zip_collection_cache: dict[str, int],
-        zip_meta: dict | None = None,
-    ) -> int:
-        """Return the collection ID for a zip file, creating it if needed.
-
-        Results are cached in *zip_collection_cache* (keyed by zip path)
-        to avoid repeated DB lookups for entries in the same archive.
-        """
-        if zip_path_str in zip_collection_cache:
-            return zip_collection_cache[zip_path_str]
-
-        name = self._zip_collection_name(zip_path_str)
-
-        # Check if a collection with this name already exists
-        cursor = await db.execute(
-            "SELECT id FROM collections WHERE name = ?", (name,)
-        )
-        row = await cursor.fetchone()
-        if row is not None:
-            cid = row[0] if not isinstance(row, dict) else row["id"]
-            zip_collection_cache[zip_path_str] = cid
-            return cid
-
-        # Create a new collection
-        description = ""
-        if zip_meta:
-            description = zip_meta.get("description") or ""
-        cursor = await db.execute(
-            "INSERT INTO collections (name, description, is_smart, rules) VALUES (?, ?, 0, '{}')",
-            (name, description),
-        )
-        cid = cursor.lastrowid
-        zip_collection_cache[zip_path_str] = cid
-        logger.info("Created collection '%s' (id=%d) for zip: %s", name, cid, zip_path_str)
-        return cid
 
     # ------------------------------------------------------------------
     # Error model helpers
