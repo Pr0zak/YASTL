@@ -391,6 +391,10 @@ async function fetchModels(append = false) {
             const col = collections.value.find(c => c.id === filters.collection);
             if (!col || !col.is_smart) {
                 params.append('collection', filters.collection);
+                // "Failed to Process" collection contains error-status models
+                if (col && col.name === 'Failed to Process') {
+                    params.append('status', 'error');
+                }
             }
         }
         // Zip grouping / filtering

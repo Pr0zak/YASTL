@@ -3,9 +3,8 @@
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
-import aiosqlite
 
-from app.api._helpers import _get_db_path, _fetch_model_with_relations
+from app.api._helpers import _get_db_path, _fetch_model_with_relations, open_db
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,7 @@ async def suggest_tags_for_model(request: Request, model_id: int):
 
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with open_db(db_path) as db:
         model = await _fetch_model_with_relations(db, model_id)
 
     if model is None:
@@ -53,10 +51,7 @@ async def add_tags_to_model(request: Request, model_id: int):
     if not tag_names or not isinstance(tag_names, list):
         raise HTTPException(status_code=400, detail="'tags' must be a non-empty list")
 
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-        await db.execute("PRAGMA foreign_keys=ON")
-
+    async with open_db(db_path) as db:
         # Verify model exists
         cursor = await db.execute("SELECT id FROM models WHERE id = ?", (model_id,))
         if await cursor.fetchone() is None:
@@ -105,10 +100,7 @@ async def remove_tag_from_model(request: Request, model_id: int, tag_name: str):
     """Remove a tag from a model."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-        await db.execute("PRAGMA foreign_keys=ON")
-
+    async with open_db(db_path) as db:
         # Verify model exists
         cursor = await db.execute("SELECT id FROM models WHERE id = ?", (model_id,))
         if await cursor.fetchone() is None:

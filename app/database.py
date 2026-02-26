@@ -111,6 +111,15 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass  # Column already exists or table just created with it
 
+        # Add error_reason column for tracking scan/processing failures
+        if "error_reason" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN error_reason TEXT DEFAULT NULL"
+                )
+            except Exception:
+                pass  # Column already exists or table just created with it
+
         # Add smart collection columns to collections table
         cursor = await db.execute("PRAGMA table_info(collections)")
         coll_columns = [row["name"] for row in await cursor.fetchall()]

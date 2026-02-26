@@ -25,6 +25,10 @@ function isZipGroup(model) {
     return model.zip_model_count != null && model.zip_model_count > 1;
 }
 
+function isError(model) {
+    return model.status === 'error';
+}
+
 function onCardClick(model) {
     if (isZipGroup(model)) {
         emit('expandZipGroup', model.zip_path);
@@ -117,6 +121,10 @@ function cardStyle(model) {
                         <span class="zip-badge">zip</span>
                         {{ model.zip_model_count }} models
                     </template>
+                    <template v-else-if="isError(model)">
+                        <span class="error-badge" :title="model.error_reason">error</span>
+                        <span class="error-reason" :title="model.error_reason">{{ model.error_reason }}</span>
+                    </template>
                     <template v-else>
                         {{ formatFileSize(model.file_size) }}
                         <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span>
@@ -174,7 +182,7 @@ function cardStyle(model) {
                             <span class="text-muted text-sm" style="margin-left:6px">{{ model.zip_model_count }} models</span>
                         </template>
                         <template v-else>
-                            {{ model.name }} <span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span>
+                            {{ model.name }} <span v-if="isError(model)" class="error-badge" :title="model.error_reason">error</span><span v-if="model.zip_path" class="zip-badge" :title="zipName(model)">zip</span><span v-if="model.is_duplicate" class="dup-badge" title="Duplicate">dup</span>
                             <span v-if="model.collections && model.collections.length" style="margin-left:6px">
                                 <span v-for="col in model.collections" :key="col.name"
                                       class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>

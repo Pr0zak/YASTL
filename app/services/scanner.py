@@ -197,6 +197,10 @@ class Scanner:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
+        await db.execute("PRAGMA busy_timeout = 5000")
+
+        # Shared cache for the "Failed to Process" collection ID
+        error_collection_cache: dict[str, int] = {}
 
         try:
             # Process regular (non-zip) model files per library with
@@ -244,6 +248,7 @@ class Scanner:
                         result = await self._process_file(
                             db, file_path, loop, library_id, scan_root, orphan_index,
                             folder_meta_cache=folder_meta_cache,
+                            error_collection_cache=error_collection_cache,
                         )
                         if result == "new":
                             stats["new_files"] += 1
@@ -251,6 +256,9 @@ class Scanner:
                             await db.commit()
                         elif result == "moved":
                             stats["moved_files"] += 1
+                            await db.commit()
+                        elif result == "error":
+                            stats["errors"] += 1
                             await db.commit()
                         else:
                             stats["skipped_files"] += 1
@@ -260,9 +268,31 @@ class Scanner:
                             file_path,
                         )
                         recover_pool()
+                        try:
+                            file_size = file_path.stat().st_size
+                        except OSError:
+                            file_size = None
+                        await self._insert_error_model(
+                            db, str(file_path),
+                            "Worker process crashed (out of memory)",
+                            library_id, file_size=file_size,
+                            error_collection_cache=error_collection_cache,
+                        )
+                        await db.commit()
                         stats["errors"] += 1
-                    except Exception:
+                    except Exception as exc:
                         logger.exception("Error processing %s", file_path)
+                        try:
+                            file_size = file_path.stat().st_size
+                        except OSError:
+                            file_size = None
+                        await self._insert_error_model(
+                            db, str(file_path),
+                            f"Processing error: {exc}",
+                            library_id, file_size=file_size,
+                            error_collection_cache=error_collection_cache,
+                        )
+                        await db.commit()
                         stats["errors"] += 1
                     finally:
                         self.processed_files += 1
@@ -326,14 +356,18 @@ class Scanner:
             for zip_path, entry_name, library_id, scan_root in zip_entries:
                 try:
                     zip_meta = zip_meta_cache.get(str(zip_path), {})
-                    added = await self._process_zip_entry(
+                    result = await self._process_zip_entry(
                         db, zip_path, entry_name, loop, library_id, scan_root,
                         zip_meta=zip_meta,
                         zip_collection_cache=zip_collection_cache,
+                        error_collection_cache=error_collection_cache,
                     )
-                    if added:
+                    if result is True:
                         stats["new_files"] += 1
                         # Commit after each new zip entry so progress survives restarts
+                        await db.commit()
+                    elif result == "error":
+                        stats["errors"] += 1
                         await db.commit()
                     else:
                         stats["skipped_files"] += 1
@@ -344,9 +378,25 @@ class Scanner:
                         zip_path,
                     )
                     recover_pool()
+                    synthetic_path = zip_handler.make_zip_file_path(str(zip_path), entry_name)
+                    await self._insert_error_model(
+                        db, synthetic_path,
+                        "Worker process crashed (out of memory)",
+                        library_id, zip_path=str(zip_path), zip_entry=entry_name,
+                        error_collection_cache=error_collection_cache,
+                    )
+                    await db.commit()
                     stats["errors"] += 1
-                except Exception:
+                except Exception as exc:
                     logger.exception("Error processing %s in %s", entry_name, zip_path)
+                    synthetic_path = zip_handler.make_zip_file_path(str(zip_path), entry_name)
+                    await self._insert_error_model(
+                        db, synthetic_path,
+                        f"Processing error: {exc}",
+                        library_id, zip_path=str(zip_path), zip_entry=entry_name,
+                        error_collection_cache=error_collection_cache,
+                    )
+                    await db.commit()
                     stats["errors"] += 1
                 finally:
                     self.processed_files += 1
@@ -441,6 +491,7 @@ class Scanner:
         scan_root: Path,
         orphan_index: dict[str, list[dict]] | None = None,
         folder_meta_cache: dict[str, dict] | None = None,
+        error_collection_cache: dict[str, int] | None = None,
     ) -> str:
         """Process a single file.
 
@@ -472,7 +523,8 @@ class Scanner:
 
         # Skip files that are too large (would OOM the worker process)
         try:
-            file_size_mb = file_path.stat().st_size / (1024 * 1024)
+            file_stat_size = file_path.stat().st_size
+            file_size_mb = file_stat_size / (1024 * 1024)
             if file_size_mb > MAX_FILE_SIZE_MB:
                 logger.warning(
                     "Skipping oversized file (%.0f MB > %d MB limit): %s",
@@ -480,7 +532,13 @@ class Scanner:
                     MAX_FILE_SIZE_MB,
                     file_path_str,
                 )
-                return "skipped"
+                await self._insert_error_model(
+                    db, file_path_str,
+                    f"File too large ({file_size_mb:.0f} MB > {MAX_FILE_SIZE_MB} MB limit)",
+                    library_id, file_size=file_stat_size,
+                    error_collection_cache=error_collection_cache,
+                )
+                return "error"
         except OSError:
             pass  # stat failed, try processing anyway
 
@@ -671,7 +729,8 @@ class Scanner:
         scan_root: Path,
         zip_meta: dict | None = None,
         zip_collection_cache: dict[str, int] | None = None,
-    ) -> bool:
+        error_collection_cache: dict[str, int] | None = None,
+    ) -> bool | str:
         """Process a single model entry inside a zip archive.
 
         Extracts the entry to a temporary file, runs metadata extraction,
@@ -710,7 +769,14 @@ class Scanner:
                         zip_path_str,
                         entry_name,
                     )
-                    return False
+                    await self._insert_error_model(
+                        db, synthetic_path,
+                        f"File too large ({entry_size_mb:.0f} MB > {MAX_FILE_SIZE_MB} MB limit)",
+                        library_id, file_size=info.file_size,
+                        zip_path=zip_path_str, zip_entry=entry_name,
+                        error_collection_cache=error_collection_cache,
+                    )
+                    return "error"
         except Exception:
             pass  # if we can't check size, try processing anyway
 
@@ -904,6 +970,105 @@ class Scanner:
         zip_collection_cache[zip_path_str] = cid
         logger.info("Created collection '%s' (id=%d) for zip: %s", name, cid, zip_path_str)
         return cid
+
+    # ------------------------------------------------------------------
+    # Error model helpers
+    # ------------------------------------------------------------------
+
+    async def _get_or_create_error_collection(
+        self,
+        db: aiosqlite.Connection,
+        error_collection_cache: dict[str, int],
+    ) -> int:
+        """Return the 'Failed to Process' collection ID, creating it if needed."""
+        cache_key = "__failed_to_process__"
+        if cache_key in error_collection_cache:
+            return error_collection_cache[cache_key]
+
+        name = "Failed to Process"
+        cursor = await db.execute(
+            "SELECT id FROM collections WHERE name = ?", (name,)
+        )
+        row = await cursor.fetchone()
+        if row is not None:
+            cid = row[0] if not isinstance(row, dict) else row["id"]
+            error_collection_cache[cache_key] = cid
+            return cid
+
+        cursor = await db.execute(
+            "INSERT INTO collections (name, description, color, is_smart, rules) VALUES (?, ?, ?, 0, '{}')",
+            (name, "Files that failed during scanning (oversized, crashes, errors)", "#dc3545"),
+        )
+        cid = cursor.lastrowid
+        error_collection_cache[cache_key] = cid
+        logger.info("Created 'Failed to Process' collection (id=%d)", cid)
+        return cid
+
+    async def _insert_error_model(
+        self,
+        db: aiosqlite.Connection,
+        file_path: str,
+        error_reason: str,
+        library_id: int,
+        file_size: int | None = None,
+        file_format: str | None = None,
+        zip_path: str | None = None,
+        zip_entry: str | None = None,
+        error_collection_cache: dict[str, int] | None = None,
+    ) -> int | None:
+        """Insert a model row with status='error' for a file that failed processing.
+
+        Returns the model ID, or None if a record for this path already exists.
+        """
+        # Check if already recorded (could be from a previous scan)
+        cursor = await db.execute(
+            "SELECT id FROM models WHERE file_path = ?", (file_path,)
+        )
+        if await cursor.fetchone() is not None:
+            return None
+
+        name = Path(file_path).stem
+        if not file_format:
+            file_format = Path(file_path).suffix.lower().lstrip(".").upper()
+
+        cursor = await db.execute(
+            """
+            INSERT INTO models (
+                name, file_path, file_format, file_size,
+                status, error_reason, library_id,
+                zip_path, zip_entry
+            ) VALUES (?, ?, ?, ?, 'error', ?, ?, ?, ?)
+            """,
+            (
+                name,
+                file_path,
+                file_format,
+                file_size,
+                error_reason,
+                library_id,
+                zip_path,
+                zip_entry,
+            ),
+        )
+        model_id = cursor.lastrowid
+
+        # Add to "Failed to Process" collection
+        if error_collection_cache is not None:
+            coll_id = await self._get_or_create_error_collection(
+                db, error_collection_cache,
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO collection_models (collection_id, model_id, position) VALUES (?, ?, 0)",
+                (coll_id, model_id),
+            )
+
+        logger.info(
+            "Recorded error model id=%d  %s  reason=%s",
+            model_id,
+            file_path,
+            error_reason,
+        )
+        return model_id
 
     async def _apply_tags(
         self,

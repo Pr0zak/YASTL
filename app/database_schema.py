@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS models (
     zip_path TEXT,
     zip_entry TEXT,
     source_url TEXT,
+    error_reason TEXT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

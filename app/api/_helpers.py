@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
 
 import aiosqlite
 from fastapi import Request
@@ -12,6 +13,29 @@ from app.services import zip_handler
 from app.services.tagger import suggest_tags
 
 logger = logging.getLogger(__name__)
+
+# Default busy timeout (ms) for SQLite connections.  This prevents
+# "database is locked" errors when the scanner holds a write lock and
+# API routes try to write concurrently.
+_BUSY_TIMEOUT_MS = 5000
+
+
+@asynccontextmanager
+async def open_db(db_path: str):
+    """Open an aiosqlite connection with sensible defaults.
+
+    Sets WAL journal mode, foreign keys, busy_timeout, and a Row
+    factory so callers get dicts.
+    """
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    await db.execute("PRAGMA journal_mode=WAL")
+    await db.execute("PRAGMA foreign_keys=ON")
+    await db.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
+    try:
+        yield db
+    finally:
+        await db.close()
 
 # Extension to MIME type mapping for 3D file serving
 MIME_TYPES: dict[str, str] = {

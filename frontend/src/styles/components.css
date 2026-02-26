@@ -234,6 +234,35 @@
     margin-left: 4px;
 }
 
+/* ---- Error Badge ---- */
+.error-badge {
+    display: inline-block;
+    padding: 0 4px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-radius: 3px;
+    background: rgba(220, 53, 69, 0.15);
+    color: #dc3545;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    white-space: nowrap;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+.error-reason {
+    display: inline-block;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-left: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+    vertical-align: middle;
+}
+
 /* ============================================================
    Loading Spinner
    ============================================================ */

@@ -53,6 +53,7 @@ async def list_models(
     favorites_first: bool = Query(default=False),
     group_zips: bool = Query(default=False),
     zip_path: str | None = Query(default=None),
+    status: str = Query(default="active"),
 ):
     """List models with pagination and filters.
 
@@ -93,8 +94,15 @@ async def list_models(
         where_clauses: list[str] = []
         params: list[str | int] = []
 
-        # Only show active models by default (exclude missing/deleted)
-        where_clauses.append("m.status = 'active'")
+        # Filter by model status
+        if status == "all":
+            # Show all statuses (useful for admin views)
+            where_clauses.append("m.status IN ('active', 'error')")
+        elif status == "error":
+            where_clauses.append("m.status = 'error'")
+        else:
+            # Default: only show active models (exclude missing/error)
+            where_clauses.append("m.status = 'active'")
 
         if format is not None:
             where_clauses.append("LOWER(m.file_format) = ?")
