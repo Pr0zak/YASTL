@@ -129,6 +129,12 @@ function formatClass(fmt) {
                             <div class="spinner"></div>
                             <span>Loading 3D model...</span>
                         </div>
+                        <!-- Error model: no 3D preview -->
+                        <div v-else-if="selectedModel.status === 'error'" class="viewer-error-notice">
+                            <span v-html="ICONS.cube"></span>
+                            <span>3D preview disabled</span>
+                            <span class="viewer-error-reason">{{ selectedModel.error_reason || 'This model failed to process' }}</span>
+                        </div>
                     </div>
                     <!-- Viewer toolbar -->
                     <div class="viewer-toolbar">
@@ -393,19 +399,19 @@ function formatClass(fmt) {
                     <!-- Pinned actions bar -->
                     <div class="detail-actions-pinned">
                         <a v-if="preferredSlicer !== 'none' && selectedModel.file_format && SLICER_FORMATS.includes(selectedModel.file_format.toLowerCase().replace('.', ''))"
-                           class="btn btn-primary" style="flex:1"
+                           class="btn btn-primary"
                            :href="(SLICER_PROTOCOLS[preferredSlicer] || '') + baseUrl + '/api/models/' + selectedModel.id + '/download'"
                            :title="'Open in ' + (SLICER_LABELS[preferredSlicer] || preferredSlicer)">
                             <span v-html="ICONS.slicer"></span>
-                            Open in Slicer
+                            Slicer
                         </a>
-                        <a class="btn btn-secondary" style="flex:1"
+                        <a class="btn btn-secondary"
                            :href="'/api/models/' + selectedModel.id + '/download'"
                            download>
                             <span v-html="ICONS.download"></span>
-                            Download {{ selectedModel.file_format ? selectedModel.file_format.toUpperCase() : '' }}
+                            Download
                         </a>
-                        <button class="btn btn-danger" style="flex:1" @click="emit('deleteModel', selectedModel)">
+                        <button class="btn btn-danger" @click="emit('deleteModel', selectedModel)">
                             <span v-html="ICONS.trash"></span>
                             Delete
                         </button>

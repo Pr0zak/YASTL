@@ -369,6 +369,12 @@ export async function apiGetSystemStatus() {
     return res.json();
 }
 
+export async function apiRestartApp() {
+    const res = await fetch('/api/status/restart', { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
 /* ==================================================================
    Updates
    ================================================================== */

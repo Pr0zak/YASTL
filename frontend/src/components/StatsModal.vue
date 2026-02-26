@@ -11,7 +11,7 @@ defineProps({
     systemStatus: { type: Object, default: () => ({ health: 'unknown', scanner: { status: 'unknown' }, watcher: { status: 'unknown' }, database: { status: 'unknown' }, thumbnails: { status: 'unknown' } }) },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'restartApp']);
 
 function formatSize(bytes) {
     if (!bytes || bytes === 0) return '0 B';
@@ -81,6 +81,10 @@ function tagOpacity(count, tags) {
                         <span class="status-badge" :class="statusDotClass(systemStatus.health)">
                             {{ statusLabel(systemStatus.health) }}
                         </span>
+                        <button class="btn btn-sm" style="margin-left:auto;font-size:0.7rem;padding:3px 8px"
+                                @click="emit('restartApp')" title="Restart YASTL service">
+                            <span v-html="ICONS.refresh"></span> Restart
+                        </button>
                     </div>
                     <div class="stats-health-items">
                         <div class="stats-health-item">

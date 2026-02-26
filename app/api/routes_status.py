@@ -1,12 +1,15 @@
 """API route for backend system status."""
 
+import logging
 import os
+import signal
 
 import aiosqlite
 from fastapi import APIRouter, Request
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/status", tags=["status"])
 
 
@@ -122,3 +125,15 @@ async def get_system_status(request: Request):
         "thumbnails": thumbnail_status,
         "step_support": step_status,
     }
+
+
+@router.post("/restart")
+async def restart_service():
+    """Request a graceful restart of the YASTL service.
+
+    Sends SIGTERM to the current process. When running under systemd with
+    ``Restart=always``, the service manager will automatically restart it.
+    """
+    logger.info("Restart requested via API — sending SIGTERM to self (pid=%d)", os.getpid())
+    os.kill(os.getpid(), signal.SIGTERM)
+    return {"status": "restarting"}

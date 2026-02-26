@@ -46,6 +46,7 @@ import {
     apiGetStats,
     apiRegenerateThumbnail,
     apiGetRelatedModels,
+    apiRestartApp,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -570,6 +571,29 @@ function closeStats() {
     }
 }
 
+async function restartApp() {
+    try {
+        showToast('Restarting service...', 'info');
+        await apiRestartApp();
+        // Service will go down — poll until it comes back
+        setTimeout(async () => {
+            for (let i = 0; i < 30; i++) {
+                try {
+                    const res = await fetch('/health');
+                    if (res.ok) {
+                        window.location.reload();
+                        return;
+                    }
+                } catch { /* expected while restarting */ }
+                await new Promise(r => setTimeout(r, 2000));
+            }
+            showToast('Service did not come back — check server', 'error');
+        }, 1000);
+    } catch (err) {
+        showToast('Failed to restart: ' + err.message, 'error');
+    }
+}
+
 /* ==============================================================
    Tag Suggestions
    ============================================================== */
@@ -683,6 +707,15 @@ async function viewModel(model) {
     }).catch(() => {});
 
     await nextTick();
+
+    // Skip 3D loading for error models — they may be oversized or corrupted
+    // and would lock up the browser or OOM the worker during GLB conversion.
+    const isErrorModel = selectedModel.value.status === 'error';
+    if (isErrorModel) {
+        viewerLoading.value = false;
+        bedVisible.value = false;
+        return;
+    }
 
     viewerLoading.value = true;
     initViewer('viewer-container', colorTheme.value);
@@ -1680,6 +1713,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :statsLoading="statsLoading"
         :systemStatus="systemStatus"
         @close="closeStats"
+        @restartApp="restartApp"
     />
 
     <!-- ============================================================
