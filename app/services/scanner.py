@@ -19,6 +19,7 @@ import aiosqlite
 from app.services import hasher, processor, thumbnail
 from app.services import zip_handler
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
+from app.services.tagger import suggest_tags
 from app.database import get_setting, update_fts_for_model
 from app.workers import get_pool, log_memory, tick_job, maybe_recycle, recover_pool
 
@@ -242,6 +243,11 @@ class Scanner:
         # Shared cache for the "Failed to Process" collection ID
         error_collection_cache: dict[str, int] = {}
 
+        # Read auto-tag setting once at scan start
+        auto_tag = await get_setting("auto_tag_on_scan", "false") == "true"
+        if auto_tag:
+            logger.info("Auto-tagging enabled for this scan")
+
         try:
             # Process regular (non-zip) model files per library with
             # move detection and orphan reconciliation.
@@ -296,6 +302,7 @@ class Scanner:
                                 db, file_path, loop, library_id, scan_root, orphan_index,
                                 folder_meta_cache=folder_meta_cache,
                                 error_collection_cache=error_collection_cache,
+                                auto_tag=auto_tag,
                             ),
                             timeout=FILE_TIMEOUT_SECONDS,
                         )
@@ -436,6 +443,7 @@ class Scanner:
                             zip_meta=zip_meta,
                             zip_collection_cache=zip_collection_cache,
                             error_collection_cache=error_collection_cache,
+                            auto_tag=auto_tag,
                         ),
                         timeout=FILE_TIMEOUT_SECONDS,
                     )
@@ -591,6 +599,7 @@ class Scanner:
         orphan_index: dict[str, list[dict]] | None = None,
         folder_meta_cache: dict[str, dict] | None = None,
         error_collection_cache: dict[str, int] | None = None,
+        auto_tag: bool = False,
     ) -> str:
         """Process a single file.
 
@@ -643,13 +652,7 @@ class Scanner:
         except OSError:
             pass  # stat failed, try processing anyway
 
-        # Extract metadata (CPU-bound -- run in process pool)
-        metadata: dict = await loop.run_in_executor(
-            get_pool(), processor.extract_metadata, file_path_str
-        )
-        tick_job()
-
-        # Compute file hash (CPU-bound -- run in process pool)
+        # Compute file hash first (CPU-bound, lightweight -- no trimesh)
         file_hash: str = await loop.run_in_executor(
             get_pool(), hasher.compute_file_hash, file_path_str
         )
@@ -665,6 +668,12 @@ class Scanner:
 
             model_id = orphan["id"]
             name = file_path.stem
+
+            # For moved files, extract metadata only (no thumbnail regen needed)
+            metadata: dict = await loop.run_in_executor(
+                get_pool(), processor.extract_metadata, file_path_str
+            )
+            tick_job()
 
             # Update the existing record with new path and refreshed metadata
             file_size = metadata.get("file_size") or os.path.getsize(file_path)
@@ -715,13 +724,16 @@ class Scanner:
             )
             return "moved"
 
-        # Derive basic fields
+        # Derive basic fields (no trimesh needed)
         name = file_path.stem
-        file_format = metadata.get(
-            "file_format",
+        file_format = processor.FORMAT_MAP.get(
+            file_path.suffix.lower(),
             file_path.suffix.lower().lstrip(".").upper(),
         )
-        file_size = metadata.get("file_size") or os.path.getsize(file_path)
+        try:
+            file_size = os.path.getsize(file_path)
+        except OSError:
+            file_size = None
 
         # Extract folder metadata (README, attribution files)
         folder_meta: dict = {}
@@ -740,15 +752,13 @@ class Scanner:
         description = folder_meta.get("description") or ""
         source_url = folder_meta.get("source_url")
 
-        # Insert model row (we need the id for the thumbnail filename)
+        # INSERT with basic fields (no trimesh metadata yet -- we need model_id)
         cursor = await db.execute(
             """
             INSERT INTO models (
                 name, description, file_path, file_format, file_size,
-                file_hash, vertex_count, face_count,
-                dimensions_x, dimensions_y, dimensions_z,
-                thumbnail_path, library_id, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                file_hash, library_id, source_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -757,48 +767,92 @@ class Scanner:
                 file_format,
                 file_size,
                 file_hash,
-                metadata.get("vertex_count"),
-                metadata.get("face_count"),
-                metadata.get("dimensions_x"),
-                metadata.get("dimensions_y"),
-                metadata.get("dimensions_z"),
-                None,  # thumbnail set after generation
                 library_id,
                 source_url,
             ),
         )
         model_id = cursor.lastrowid
 
-        # Generate thumbnail (CPU-bound -- run in process pool)
+        # Try extracting embedded 3MF thumbnail (no trimesh -- zipfile + PIL)
         thumb_mode = await get_setting("thumbnail_mode", "wireframe")
         thumb_quality = await get_setting("thumbnail_quality", "fast")
+        skip_thumbnail = False
+
+        if file_format.upper() == "3MF":
+            extracted_thumb = await loop.run_in_executor(
+                get_pool(),
+                thumbnail.extract_3mf_thumbnail,
+                file_path_str,
+                self.thumbnail_path,
+                model_id,
+            )
+            tick_job()
+            if extracted_thumb is not None:
+                skip_thumbnail = True
+                # We'll update the thumbnail path after the combined call
+
+        # Single trimesh.load() for both metadata extraction + thumbnail
         t0 = time.monotonic()
-        thumb_filename: str | None = await loop.run_in_executor(
+        result: dict = await loop.run_in_executor(
             get_pool(),
-            thumbnail.generate_thumbnail,
+            processor.process_and_thumbnail,
             file_path_str,
             self.thumbnail_path,
             model_id,
             thumb_mode,
             thumb_quality,
+            skip_thumbnail,
         )
         tick_job()
         elapsed = time.monotonic() - t0
         if elapsed > 10:
             logger.warning(
-                "Slow thumbnail: model %d took %.1fs  %s", model_id, elapsed, file_path_str
+                "Slow processing: model %d took %.1fs  %s", model_id, elapsed, file_path_str
             )
             log_memory(f"slow_scan_model_{model_id}")
+            # Force recycle after slow models to shed accumulated memory
+            from app.workers import recycle_pool
+            recycle_pool()
+        else:
+            maybe_recycle()
 
-        # Recycle worker process if it has accumulated too many jobs
-        maybe_recycle()
+        metadata = result["metadata"]
+        thumb_filename = result["thumbnail_filename"]
+        # If we extracted a 3MF thumbnail, prefer that
+        if skip_thumbnail and extracted_thumb is not None:
+            thumb_filename = extracted_thumb
 
-        # Update the model row with the thumbnail path and tracking columns
-        if thumb_filename is not None:
-            await db.execute(
-                "UPDATE models SET thumbnail_path = ?, thumbnail_mode = ?, thumbnail_quality = ?, thumbnail_generated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (thumb_filename, thumb_mode, thumb_quality, model_id),
-            )
+        # UPDATE model row with trimesh-derived metadata + thumbnail
+        await db.execute(
+            """
+            UPDATE models SET
+                file_size = COALESCE(?, file_size),
+                vertex_count = ?,
+                face_count = ?,
+                dimensions_x = ?,
+                dimensions_y = ?,
+                dimensions_z = ?,
+                thumbnail_path = ?,
+                thumbnail_mode = ?,
+                thumbnail_quality = ?,
+                thumbnail_generated_at = CASE WHEN ? IS NOT NULL THEN CURRENT_TIMESTAMP ELSE thumbnail_generated_at END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                metadata.get("file_size"),
+                metadata.get("vertex_count"),
+                metadata.get("face_count"),
+                metadata.get("dimensions_x"),
+                metadata.get("dimensions_y"),
+                metadata.get("dimensions_z"),
+                thumb_filename,
+                thumb_mode,
+                thumb_quality,
+                thumb_filename,
+                model_id,
+            ),
+        )
 
         # Apply tags from folder metadata
         if folder_meta:
@@ -812,6 +866,27 @@ class Scanner:
 
         # Update FTS index for this model
         await update_fts_for_model(db, model_id)
+
+        # Auto-tag from metadata if enabled
+        if auto_tag:
+            existing_tags = await self._get_model_tags(db, model_id)
+            categories = await self._get_model_categories(db, model_id)
+            model_dict = {
+                "name": name,
+                "file_format": file_format,
+                "dimensions_x": metadata.get("dimensions_x"),
+                "dimensions_y": metadata.get("dimensions_y"),
+                "dimensions_z": metadata.get("dimensions_z"),
+                "vertex_count": metadata.get("vertex_count"),
+                "face_count": metadata.get("face_count"),
+                "source_url": source_url or "",
+                "tags": existing_tags,
+                "categories": categories,
+            }
+            suggestions = suggest_tags(model_dict)
+            if suggestions:
+                await self._apply_tags(db, model_id, suggestions)
+                await update_fts_for_model(db, model_id)
 
         logger.debug("Indexed new model id=%d  %s", model_id, file_path_str)
         return "new"
@@ -831,6 +906,7 @@ class Scanner:
         zip_meta: dict | None = None,
         zip_collection_cache: dict[str, int] | None = None,
         error_collection_cache: dict[str, int] | None = None,
+        auto_tag: bool = False,
     ) -> bool | str:
         """Process a single model entry inside a zip archive.
 
@@ -891,28 +967,25 @@ class Scanner:
             )
             tmp_path_str = str(tmp_path)
 
-            # Extract metadata (CPU-bound -- process pool)
-            metadata: dict = await loop.run_in_executor(
-                get_pool(), processor.extract_metadata, tmp_path_str
-            )
-            tick_job()
-
-            # Compute hash of the entry content (CPU-bound -- process pool)
+            # Compute hash first (CPU-bound, lightweight -- no trimesh)
             file_hash: str = await loop.run_in_executor(
                 get_pool(), hasher.compute_file_hash, tmp_path_str
             )
             tick_job()
 
-            # Derive fields from the entry name
+            # Derive basic fields from entry name (no trimesh needed)
             from pathlib import PurePosixPath
 
             entry_p = PurePosixPath(entry_name)
             name = entry_p.stem
-            file_format = metadata.get(
-                "file_format",
+            file_format = processor.FORMAT_MAP.get(
+                entry_p.suffix.lower(),
                 entry_p.suffix.lower().lstrip(".").upper(),
             )
-            file_size = metadata.get("file_size") or os.path.getsize(tmp_path)
+            try:
+                file_size = os.path.getsize(tmp_path)
+            except OSError:
+                file_size = None
 
             # Extract description and source_url from zip metadata
             description = ""
@@ -921,16 +994,13 @@ class Scanner:
                 description = zip_meta.get("description") or ""
                 source_url = zip_meta.get("source_url")
 
-            # Insert model row
+            # INSERT with basic fields (no trimesh metadata yet -- we need model_id)
             cursor = await db.execute(
                 """
                 INSERT INTO models (
                     name, description, file_path, file_format, file_size,
-                    file_hash, vertex_count, face_count,
-                    dimensions_x, dimensions_y, dimensions_z,
-                    thumbnail_path, library_id, zip_path, zip_entry,
-                    source_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    file_hash, library_id, zip_path, zip_entry, source_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -939,12 +1009,6 @@ class Scanner:
                     file_format,
                     file_size,
                     file_hash,
-                    metadata.get("vertex_count"),
-                    metadata.get("face_count"),
-                    metadata.get("dimensions_x"),
-                    metadata.get("dimensions_y"),
-                    metadata.get("dimensions_z"),
-                    None,
                     library_id,
                     zip_path_str,
                     entry_name,
@@ -953,26 +1017,75 @@ class Scanner:
             )
             model_id = cursor.lastrowid
 
-            # Generate thumbnail (CPU-bound -- process pool)
+            # Try extracting embedded 3MF thumbnail (no trimesh -- zipfile + PIL)
             thumb_mode = await get_setting("thumbnail_mode", "wireframe")
             thumb_quality = await get_setting("thumbnail_quality", "fast")
-            thumb_filename: str | None = await loop.run_in_executor(
+            skip_thumbnail = False
+            extracted_thumb: str | None = None
+
+            if file_format.upper() == "3MF":
+                extracted_thumb = await loop.run_in_executor(
+                    get_pool(),
+                    thumbnail.extract_3mf_thumbnail,
+                    tmp_path_str,
+                    self.thumbnail_path,
+                    model_id,
+                )
+                tick_job()
+                if extracted_thumb is not None:
+                    skip_thumbnail = True
+
+            # Single trimesh.load() for both metadata extraction + thumbnail
+            result: dict = await loop.run_in_executor(
                 get_pool(),
-                thumbnail.generate_thumbnail,
+                processor.process_and_thumbnail,
                 tmp_path_str,
                 self.thumbnail_path,
                 model_id,
                 thumb_mode,
                 thumb_quality,
+                skip_thumbnail,
             )
             tick_job()
             maybe_recycle()
 
-            if thumb_filename is not None:
-                await db.execute(
-                    "UPDATE models SET thumbnail_path = ?, thumbnail_mode = ?, thumbnail_quality = ?, thumbnail_generated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (thumb_filename, thumb_mode, thumb_quality, model_id),
-                )
+            metadata = result["metadata"]
+            thumb_filename = result["thumbnail_filename"]
+            # If we extracted a 3MF thumbnail, prefer that
+            if skip_thumbnail and extracted_thumb is not None:
+                thumb_filename = extracted_thumb
+
+            # UPDATE model row with trimesh-derived metadata + thumbnail
+            await db.execute(
+                """
+                UPDATE models SET
+                    file_size = COALESCE(?, file_size),
+                    vertex_count = ?,
+                    face_count = ?,
+                    dimensions_x = ?,
+                    dimensions_y = ?,
+                    dimensions_z = ?,
+                    thumbnail_path = ?,
+                    thumbnail_mode = ?,
+                    thumbnail_quality = ?,
+                    thumbnail_generated_at = CASE WHEN ? IS NOT NULL THEN CURRENT_TIMESTAMP ELSE thumbnail_generated_at END,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    metadata.get("file_size"),
+                    metadata.get("vertex_count"),
+                    metadata.get("face_count"),
+                    metadata.get("dimensions_x"),
+                    metadata.get("dimensions_y"),
+                    metadata.get("dimensions_z"),
+                    thumb_filename,
+                    thumb_mode,
+                    thumb_quality,
+                    thumb_filename,
+                    model_id,
+                ),
+            )
 
             # Tag as zip-sourced model
             await self._apply_tags(db, model_id, ["zip"])
@@ -1001,6 +1114,27 @@ class Scanner:
                 )
 
             await update_fts_for_model(db, model_id)
+
+            # Auto-tag from metadata if enabled
+            if auto_tag:
+                existing_tags = await self._get_model_tags(db, model_id)
+                categories = await self._get_model_categories(db, model_id)
+                model_dict = {
+                    "name": name,
+                    "file_format": file_format,
+                    "dimensions_x": metadata.get("dimensions_x"),
+                    "dimensions_y": metadata.get("dimensions_y"),
+                    "dimensions_z": metadata.get("dimensions_z"),
+                    "vertex_count": metadata.get("vertex_count"),
+                    "face_count": metadata.get("face_count"),
+                    "source_url": source_url or "",
+                    "tags": existing_tags,
+                    "categories": categories,
+                }
+                suggestions = suggest_tags(model_dict)
+                if suggestions:
+                    await self._apply_tags(db, model_id, suggestions)
+                    await update_fts_for_model(db, model_id)
 
             logger.debug(
                 "Indexed zip entry id=%d  %s::%s", model_id, zip_path_str, entry_name
@@ -1197,6 +1331,26 @@ class Scanner:
                     "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
                     (model_id, tag_id),
                 )
+
+    @staticmethod
+    async def _get_model_tags(db: aiosqlite.Connection, model_id: int) -> list[str]:
+        """Return current tag names for a model."""
+        cursor = await db.execute(
+            "SELECT t.name FROM tags t JOIN model_tags mt ON t.id = mt.tag_id WHERE mt.model_id = ?",
+            (model_id,),
+        )
+        rows = await cursor.fetchall()
+        return [r[0] if not isinstance(r, dict) else r["name"] for r in rows]
+
+    @staticmethod
+    async def _get_model_categories(db: aiosqlite.Connection, model_id: int) -> list[str]:
+        """Return current category names for a model."""
+        cursor = await db.execute(
+            "SELECT c.name FROM categories c JOIN model_categories mc ON c.id = mc.category_id WHERE mc.model_id = ?",
+            (model_id,),
+        )
+        rows = await cursor.fetchall()
+        return [r[0] if not isinstance(r, dict) else r["name"] for r in rows]
 
     async def _create_categories_for_zip_entry(
         self,

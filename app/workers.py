@@ -40,7 +40,7 @@ _WORKER_MEMORY_LIMIT_MB: int = 4096  # 4 GB
 # Worker recycling: track how many CPU-bound jobs have been dispatched
 # and recycle the pool after a threshold to shed accumulated memory.
 _job_count: int = 0
-_RECYCLE_EVERY: int = 50  # recycle worker after this many jobs
+_RECYCLE_EVERY: int = 25  # recycle worker after this many jobs
 
 
 def _get_memory_mb() -> float:

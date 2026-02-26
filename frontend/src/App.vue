@@ -170,10 +170,11 @@ const {
     autoTagging, autoTagProgress,
     extractingMetadata, metadataProgress,
     bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint, preferredSlicer,
+    autoTagOnScan,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
     setThumbnailMode, regenerateThumbnails, autoTagAll, extractMetadata,
     setBedPreset, saveBedSettings, setColorTheme: _setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
-    setPreferredSlicer,
+    setPreferredSlicer, toggleAutoTagOnScan,
 } = settingsComposable;
 
 function setColorTheme(theme) {
@@ -1643,6 +1644,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :favoritesFirst="favoritesFirst"
         :collectionCardTint="collectionCardTint"
         :preferredSlicer="preferredSlicer"
+        :autoTagOnScan="autoTagOnScan"
         @close="closeSettings"
         @update:newLibName="newLibName = $event"
         @update:newLibPath="newLibPath = $event"
@@ -1666,6 +1668,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @toggleFavoritesFirst="handleToggleFavoritesFirst"
         @toggleCollectionCardTint="toggleCollectionCardTint"
         @setPreferredSlicer="setPreferredSlicer"
+        @toggleAutoTagOnScan="toggleAutoTagOnScan"
     />
 
     <!-- ============================================================

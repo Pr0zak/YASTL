@@ -31,6 +31,7 @@ defineProps({
     favoritesFirst: { type: Boolean, default: false },
     collectionCardTint: { type: Boolean, default: false },
     preferredSlicer: { type: String, default: 'none' },
+    autoTagOnScan: { type: Boolean, default: false },
 });
 
 const emit = defineEmits([
@@ -57,6 +58,7 @@ const emit = defineEmits([
     'toggleFavoritesFirst',
     'toggleCollectionCardTint',
     'setPreferredSlicer',
+    'toggleAutoTagOnScan',
 ]);
 </script>
 
@@ -113,6 +115,16 @@ const emit = defineEmits([
                         <div v-if="scanStatus.scanning" class="text-muted text-sm" style="margin-top:6px">
                             {{ scanStatus.processed_files }} / {{ scanStatus.total_files }} files processed
                         </div>
+                    </div>
+
+                    <!-- Scan Options -->
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;padding:0 0 12px 0">
+                        <input type="checkbox" :checked="autoTagOnScan"
+                               @change="emit('toggleAutoTagOnScan')">
+                        Auto-tag new models during scan
+                    </label>
+                    <div class="text-muted" style="font-size:0.7rem;margin-top:-8px;padding-bottom:12px">
+                        Automatically adds tags based on filename, format, size, and complexity
                     </div>
 
                     <!-- Add Library Form -->

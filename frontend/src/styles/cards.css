@@ -200,14 +200,6 @@
     text-align: right;
 }
 
-.models-table .col-vertices,
-.models-table .col-faces {
-    width: 100px;
-    text-align: right;
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-}
-
 .models-table .col-date {
     width: 120px;
 }

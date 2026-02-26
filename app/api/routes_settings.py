@@ -47,6 +47,10 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["none", "bambustudio", "orcaslicer", "prusaslicer"],
         "default": "none",
     },
+    "auto_tag_on_scan": {
+        "allowed": ["true", "false"],
+        "default": "false",
+    },
 }
 
 # Numeric settings with min/max validation (stored as strings in DB)
@@ -187,7 +191,7 @@ async def _regenerate_all_thumbnails(
 
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT id, file_path, zip_path, zip_entry FROM models "
+            "SELECT id, file_path, file_format, zip_path, zip_entry FROM models "
             "WHERE status = 'active'"
         )
         rows = await cursor.fetchall()
@@ -221,16 +225,31 @@ async def _regenerate_all_thumbnails(
             else:
                 render_path = row["file_path"]
 
-            thumb_filename: str | None = await loop.run_in_executor(
-                get_pool(),
-                thumbnail.generate_thumbnail,
-                render_path,
-                thumbnail_path,
-                model_id,
-                mode,
-                quality,
-            )
-            tick_job()
+            # Try extracting embedded 3MF thumbnail first
+            thumb_filename: str | None = None
+            file_format = (row["file_format"] or "").upper()
+            if file_format == "3MF":
+                thumb_filename = await loop.run_in_executor(
+                    get_pool(),
+                    thumbnail.extract_3mf_thumbnail,
+                    render_path,
+                    thumbnail_path,
+                    model_id,
+                )
+                tick_job()
+
+            # Fall back to rendered thumbnail
+            if thumb_filename is None:
+                thumb_filename = await loop.run_in_executor(
+                    get_pool(),
+                    thumbnail.generate_thumbnail,
+                    render_path,
+                    thumbnail_path,
+                    model_id,
+                    mode,
+                    quality,
+                )
+                tick_job()
             maybe_recycle()
             if thumb_filename is not None:
                 async with get_db() as db:

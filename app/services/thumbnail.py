@@ -25,6 +25,99 @@ from app.services.thumbnail_render import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
+def extract_3mf_thumbnail(
+    file_path: str,
+    output_dir: str,
+    model_id: int,
+) -> str | None:
+    """Extract an embedded thumbnail from a 3MF file.
+
+    3MF files are ZIP archives that often contain a preview image at
+    ``Metadata/thumbnail.png`` (or similar paths). This function
+    extracts and resizes that image for use as the model thumbnail.
+
+    Returns:
+        Relative path to the saved thumbnail (e.g. ``"42.png"``),
+        or ``None`` if no usable thumbnail was found.
+    """
+    import zipfile
+
+    from PIL import Image
+    import io
+
+    output_dir_path = Path(output_dir)
+    output_filename = f"{model_id}.png"
+    output_path = output_dir_path / output_filename
+
+    try:
+        output_dir_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning("Could not create thumbnail directory %s: %s", output_dir, e)
+        return None
+
+    try:
+        with zipfile.ZipFile(file_path, "r") as zf:
+            # Search for thumbnail image (case-insensitive)
+            thumb_entry = None
+            # Common 3MF thumbnail paths
+            candidates = [
+                "Metadata/thumbnail.png",
+                "Metadata/thumbnail.jpg",
+                "Metadata/thumbnail.jpeg",
+                ".thumbnails/thumbnail.png",
+            ]
+            namelist_lower = {n.lower(): n for n in zf.namelist()}
+            for candidate in candidates:
+                real_name = namelist_lower.get(candidate.lower())
+                if real_name is not None:
+                    thumb_entry = real_name
+                    break
+
+            # Also check for any PNG/JPEG in Metadata/ directory
+            if thumb_entry is None:
+                for name in zf.namelist():
+                    lower = name.lower()
+                    if lower.startswith("metadata/") and lower.endswith(
+                        (".png", ".jpg", ".jpeg")
+                    ):
+                        thumb_entry = name
+                        break
+
+            if thumb_entry is None:
+                return None
+
+            img_data = zf.read(thumb_entry)
+            if not img_data or len(img_data) < 100:
+                return None
+
+            img = Image.open(io.BytesIO(img_data))
+            img = img.convert("RGBA")
+
+            # Resize to thumbnail dimensions
+            img.thumbnail(
+                (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), Image.Resampling.LANCZOS
+            )
+
+            # Create a new image of exact thumbnail size with transparent bg
+            result = Image.new("RGBA", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), (0, 0, 0, 0))
+            offset_x = (THUMBNAIL_WIDTH - img.width) // 2
+            offset_y = (THUMBNAIL_HEIGHT - img.height) // 2
+            result.paste(img, (offset_x, offset_y))
+
+            # Save as PNG
+            result.save(str(output_path), "PNG")
+            logger.debug(
+                "Extracted 3MF thumbnail for model %d from %s", model_id, file_path
+            )
+            return output_filename
+
+    except Exception as e:
+        logger.debug(
+            "Could not extract 3MF thumbnail from %s: %s", file_path, e
+        )
+        return None
+
+
 def generate_thumbnail(
     file_path: str,
     output_dir: str,

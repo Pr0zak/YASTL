@@ -72,6 +72,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     // Preferred slicer
     const preferredSlicer = ref('none');
 
+    // Auto-tag on scan
+    const autoTagOnScan = ref(false);
+
     let regenPollTimer = null;
     let autoTagPollTimer = null;
     let metadataPollTimer = null;
@@ -148,6 +151,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             collectionCardTint.value = data.collection_card_tint === 'true';
             // Preferred slicer
             preferredSlicer.value = data.preferred_slicer || 'none';
+            // Auto-tag on scan
+            autoTagOnScan.value = data.auto_tag_on_scan === 'true';
         } catch (err) {
             console.error('fetchSettings error:', err);
         }
@@ -178,6 +183,16 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         } catch (err) {
             showToast('Failed to save setting', 'error');
             console.error('toggleCollectionCardTint error:', err);
+        }
+    }
+
+    async function toggleAutoTagOnScan() {
+        autoTagOnScan.value = !autoTagOnScan.value;
+        try {
+            await apiUpdateSettings({ auto_tag_on_scan: autoTagOnScan.value ? 'true' : 'false' });
+        } catch (err) {
+            showToast('Failed to save setting', 'error');
+            console.error('toggleAutoTagOnScan error:', err);
         }
     }
 
@@ -408,6 +423,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         favoritesFirst,
         collectionCardTint,
         preferredSlicer,
+        autoTagOnScan,
 
         // Actions
         fetchLibraries,
@@ -424,6 +440,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         toggleFavoritesFirst,
         toggleCollectionCardTint,
         setPreferredSlicer,
+        toggleAutoTagOnScan,
         openSettings,
         closeSettings,
     };

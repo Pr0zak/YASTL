@@ -3,7 +3,7 @@
  * ModelGrid - Grid and list views of model cards.
  */
 import { ICONS } from '../icons.js';
-import { formatFileSize, formatDate, formatNumber } from '../search.js';
+import { formatFileSize, formatDate } from '../search.js';
 
 const props = defineProps({
     models: { type: Array, default: () => [] },
@@ -161,8 +161,6 @@ function cardStyle(model) {
                     <th class="col-fav" style="width:32px"></th>
                     <th>Name</th>
                     <th class="col-format">Format</th>
-                    <th class="col-vertices">Vertices</th>
-                    <th class="col-faces">Faces</th>
                     <th class="col-size">Size</th>
                     <th class="col-date">Date</th>
                     <th class="col-tags">Tags</th>
@@ -194,8 +192,6 @@ function cardStyle(model) {
                             {{ model.file_format }}
                         </span>
                     </td>
-                    <td class="col-vertices">{{ formatNumber(model.vertex_count) }}</td>
-                    <td class="col-faces">{{ formatNumber(model.face_count) }}</td>
                     <td class="col-size">{{ formatFileSize(model.file_size) }}</td>
                     <td class="col-date">{{ formatDate(model.updated_at || model.created_at) }}</td>
                     <td class="col-tags">

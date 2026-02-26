@@ -70,18 +70,22 @@ def extract_entry_to_temp(zip_path: str, entry_name: str) -> Path:
     Raises ``zipfile.BadZipFile`` if the archive is corrupt, or
     ``KeyError`` if *entry_name* is not found in the archive.
     """
+    import shutil
+
     ext = PurePosixPath(entry_name).suffix
     fd, tmp_path = tempfile.mkstemp(suffix=ext)
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
-            data = zf.read(entry_name)
-        os.write(fd, data)
+            with zf.open(entry_name) as src:
+                with os.fdopen(fd, "wb") as dst:
+                    shutil.copyfileobj(src, dst, length=256 * 1024)
+        # fd is closed by os.fdopen context manager
+        fd = -1
     except Exception:
-        os.close(fd)
+        if fd >= 0:
+            os.close(fd)
         os.unlink(tmp_path)
         raise
-    else:
-        os.close(fd)
     return Path(tmp_path)
 
 
@@ -120,11 +124,13 @@ def ensure_cached(
         except OSError:
             pass  # Re-extract if we can't stat
 
-    # Extract from zip to cache
+    # Extract from zip to cache (streaming to avoid loading entire entry into memory)
+    import shutil
+
     with zipfile.ZipFile(zip_path, "r") as zf:
-        data = zf.read(entry_name)
-    with open(cache_path, "wb") as f:
-        f.write(data)
+        with zf.open(entry_name) as src:
+            with open(cache_path, "wb") as dst:
+                shutil.copyfileobj(src, dst, length=256 * 1024)
 
     return cache_path
 

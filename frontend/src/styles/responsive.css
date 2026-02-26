@@ -121,8 +121,6 @@
     }
 
     /* Table: hide less important columns */
-    .models-table .col-vertices,
-    .models-table .col-faces,
     .models-table .col-tags {
         display: none;
     }

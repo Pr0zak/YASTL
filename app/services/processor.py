@@ -232,3 +232,170 @@ def extract_metadata(file_path: str) -> dict:
         gc.collect()
 
     return metadata
+
+
+def process_and_thumbnail(
+    file_path: str,
+    output_dir: str,
+    model_id: int,
+    render_mode: str = "wireframe",
+    render_quality: str = "fast",
+    skip_thumbnail: bool = False,
+) -> dict:
+    """Extract metadata and generate thumbnail from a single trimesh.load().
+
+    Combines the work of ``extract_metadata()`` and
+    ``thumbnail.generate_thumbnail()`` into one load to halve peak memory
+    usage in the scanner worker process.
+
+    Returns:
+        ``{"metadata": dict, "thumbnail_filename": str | None}``
+    """
+    from pathlib import Path as _Path
+
+    from app.services.thumbnail_mesh import _collect_meshes
+    from app.services.thumbnail_render import (
+        _try_trimesh_render,
+        _render_wireframe,
+        _render_solid,
+        _render_solid_fast,
+    )
+
+    path = _Path(file_path)
+    ext = path.suffix.lower()
+
+    # ---- base metadata (no trimesh needed) ----
+    metadata: dict = {
+        "file_path": str(path),
+        "file_format": FORMAT_MAP.get(ext, ext.lstrip(".").upper()),
+        "file_size": None,
+        "vertex_count": None,
+        "face_count": None,
+        "dimensions_x": None,
+        "dimensions_y": None,
+        "dimensions_z": None,
+    }
+
+    try:
+        metadata["file_size"] = os.path.getsize(file_path)
+    except OSError as e:
+        logger.warning("Could not determine file size for %s: %s", file_path, e)
+
+    thumb_filename: str | None = None
+    all_known = TRIMESH_SUPPORTED | FALLBACK_ONLY
+    if ext not in all_known:
+        logger.warning(
+            "Unsupported or unrecognized 3D format '%s' for file: %s", ext, file_path
+        )
+        return {"metadata": metadata, "thumbnail_filename": None}
+
+    # ---- single trimesh load ----
+    loaded = None
+    scene = None
+    meshes = None
+    try:
+        logger.debug("Combined load (metadata+thumb) for: %s", file_path)
+        loaded = trimesh.load(file_path, force=None)
+
+        # --- extract metadata from loaded object ---
+        if isinstance(loaded, trimesh.Trimesh):
+            metadata.update(_extract_mesh_metadata(loaded))
+        elif isinstance(loaded, trimesh.Scene):
+            metadata.update(_extract_scene_metadata(loaded))
+        else:
+            logger.warning(
+                "trimesh returned unexpected type %s for file: %s",
+                type(loaded).__name__, file_path,
+            )
+
+        # --- generate thumbnail from same loaded object ---
+        if not skip_thumbnail and loaded is not None:
+            output_dir_path = _Path(output_dir)
+            output_filename = f"{model_id}.png"
+            output_path = output_dir_path / output_filename
+
+            try:
+                output_dir_path.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+
+            # Build scene wrapper for trimesh native render
+            if isinstance(loaded, trimesh.Trimesh):
+                scene = trimesh.Scene(loaded)
+            elif isinstance(loaded, trimesh.Scene):
+                scene = loaded
+
+            rendered = False
+            if scene is not None and len(scene.geometry) > 0:
+                # Try trimesh built-in render
+                if render_mode == "wireframe" and _try_trimesh_render(scene, str(output_path)):
+                    rendered = True
+                    thumb_filename = output_filename
+
+                if not rendered:
+                    meshes = _collect_meshes(loaded)
+                    if meshes:
+                        if render_mode == "solid":
+                            solid_fn = _render_solid if render_quality == "quality" else _render_solid_fast
+                            if solid_fn(meshes, str(output_path)):
+                                rendered = True
+                                thumb_filename = output_filename
+                        if not rendered and _render_wireframe(meshes, str(output_path)):
+                            rendered = True
+                            thumb_filename = output_filename
+
+            if not rendered:
+                logger.debug("Thumbnail rendering failed for: %s", file_path)
+
+    except Exception as e:
+        # Handle STEP/STP fallback
+        if ext in FALLBACK_ONLY:
+            logger.debug(
+                "trimesh could not parse STEP/STP file %s: %s. Trying STEP converter.",
+                file_path, e,
+            )
+            step_mesh = None
+            try:
+                from app.services.step_converter import load_step
+
+                step_mesh = load_step(file_path)
+                if step_mesh is not None and isinstance(step_mesh, trimesh.Trimesh):
+                    metadata.update(_extract_mesh_metadata(step_mesh))
+
+                    # Also generate thumbnail from STEP mesh
+                    if not skip_thumbnail:
+                        output_dir_path = _Path(output_dir)
+                        output_filename = f"{model_id}.png"
+                        output_path = output_dir_path / output_filename
+                        try:
+                            output_dir_path.mkdir(parents=True, exist_ok=True)
+                        except OSError:
+                            pass
+                        step_meshes = [step_mesh]
+                        if render_mode == "solid":
+                            solid_fn = _render_solid if render_quality == "quality" else _render_solid_fast
+                            if solid_fn(step_meshes, str(output_path)):
+                                thumb_filename = output_filename
+                        if thumb_filename is None and _render_wireframe(step_meshes, str(output_path)):
+                            thumb_filename = output_filename
+            except Exception as conv_err:
+                logger.debug("STEP converter failed for %s: %s", file_path, conv_err)
+            finally:
+                del step_mesh
+        else:
+            logger.warning(
+                "Failed to process %s: %s. Returning partial metadata.",
+                file_path, e,
+            )
+    finally:
+        if loaded is not None:
+            if hasattr(loaded, "_cache"):
+                loaded._cache.clear()
+            if isinstance(loaded, trimesh.Scene):
+                for geom in loaded.geometry.values():
+                    if hasattr(geom, "_cache"):
+                        geom._cache.clear()
+        del loaded, scene, meshes
+        gc.collect()
+
+    return {"metadata": metadata, "thumbnail_filename": thumb_filename}
