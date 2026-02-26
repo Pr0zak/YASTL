@@ -217,7 +217,7 @@ async function refreshSelectedModel(modelId) {
     if (modelId && selectedModel.value.id !== modelId) return;
     try {
         const data = await apiGetModel(selectedModel.value.id);
-        selectedModel.value = data;
+        selectedModel.value = enrichWithSmartCollections(data);
     } catch { /* ignore */ }
 }
 
@@ -352,26 +352,30 @@ function matchesSmartRules(model, rules) {
     return true;
 }
 
+function enrichWithSmartCollections(model) {
+    const smartCols = collections.value.filter(c => c.is_smart);
+    if (!smartCols.length) return model;
+    const matched = smartCols.filter(c => {
+        const rules = typeof c.rules === 'string' ? JSON.parse(c.rules || '{}') : (c.rules || {});
+        return matchesSmartRules(model, rules);
+    });
+    if (!matched.length) return model;
+    const existing = model.collections || [];
+    const existingNames = new Set(existing.map(c => c.name));
+    const extra = matched.filter(c => !existingNames.has(c.name)).map(c => ({ name: c.name, color: c.color, is_smart: true }));
+    if (!extra.length) return model;
+    const extraColors = extra.map(c => c.color).filter(Boolean);
+    return {
+        ...model,
+        collections: [...existing, ...extra],
+        collection_colors: [...(model.collection_colors || []), ...extraColors],
+    };
+}
+
 const displayModels = computed(() => {
     const smartCols = collections.value.filter(c => c.is_smart);
     if (!smartCols.length) return models.value;
-    return models.value.map(model => {
-        const matched = smartCols.filter(c => {
-            const rules = typeof c.rules === 'string' ? JSON.parse(c.rules || '{}') : (c.rules || {});
-            return matchesSmartRules(model, rules);
-        });
-        if (!matched.length) return model;
-        const existing = model.collections || [];
-        const existingNames = new Set(existing.map(c => c.name));
-        const extra = matched.filter(c => !existingNames.has(c.name)).map(c => ({ name: c.name, color: c.color }));
-        if (!extra.length) return model;
-        const extraColors = extra.map(c => c.color).filter(Boolean);
-        return {
-            ...model,
-            collections: [...existing, ...extra],
-            collection_colors: [...(model.collection_colors || []), ...extraColors],
-        };
-    });
+    return models.value.map(enrichWithSmartCollections);
 });
 
 // Build breadcrumb trail from current filters
@@ -745,7 +749,7 @@ async function viewModel(model) {
     // otherwise fire-and-forget to enrich tags/categories in background
     const needsAwait = !model.file_format;
     const modelPromise = apiGetModel(model.id).then(data => {
-        selectedModel.value = data;
+        selectedModel.value = enrichWithSmartCollections(data);
         editName.value = data.name || '';
         editDesc.value = data.description || '';
         editSourceUrl.value = data.source_url || '';

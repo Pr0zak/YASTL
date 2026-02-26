@@ -355,11 +355,12 @@ function formatClass(fmt) {
                                     </button>
                                 </div>
                                 <div class="tags-list">
-                                    <span v-for="col in (selectedModel.collections || [])" :key="col.id"
+                                    <span v-for="col in (selectedModel.collections || [])" :key="col.name"
                                           class="tag-chip" :style="{ background: (col.color || '#666') + '22', color: col.color || '#666', border: '1px solid ' + (col.color || '#666') + '44' }">
                                         <span class="collection-dot" :style="{ background: col.color || '#666' }" style="width:8px;height:8px;margin-right:4px"></span>
+                                        <span v-if="col.is_smart" v-html="ICONS.zap" style="width:10px;height:10px;opacity:0.7;margin-right:2px"></span>
                                         {{ col.name }}
-                                        <button class="tag-remove" @click="emit('removeModelFromCollection', col.id, selectedModel.id)" title="Remove from collection">&times;</button>
+                                        <button v-if="!col.is_smart" class="tag-remove" @click="emit('removeModelFromCollection', col.id, selectedModel.id)" title="Remove from collection">&times;</button>
                                     </span>
                                     <span v-if="!selectedModel.collections || !selectedModel.collections.length"
                                           class="text-muted text-sm">No collections</span>
