@@ -329,6 +329,51 @@ const selectedLibrary = computed(() => {
     return libraries.value.find(l => l.id === filters.library_id) || null;
 });
 
+// Enrich models with matching smart collections
+function matchesSmartRules(model, rules) {
+    if (rules.format && (model.file_format || '').toLowerCase() !== rules.format.toLowerCase()) return false;
+    if (rules.tags && rules.tags.length) {
+        const modelTags = model.tags || [];
+        if (rules.tagMatch === 'or') {
+            if (!rules.tags.some(t => modelTags.includes(t))) return false;
+        } else {
+            if (!rules.tags.every(t => modelTags.includes(t))) return false;
+        }
+    }
+    if (rules.categories && rules.categories.length) {
+        const modelCats = model.categories || [];
+        if (!rules.categories.some(c => modelCats.includes(c))) return false;
+    }
+    if (rules.library_id && model.library_id !== rules.library_id) return false;
+    if (rules.favoritesOnly && !model.is_favorite) return false;
+    if (rules.duplicatesOnly && !model.is_duplicate) return false;
+    if (rules.sizeMin && (model.file_size || 0) < rules.sizeMin) return false;
+    if (rules.sizeMax && (model.file_size || 0) > rules.sizeMax) return false;
+    return true;
+}
+
+const displayModels = computed(() => {
+    const smartCols = collections.value.filter(c => c.is_smart);
+    if (!smartCols.length) return models.value;
+    return models.value.map(model => {
+        const matched = smartCols.filter(c => {
+            const rules = typeof c.rules === 'string' ? JSON.parse(c.rules || '{}') : (c.rules || {});
+            return matchesSmartRules(model, rules);
+        });
+        if (!matched.length) return model;
+        const existing = model.collections || [];
+        const existingNames = new Set(existing.map(c => c.name));
+        const extra = matched.filter(c => !existingNames.has(c.name)).map(c => ({ name: c.name, color: c.color }));
+        if (!extra.length) return model;
+        const extraColors = extra.map(c => c.color).filter(Boolean);
+        return {
+            ...model,
+            collections: [...existing, ...extra],
+            collection_colors: [...(model.collection_colors || []), ...extraColors],
+        };
+    });
+});
+
 // Build breadcrumb trail from current filters
 const breadcrumbTrail = computed(() => {
     const trail = [];
@@ -1585,7 +1630,7 @@ const { pickNextCollectionColor } = collectionsComposable;
                  ============================================================ -->
             <ModelGrid
                 v-else
-                :models="models"
+                :models="displayModels"
                 :viewMode="viewMode"
                 :selectionMode="selectionMode"
                 :selectedModels="selectedModels"
