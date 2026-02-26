@@ -29,13 +29,13 @@ app/                    # Main application package
   database.py           # Runtime DB logic (imports schema from database_schema.py)
   database_schema.py    # SCHEMA_SQL, FTS_SCHEMA_SQL, migrations, indexes
   api/                  # Route modules (split into focused files)
-    _helpers.py         # Shared route helpers (_get_db_path, _fetch_model_with_relations)
+    _helpers.py         # Shared route helpers (_get_db_path, _fetch_model_with_relations, open_db)
     routes_models.py    # Model CRUD (name, description, source_url)
     routes_model_files.py # File serving, GLB conversion, thumbnails
     routes_model_tags.py  # Per-model tag operations
     routes_model_categories.py # Per-model category operations
     routes_search.py    # Full-text search with filters
-    routes_scan.py      # Scan triggers, reindex, repair
+    routes_scan.py      # Scan triggers (full/update/single-library), cancel, reindex, repair
     routes_tags.py      # Tag management
     routes_categories.py # Category management
     routes_libraries.py # Library management
@@ -141,6 +141,10 @@ docker compose up -d
 - **Detail panel tabs** — Model detail overlay uses a tabbed layout (Info, Tags, More) to reduce clutter; file details (vertices, faces, dimensions, path, hash) are collapsed by default behind a toggle; Download/Delete actions are pinned at the bottom across all tabs
 - **Theme-aware 3D viewer** — `useViewer.js` exposes `setViewerTheme(theme)` which updates the Three.js scene background and grid colors. `initViewer()` accepts an optional theme parameter. `App.vue` passes `colorTheme` on init and calls `setViewerTheme()` when the theme changes while the viewer is open. Dark theme: navy background (`0x12182a`), blue grid. Light theme: light gray background (`0xf5f5f5`), subtle gray grid.
 - **File upload drag-and-drop** — Import modal file upload area supports both click-to-browse and drag-and-drop; drop events feed `dataTransfer.files` into `onFilesSelected` via a synthetic event
+- **Error tracking** — Files that fail during scanning (oversized >80MB, worker crash/OOM, processing errors) are inserted as `status='error'` models with `error_reason` text. Auto-added to a "Failed to Process" collection (red, `#dc3545`). Shown with red error badge in the collection view.
+- **Single-library scan** — `POST /api/scan?library_id=N` scans only one library. Settings UI has a per-library rescan button. `apiTriggerScan(mode, libraryId)` in `api.js` supports the optional `libraryId` param.
+- **Scan cancellation** — `POST /api/scan/cancel` sets `_cancel_requested` flag on the scanner. Cancellation is checked in all phases: file discovery, zip expansion, per-library processing, zip metadata extraction, and per-file iteration. Orphan reconciliation is skipped on cancel to avoid false "missing" status. UI shows a cancel button (X) in the scan progress banner.
+- **Busy timeout** — `_helpers.py` provides `open_db()` async context manager with `PRAGMA busy_timeout = 5000` to prevent SQLite lock contention when the scanner holds a write connection. Scanner also sets busy_timeout on its own connection.
 
 ## Database Migrations
 
@@ -154,8 +158,9 @@ docker compose up -d
 The `models` table has a `status` column:
 - `'active'` — file exists on disk, shown in UI
 - `'missing'` — file no longer found on disk (set by scanner during re-scan)
+- `'error'` — file failed to process (oversized, worker crash, processing error); stored with `error_reason` column
 
-All listing/search API endpoints filter `WHERE status = 'active'` so missing models don't appear in the UI. The scanner marks files as missing on re-scan and reactivates them if they reappear.
+All listing/search API endpoints filter `WHERE status = 'active'` by default so missing/error models don't appear in normal browsing. The `GET /api/models` endpoint accepts an optional `status` query param (`active`, `error`, or `all`). Error models are auto-added to a "Failed to Process" collection.
 
 ## Thumbnail Tracking
 
