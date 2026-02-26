@@ -869,18 +869,35 @@ async function regenerateThumbnail() {
 }
 
 async function deleteModel(model) {
+    const isZip = !!model.zip_path;
+    const fileName = model.file_path ? model.file_path.split(/[/\\]/).pop() : model.name;
+
+    // First confirmation
     if (!await showConfirm({
         title: 'Delete Model',
-        message: `Remove "${model.name}" from library? File stays on disk.`,
+        message: isZip
+            ? `Delete "${model.name}"? This will remove it from the library. (Source file is inside a zip archive and will not be modified.)`
+            : `Delete "${model.name}"? This will permanently delete the file from disk.`,
         action: 'Delete',
         danger: true,
     })) return;
+
+    // Second confirmation — strong warning for permanent disk deletion
+    if (!isZip) {
+        if (!await showConfirm({
+            title: 'Permanently Delete File?',
+            message: `This cannot be undone. "${fileName}" will be permanently deleted from disk.`,
+            action: 'Delete Forever',
+            danger: true,
+        })) return;
+    }
+
     try {
-        await apiDeleteModel(model.id);
+        const result = await apiDeleteModel(model.id);
         models.value = models.value.filter((m) => m.id !== model.id);
         pagination.total = Math.max(0, pagination.total - 1);
         if (showDetail.value) closeDetail();
-        showToast('Model removed from library');
+        showToast(result.file_deleted ? 'Model and file deleted from disk' : 'Model removed from library');
     } catch (err) {
         showToast(err.message || 'Failed to delete model', 'error');
     }

@@ -546,16 +546,16 @@ async def rename_model_file(request: Request, model_id: int):
 
 @router.delete("/{model_id}")
 async def delete_model(request: Request, model_id: int):
-    """Delete a model and its thumbnail file."""
+    """Delete a model, its thumbnail, and the source file from disk."""
     db_path = _get_db_path(request)
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
-        # Fetch model to get thumbnail path and zip info before deletion
+        # Fetch model to get file path, thumbnail path, and zip info before deletion
         cursor = await db.execute(
-            "SELECT id, thumbnail_path, zip_path, zip_entry FROM models WHERE id = ?",
+            "SELECT id, file_path, thumbnail_path, zip_path, zip_entry FROM models WHERE id = ?",
             (model_id,),
         )
         row = await cursor.fetchone()
@@ -563,7 +563,9 @@ async def delete_model(request: Request, model_id: int):
             raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
         model_dict = dict(row)
+        file_path = model_dict.get("file_path")
         thumbnail_path = model_dict.get("thumbnail_path")
+        zip_path = model_dict.get("zip_path")
 
         # Remove FTS entry
         await db.execute("DELETE FROM models_fts WHERE rowid = ?", (model_id,))
@@ -572,12 +574,26 @@ async def delete_model(request: Request, model_id: int):
         await db.execute("DELETE FROM models WHERE id = ?", (model_id,))
         await db.commit()
 
+    file_deleted = False
+
+    # Delete the source model file from disk
+    if file_path and not zip_path:
+        # Regular file (not inside a zip) — the file_path is a real filesystem path
+        real_path = file_path
+        if os.path.isfile(real_path):
+            try:
+                os.remove(real_path)
+                file_deleted = True
+                logger.info("Deleted model file from disk: %s", real_path)
+            except OSError as e:
+                logger.warning("Failed to delete model file %s: %s", real_path, e)
+
     # Remove thumbnail file from disk
     if thumbnail_path and os.path.exists(thumbnail_path):
         try:
             os.remove(thumbnail_path)
         except OSError:
-            pass  # Non-critical: log but don't fail
+            pass
 
     # Remove cached GLB preview if it exists
     glb_cache_path = os.path.join(
@@ -590,12 +606,15 @@ async def delete_model(request: Request, model_id: int):
             pass
 
     # Remove cached zip extraction if it exists
-    if model_dict.get("zip_path"):
+    if zip_path:
         zip_handler.cleanup_zip_cache(
             str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), model_id
         )
 
-    return {"detail": f"Model {model_id} deleted"}
+    return {
+        "detail": f"Model {model_id} deleted",
+        "file_deleted": file_deleted,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -81,7 +81,7 @@ function tagOpacity(count, tags) {
                         <span class="status-badge" :class="statusDotClass(systemStatus.health)">
                             {{ statusLabel(systemStatus.health) }}
                         </span>
-                        <button class="btn btn-sm" style="margin-left:auto;font-size:0.7rem;padding:3px 8px"
+                        <button class="btn btn-secondary" style="margin-left:auto;font-size:0.7rem;padding:3px 8px"
                                 @click="emit('restartApp')" title="Restart YASTL service">
                             <span v-html="ICONS.refresh"></span> Restart
                         </button>
