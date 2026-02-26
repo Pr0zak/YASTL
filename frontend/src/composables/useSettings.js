@@ -69,6 +69,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     // Collection card tint
     const collectionCardTint = ref(false);
 
+    // Preferred slicer
+    const preferredSlicer = ref('none');
+
     let regenPollTimer = null;
     let autoTagPollTimer = null;
     let metadataPollTimer = null;
@@ -143,6 +146,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             favoritesFirst.value = data.favorites_first === 'true';
             // Collection card tint
             collectionCardTint.value = data.collection_card_tint === 'true';
+            // Preferred slicer
+            preferredSlicer.value = data.preferred_slicer || 'none';
         } catch (err) {
             console.error('fetchSettings error:', err);
         }
@@ -173,6 +178,16 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         } catch (err) {
             showToast('Failed to save setting', 'error');
             console.error('toggleCollectionCardTint error:', err);
+        }
+    }
+
+    async function setPreferredSlicer(slicer) {
+        preferredSlicer.value = slicer;
+        try {
+            await apiUpdateSettings({ preferred_slicer: slicer });
+        } catch (err) {
+            showToast('Failed to save slicer setting', 'error');
+            console.error('setPreferredSlicer error:', err);
         }
     }
 
@@ -392,6 +407,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         colorTheme,
         favoritesFirst,
         collectionCardTint,
+        preferredSlicer,
 
         // Actions
         fetchLibraries,
@@ -407,6 +423,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         setColorTheme,
         toggleFavoritesFirst,
         toggleCollectionCardTint,
+        setPreferredSlicer,
         openSettings,
         closeSettings,
     };

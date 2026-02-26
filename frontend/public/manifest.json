@@ -1,0 +1,18 @@
+{
+  "name": "YASTL - 3D Model Library",
+  "short_name": "YASTL",
+  "description": "Browse, search, and preview your 3D model library",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#0f1420",
+  "theme_color": "#61afef",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

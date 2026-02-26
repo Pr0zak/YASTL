@@ -199,6 +199,25 @@ app.mount(
 )
 
 
+@app.get("/manifest.json", include_in_schema=False)
+async def manifest():
+    """Serve PWA manifest from Vite dist."""
+    return FileResponse(
+        os.path.join(dist_dir, "manifest.json"),
+        media_type="application/manifest+json",
+    )
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Serve service worker from root scope (must be at / for full PWA scope)."""
+    return FileResponse(
+        os.path.join(dist_dir, "sw.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
+
+
 @app.get("/", include_in_schema=False)
 async def root():
     """Serve the Vite frontend.

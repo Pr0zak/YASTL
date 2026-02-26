@@ -27,6 +27,7 @@ defineProps({
     bedConfig: { type: Object, default: () => ({ enabled: false, width: 256, depth: 256, height: 256, shape: 'rectangular' }) },
     bedVisible: { type: Boolean, default: false },
     bedFits: { type: Boolean, default: true },
+    preferredSlicer: { type: String, default: 'none' },
 });
 
 const emit = defineEmits([
@@ -60,6 +61,18 @@ const emit = defineEmits([
     'regenerateThumbnail',
     'openRelatedModel',
 ]);
+
+const SLICER_FORMATS = ['stl', '3mf', 'obj'];
+const SLICER_PROTOCOLS = {
+    bambustudio: 'bambustudio://open?file=',
+    orcaslicer: 'orcaslicer://open?file=',
+    prusaslicer: 'prusaslicer://open?file=',
+};
+const SLICER_LABELS = {
+    bambustudio: 'Bambu Studio',
+    orcaslicer: 'OrcaSlicer',
+    prusaslicer: 'PrusaSlicer',
+};
 
 function formatClass(fmt) {
     if (!fmt) return '';
@@ -378,6 +391,13 @@ function formatClass(fmt) {
 
                     <!-- Pinned actions bar -->
                     <div class="detail-actions-pinned">
+                        <a v-if="preferredSlicer !== 'none' && selectedModel.file_format && SLICER_FORMATS.includes(selectedModel.file_format.toLowerCase().replace('.', ''))"
+                           class="btn btn-primary" style="flex:1"
+                           :href="(SLICER_PROTOCOLS[preferredSlicer] || '') + window.location.origin + '/api/models/' + selectedModel.id + '/download'"
+                           :title="'Open in ' + (SLICER_LABELS[preferredSlicer] || preferredSlicer)">
+                            <span v-html="ICONS.slicer"></span>
+                            Open in Slicer
+                        </a>
                         <a class="btn btn-secondary" style="flex:1"
                            :href="'/api/models/' + selectedModel.id + '/download'"
                            download>

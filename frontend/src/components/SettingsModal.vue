@@ -30,6 +30,7 @@ defineProps({
     colorTheme: { type: String, default: 'default' },
     favoritesFirst: { type: Boolean, default: false },
     collectionCardTint: { type: Boolean, default: false },
+    preferredSlicer: { type: String, default: 'none' },
 });
 
 const emit = defineEmits([
@@ -55,6 +56,7 @@ const emit = defineEmits([
     'setColorTheme',
     'toggleFavoritesFirst',
     'toggleCollectionCardTint',
+    'setPreferredSlicer',
 ]);
 </script>
 
@@ -313,6 +315,21 @@ const emit = defineEmits([
                         <button class="btn btn-primary" @click="emit('saveBedSettings')">
                             Save Bed Settings
                         </button>
+                    </div>
+
+                    <div class="form-row" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                        <label class="form-label">Slicer Integration</label>
+                        <select class="form-input"
+                                :value="preferredSlicer"
+                                @change="emit('setPreferredSlicer', $event.target.value)">
+                            <option value="none">None</option>
+                            <option value="bambustudio">Bambu Studio</option>
+                            <option value="orcaslicer">OrcaSlicer</option>
+                            <option value="prusaslicer">PrusaSlicer</option>
+                        </select>
+                        <div class="text-muted" style="font-size:0.7rem;margin-top:4px">
+                            Adds an "Open in Slicer" button to the model detail panel for STL, 3MF, and OBJ files.
+                        </div>
                     </div>
                 </div>
 

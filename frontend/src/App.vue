@@ -169,10 +169,11 @@ const {
     thumbnailMode, regeneratingThumbnails, regenProgress,
     autoTagging, autoTagProgress,
     extractingMetadata, metadataProgress,
-    bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint,
+    bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint, preferredSlicer,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
     setThumbnailMode, regenerateThumbnails, autoTagAll, extractMetadata,
     setBedPreset, saveBedSettings, setColorTheme: _setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
+    setPreferredSlicer,
 } = settingsComposable;
 
 function setColorTheme(theme) {
@@ -1444,7 +1445,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         />
 
         <!-- Main Content -->
-        <main class="main-content">
+        <main class="main-content" :style="selectionMode ? { paddingBottom: '80px' } : {}">
 
             <!-- Scan Progress Banner -->
             <div v-if="scanStatus.scanning" class="scan-banner">
@@ -1577,6 +1578,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :bedConfig="bedConfig"
         :bedVisible="bedVisible"
         :bedFits="bedFits"
+        :preferredSlicer="preferredSlicer"
         @close="closeDetail"
         @update:detailTab="detailTab = $event"
         @update:showFileDetails="showFileDetails = $event"
@@ -1633,6 +1635,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :colorTheme="colorTheme"
         :favoritesFirst="favoritesFirst"
         :collectionCardTint="collectionCardTint"
+        :preferredSlicer="preferredSlicer"
         @close="closeSettings"
         @update:newLibName="newLibName = $event"
         @update:newLibPath="newLibPath = $event"
@@ -1655,6 +1658,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @setColorTheme="setColorTheme"
         @toggleFavoritesFirst="handleToggleFavoritesFirst"
         @toggleCollectionCardTint="toggleCollectionCardTint"
+        @setPreferredSlicer="setPreferredSlicer"
     />
 
     <!-- ============================================================

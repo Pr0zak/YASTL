@@ -43,6 +43,10 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["true", "false"],
         "default": "false",
     },
+    "preferred_slicer": {
+        "allowed": ["none", "bambustudio", "orcaslicer", "prusaslicer"],
+        "default": "none",
+    },
 }
 
 # Numeric settings with min/max validation (stored as strings in DB)
