@@ -8,6 +8,7 @@ are auto-created from the directory hierarchy (folder names become categories).
 
 import asyncio
 import concurrent.futures
+import concurrent.futures.process
 import logging
 import os
 import time
@@ -301,7 +302,7 @@ class Scanner:
                             await db.commit()
                         else:
                             stats["skipped_files"] += 1
-                    except concurrent.futures.BrokenProcessPool:
+                    except concurrent.futures.process.BrokenProcessPool:
                         logger.error(
                             "Worker crashed processing %s — recovering pool",
                             file_path,
@@ -415,7 +416,7 @@ class Scanner:
                         await db.commit()
                     else:
                         stats["skipped_files"] += 1
-                except concurrent.futures.BrokenProcessPool:
+                except concurrent.futures.process.BrokenProcessPool:
                     logger.error(
                         "Worker crashed processing %s in %s — recovering pool",
                         entry_name,
