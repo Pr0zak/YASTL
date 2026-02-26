@@ -174,6 +174,8 @@ class Scanner:
         library_items: dict[int, list[tuple[Path, Path]]] = {}
 
         for lib in libraries:
+            if self._cancel_requested:
+                break
             scan_root = Path(lib["path"])
             library_id = lib["id"]
             if not scan_root.is_dir():
@@ -195,6 +197,8 @@ class Scanner:
         ] = []  # (zip_path, entry, lib_id, root)
 
         for library_id, items in list(library_items.items()):
+            if self._cancel_requested:
+                break
             regular: list[tuple[Path, Path]] = []
             for file_path, scan_root in items:
                 if file_path.suffix.lower() == ".zip":
@@ -237,6 +241,8 @@ class Scanner:
             # move detection and orphan reconciliation.
             folder_meta_cache: dict[str, dict] = {}
             for library_id, items in library_items.items():
+                if self._cancel_requested:
+                    break
                 orphan_index: dict[str, list[dict]] = {}
 
                 if not update_only:
@@ -339,7 +345,7 @@ class Scanner:
                                 stats["errors"],
                             )
 
-                if not update_only:
+                if not update_only and not self._cancel_requested:
                     # Mark remaining orphans (not matched by moves) as missing
                     for records in orphan_index.values():
                         for rec in records:
@@ -374,6 +380,8 @@ class Scanner:
             # Pre-compute zip metadata (once per zip file)
             zip_meta_cache: dict[str, dict] = {}
             for zip_path, entry_name, library_id, scan_root in zip_entries:
+                if self._cancel_requested:
+                    break
                 zp_str = str(zip_path)
                 if zp_str not in zip_meta_cache:
                     try:
@@ -438,7 +446,7 @@ class Scanner:
                     self.processed_files += 1
 
             # Reconcile zip entries: mark missing or reactivate
-            if not update_only:
+            if not update_only and not self._cancel_requested:
                 discovered_zip_paths = {
                     zip_handler.make_zip_file_path(str(zp), en)
                     for zp, en, _, _ in zip_entries
