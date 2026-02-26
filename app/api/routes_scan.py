@@ -31,6 +31,7 @@ async def trigger_scan(
     request: Request,
     background_tasks: BackgroundTasks,
     mode: str = "full",
+    library_id: int | None = None,
 ):
     """Trigger a directory scan in the background.
 
@@ -41,6 +42,7 @@ async def trigger_scan(
     Query params:
         mode: ``full`` (default) runs move detection and orphan reconciliation.
               ``update`` only discovers and indexes new files (faster).
+        library_id: If set, scan only this library instead of all libraries.
 
     Returns immediately with a status message. Use ``GET /api/scan/status``
     to monitor progress.
@@ -59,12 +61,45 @@ async def trigger_scan(
         )
 
     update_only = mode == "update"
-    background_tasks.add_task(scanner.scan, update_only=update_only)
+    background_tasks.add_task(
+        scanner.scan, update_only=update_only, library_id=library_id,
+    )
 
     label = "Update scan" if update_only else "Full scan"
+    if library_id is not None:
+        label += f" (library {library_id})"
     return {
         "detail": f"{label} started in background",
         "scanning": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Cancel running scan
+# ---------------------------------------------------------------------------
+
+
+@router.post("/cancel")
+async def cancel_scan(request: Request):
+    """Cancel a running scan.
+
+    Signals the scanner to stop after the current file finishes processing.
+    Progress up to the cancellation point is preserved in the database.
+    """
+    scanner = getattr(request.app.state, "scanner", None)
+    if scanner is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Scanner service is not available",
+        )
+
+    if not scanner.is_scanning:
+        return {"detail": "No scan is currently running", "cancelled": False}
+
+    cancelled = scanner.cancel()
+    return {
+        "detail": "Scan cancellation requested" if cancelled else "No scan running",
+        "cancelled": cancelled,
     }
 
 

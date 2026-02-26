@@ -58,6 +58,7 @@ class Scanner:
         self.is_scanning: bool = False
         self.total_files: int = 0
         self.processed_files: int = 0
+        self._cancel_requested: bool = False
 
         # Prevent concurrent scans
         self._lock = asyncio.Lock()
@@ -66,8 +67,12 @@ class Scanner:
     # Public API
     # ------------------------------------------------------------------
 
-    async def scan(self, update_only: bool = False) -> dict:
-        """Scan all registered libraries and index supported files.
+    async def scan(
+        self,
+        update_only: bool = False,
+        library_id: int | None = None,
+    ) -> dict:
+        """Scan registered libraries and index supported files.
 
         Uses an asyncio lock to prevent concurrent scans. If a scan is
         already running the method returns immediately with zeroed stats.
@@ -75,6 +80,8 @@ class Scanner:
         Args:
             update_only: If True, only discover and index new files without
                 checking for moved/missing files (much faster).
+            library_id: If set, scan only the library with this ID instead
+                of all libraries.
 
         Returns:
             A stats dictionary with keys:
@@ -94,25 +101,48 @@ class Scanner:
                 "errors": 0,
             }
 
+        self._cancel_requested = False
         async with self._lock:
-            return await self._run_scan(update_only=update_only)
+            return await self._run_scan(
+                update_only=update_only, library_id=library_id,
+            )
+
+    def cancel(self) -> bool:
+        """Request cancellation of the current scan.
+
+        Returns True if a scan was running and cancellation was requested.
+        """
+        if not self.is_scanning:
+            return False
+        self._cancel_requested = True
+        logger.info("Scan cancellation requested")
+        return True
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _get_libraries(self) -> list[dict]:
-        """Load all libraries from the database."""
+    async def _get_libraries(self, library_id: int | None = None) -> list[dict]:
+        """Load libraries from the database, optionally filtered by ID."""
         db = await aiosqlite.connect(self.db_path)
         db.row_factory = aiosqlite.Row
         try:
-            cursor = await db.execute("SELECT * FROM libraries ORDER BY name")
+            if library_id is not None:
+                cursor = await db.execute(
+                    "SELECT * FROM libraries WHERE id = ?", (library_id,)
+                )
+            else:
+                cursor = await db.execute("SELECT * FROM libraries ORDER BY name")
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
         finally:
             await db.close()
 
-    async def _run_scan(self, update_only: bool = False) -> dict:
+    async def _run_scan(
+        self,
+        update_only: bool = False,
+        library_id: int | None = None,
+    ) -> dict:
         """Core scanning logic executed under the lock."""
         self.is_scanning = True
         self.total_files = 0
@@ -128,7 +158,7 @@ class Scanner:
             "errors": 0,
         }
 
-        libraries = await self._get_libraries()
+        libraries = await self._get_libraries(library_id=library_id)
         if not libraries:
             logger.warning("No libraries configured -- nothing to scan.")
             self.is_scanning = False
@@ -244,6 +274,9 @@ class Scanner:
 
                 # Process each file on disk
                 for file_path, scan_root in items:
+                    if self._cancel_requested:
+                        logger.info("Scan cancelled by user")
+                        break
                     try:
                         result = await self._process_file(
                             db, file_path, loop, library_id, scan_root, orphan_index,
@@ -354,6 +387,9 @@ class Scanner:
             # Process model entries inside zip archives
             zip_collection_cache: dict[str, int] = {}
             for zip_path, entry_name, library_id, scan_root in zip_entries:
+                if self._cancel_requested:
+                    logger.info("Scan cancelled by user (zip phase)")
+                    break
                 try:
                     zip_meta = zip_meta_cache.get(str(zip_path), {})
                     result = await self._process_zip_entry(
@@ -447,9 +483,13 @@ class Scanner:
             await db.close()
 
         self.is_scanning = False
+        cancelled = self._cancel_requested
+        self._cancel_requested = False
+        status_label = "Scan cancelled" if cancelled else "Scan complete"
         log_memory("scan_complete")
         logger.info(
-            "Scan complete -- total=%d new=%d moved=%d skipped=%d missing=%d reactivated=%d errors=%d",
+            "%s -- total=%d new=%d moved=%d skipped=%d missing=%d reactivated=%d errors=%d",
+            status_label,
             stats["total_files"],
             stats["new_files"],
             stats["moved_files"],
@@ -458,6 +498,7 @@ class Scanner:
             stats["reactivated_files"],
             stats["errors"],
         )
+        stats["cancelled"] = cancelled
         return stats
 
     # ------------------------------------------------------------------

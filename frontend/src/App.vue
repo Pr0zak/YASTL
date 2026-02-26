@@ -36,6 +36,7 @@ import {
     apiSearchModels,
     apiTriggerScan,
     apiGetScanStatus,
+    apiCancelScan,
     apiToggleFavorite,
     apiGetFavoritesCount,
     apiGetSavedSearches,
@@ -626,6 +627,18 @@ async function triggerScan(mode = 'full') {
 
 async function quickScan() {
     await triggerScan('update');
+}
+
+async function cancelScan() {
+    try {
+        const data = await apiCancelScan();
+        if (data.cancelled) {
+            showToast('Scan cancellation requested', 'info');
+        }
+    } catch (err) {
+        showToast('Failed to cancel scan', 'error');
+        console.error('cancelScan error:', err);
+    }
 }
 
 async function viewModel(model) {
@@ -1437,6 +1450,9 @@ const { pickNextCollectionColor } = collectionsComposable;
                 <span class="scan-stats">
                     {{ scanStatus.processed_files }} / {{ scanStatus.total_files }} files
                 </span>
+                <button class="btn btn-sm btn-danger scan-cancel-btn" @click="cancelScan" title="Cancel scan">
+                    <span v-html="ICONS.close"></span>
+                </button>
             </div>
 
             <!-- Background Task Progress Banner -->

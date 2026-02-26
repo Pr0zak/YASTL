@@ -172,6 +172,12 @@ export async function apiGetScanStatus() {
     return res.json();
 }
 
+export async function apiCancelScan() {
+    const res = await fetch('/api/scan/cancel', { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
 /* ==================================================================
    Favorites
    ================================================================== */
