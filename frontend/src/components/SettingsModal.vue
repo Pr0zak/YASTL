@@ -88,7 +88,7 @@ const emit = defineEmits([
                             <button class="btn-icon" @click="emit('scanLibrary', lib.id)"
                                     :disabled="scanStatus.scanning"
                                     :title="scanStatus.scanning ? 'Scan in progress' : 'Scan this library'">
-                                <span v-html="ICONS.scan"></span>
+                                <span v-html="ICONS.refresh"></span>
                             </button>
                             <button class="btn-icon btn-icon-danger" @click="emit('deleteLibrary', lib)" title="Remove library">
                                 <span v-html="ICONS.trash"></span>
