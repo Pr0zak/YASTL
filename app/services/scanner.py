@@ -7,6 +7,7 @@ are auto-created from the directory hierarchy (folder names become categories).
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import time
@@ -18,7 +19,7 @@ from app.services import hasher, processor, thumbnail
 from app.services import zip_handler
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
 from app.database import get_setting, update_fts_for_model
-from app.workers import get_pool, log_memory, tick_job, maybe_recycle
+from app.workers import get_pool, log_memory, tick_job, maybe_recycle, recover_pool
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +254,13 @@ class Scanner:
                             await db.commit()
                         else:
                             stats["skipped_files"] += 1
+                    except concurrent.futures.BrokenProcessPool:
+                        logger.error(
+                            "Worker crashed processing %s — recovering pool",
+                            file_path,
+                        )
+                        recover_pool()
+                        stats["errors"] += 1
                     except Exception:
                         logger.exception("Error processing %s", file_path)
                         stats["errors"] += 1
@@ -329,6 +337,14 @@ class Scanner:
                         await db.commit()
                     else:
                         stats["skipped_files"] += 1
+                except concurrent.futures.BrokenProcessPool:
+                    logger.error(
+                        "Worker crashed processing %s in %s — recovering pool",
+                        entry_name,
+                        zip_path,
+                    )
+                    recover_pool()
+                    stats["errors"] += 1
                 except Exception:
                     logger.exception("Error processing %s in %s", entry_name, zip_path)
                     stats["errors"] += 1

@@ -31,6 +31,12 @@ logger = logging.getLogger("yastl")
 _pool: ProcessPoolExecutor | None = None
 _max_workers: int = 1
 
+# Memory limit for each worker process (in MB).  When a worker exceeds
+# this limit the OS kills it with SIGKILL, which surfaces as a
+# BrokenProcessPool exception that callers can catch and recover from.
+# Set to ~60% of container RAM to leave room for the main process and OS.
+_WORKER_MEMORY_LIMIT_MB: int = 4096  # 4 GB
+
 # Worker recycling: track how many CPU-bound jobs have been dispatched
 # and recycle the pool after a threshold to shed accumulated memory.
 _job_count: int = 0
@@ -80,6 +86,15 @@ def log_memory(context: str = "") -> None:
     logger.info("%sMemory: %s", prefix, ", ".join(parts))
 
 
+def _worker_init() -> None:
+    """Initializer run in each worker process to set memory limits."""
+    limit_bytes = _WORKER_MEMORY_LIMIT_MB * 1024 * 1024
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, limit_bytes))
+    except (ValueError, OSError):
+        pass  # some systems don't support RLIMIT_AS
+
+
 def init_pool(max_workers: int = 1) -> None:
     """Create the shared process pool."""
     global _pool, _max_workers, _job_count
@@ -88,8 +103,14 @@ def init_pool(max_workers: int = 1) -> None:
         return
     _max_workers = max_workers
     _job_count = 0
-    _pool = ProcessPoolExecutor(max_workers=max_workers)
-    logger.info("Process pool started (max_workers=%d)", max_workers)
+    _pool = ProcessPoolExecutor(
+        max_workers=max_workers, initializer=_worker_init,
+    )
+    logger.info(
+        "Process pool started (max_workers=%d, worker_mem_limit=%dMB)",
+        max_workers,
+        _WORKER_MEMORY_LIMIT_MB,
+    )
     log_memory("pool_init")
 
 
@@ -110,7 +131,9 @@ def recycle_pool() -> None:
         return
     log_memory("recycle_before")
     _pool.shutdown(wait=True)
-    _pool = ProcessPoolExecutor(max_workers=_max_workers)
+    _pool = ProcessPoolExecutor(
+        max_workers=_max_workers, initializer=_worker_init,
+    )
     _job_count = 0
     logger.info("Process pool recycled (max_workers=%d)", _max_workers)
     log_memory("recycle_after")
@@ -130,6 +153,26 @@ def maybe_recycle() -> None:
     """
     if _job_count >= _RECYCLE_EVERY:
         recycle_pool()
+
+
+def recover_pool() -> None:
+    """Replace a broken pool with a fresh one.
+
+    Called when a ``BrokenProcessPool`` exception indicates the worker
+    was killed (e.g. by RLIMIT_AS or OOM killer).
+    """
+    global _pool, _job_count
+    logger.warning("Worker process crashed — recreating pool")
+    try:
+        if _pool is not None:
+            _pool.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
+    _pool = ProcessPoolExecutor(
+        max_workers=_max_workers, initializer=_worker_init,
+    )
+    _job_count = 0
+    log_memory("pool_recover")
 
 
 def shutdown_pool() -> None:
