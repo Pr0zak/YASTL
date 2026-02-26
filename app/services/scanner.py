@@ -23,9 +23,9 @@ from app.workers import get_pool, log_memory, tick_job, maybe_recycle
 logger = logging.getLogger(__name__)
 
 # Files larger than this are skipped during scanning to prevent OOM.
-# trimesh can expand a 330MB 3MF to 4-6GB in memory, which crashes the
-# single-worker process pool on memory-constrained containers.
-MAX_FILE_SIZE_MB: int = 200
+# trimesh can expand a 100MB 3MF to 2-4GB in memory, which crashes the
+# single-worker process pool on memory-constrained containers (8GB).
+MAX_FILE_SIZE_MB: int = 80
 
 
 class Scanner:
