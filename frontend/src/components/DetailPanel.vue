@@ -73,6 +73,7 @@ const SLICER_LABELS = {
     orcaslicer: 'OrcaSlicer',
     prusaslicer: 'PrusaSlicer',
 };
+const baseUrl = globalThis.location?.origin || '';
 
 function formatClass(fmt) {
     if (!fmt) return '';
@@ -393,7 +394,7 @@ function formatClass(fmt) {
                     <div class="detail-actions-pinned">
                         <a v-if="preferredSlicer !== 'none' && selectedModel.file_format && SLICER_FORMATS.includes(selectedModel.file_format.toLowerCase().replace('.', ''))"
                            class="btn btn-primary" style="flex:1"
-                           :href="(SLICER_PROTOCOLS[preferredSlicer] || '') + window.location.origin + '/api/models/' + selectedModel.id + '/download'"
+                           :href="(SLICER_PROTOCOLS[preferredSlicer] || '') + baseUrl + '/api/models/' + selectedModel.id + '/download'"
                            :title="'Open in ' + (SLICER_LABELS[preferredSlicer] || preferredSlicer)">
                             <span v-html="ICONS.slicer"></span>
                             Open in Slicer
