@@ -150,7 +150,17 @@ function toggleRules() {
 
                     <!-- Tags -->
                     <div class="form-row">
-                        <label class="form-label">Tags (all must match)</label>
+                        <div class="form-label" style="display:flex;align-items:center;justify-content:space-between">
+                            <span>Tags</span>
+                            <span v-if="form.rules.tags && form.rules.tags.length > 1" class="tag-match-toggle">
+                                <button type="button" class="btn-ghost tag-match-btn"
+                                        :class="{ active: (form.rules.tagMatch || 'and') === 'and' }"
+                                        @click="emit('updateRule', 'tagMatch', 'and')">ALL</button>
+                                <button type="button" class="btn-ghost tag-match-btn"
+                                        :class="{ active: form.rules.tagMatch === 'or' }"
+                                        @click="emit('updateRule', 'tagMatch', 'or')">ANY</button>
+                            </span>
+                        </div>
                         <div class="smart-rule-tags">
                             <span v-for="tag in form.rules.tags" :key="tag" class="tag-chip">
                                 {{ tag }}
@@ -280,5 +290,25 @@ function toggleRules() {
 
 .tag-remove:hover {
     opacity: 1;
+}
+
+.tag-match-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.tag-match-btn {
+    padding: 2px 8px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border-radius: 0;
+    border: none;
+}
+
+.tag-match-btn + .tag-match-btn {
+    border-left: 1px solid var(--border);
 }
 </style>

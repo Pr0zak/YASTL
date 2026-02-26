@@ -59,6 +59,7 @@ async def search_models(
     offset: int = Query(default=0, ge=0),
     group_zips: bool = Query(default=False),
     zip_path: str | None = Query(default=None),
+    tag_match: str = Query(default="and"),
 ):
     """Search models using full-text search with optional filters.
 
@@ -116,20 +117,30 @@ async def search_models(
             where_clauses.append("LOWER(m.file_format) = ?")
             params.append(format.lower())
 
-        # Tag filter: model must have ALL specified tags
+        # Tag filter (AND or OR logic)
         if tag_list:
             tag_placeholders = ", ".join("?" for _ in tag_list)
-            where_clauses.append(
-                f"""m.id IN (
-                    SELECT mt.model_id FROM model_tags mt
-                    JOIN tags t ON t.id = mt.tag_id
-                    WHERE t.name IN ({tag_placeholders})
-                    GROUP BY mt.model_id
-                    HAVING COUNT(DISTINCT t.name) = ?
-                )"""
-            )
-            params.extend(tag_list)
-            params.append(len(tag_list))
+            if tag_match == "or":
+                where_clauses.append(
+                    f"""m.id IN (
+                        SELECT mt.model_id FROM model_tags mt
+                        JOIN tags t ON t.id = mt.tag_id
+                        WHERE t.name IN ({tag_placeholders})
+                    )"""
+                )
+                params.extend(tag_list)
+            else:
+                where_clauses.append(
+                    f"""m.id IN (
+                        SELECT mt.model_id FROM model_tags mt
+                        JOIN tags t ON t.id = mt.tag_id
+                        WHERE t.name IN ({tag_placeholders})
+                        GROUP BY mt.model_id
+                        HAVING COUNT(DISTINCT t.name) = ?
+                    )"""
+                )
+                params.extend(tag_list)
+                params.append(len(tag_list))
 
         # Category filter: model in ANY of the specified categories
         if cat_list:

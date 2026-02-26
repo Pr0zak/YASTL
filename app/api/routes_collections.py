@@ -36,16 +36,26 @@ def _build_smart_count_query(
     if rules.get("tags"):
         tags = rules["tags"]
         placeholders = ",".join("?" for _ in tags)
-        where.append(
-            f"m.id IN ("
-            f"SELECT mt.model_id FROM model_tags mt "
-            f"JOIN tags t ON t.id = mt.tag_id "
-            f"WHERE t.name IN ({placeholders}) "
-            f"GROUP BY mt.model_id "
-            f"HAVING COUNT(DISTINCT t.name) = ?)"
-        )
-        params.extend(tags)
-        params.append(len(tags))
+        tag_match = rules.get("tagMatch", "and")
+        if tag_match == "or":
+            where.append(
+                f"m.id IN ("
+                f"SELECT mt.model_id FROM model_tags mt "
+                f"JOIN tags t ON t.id = mt.tag_id "
+                f"WHERE t.name IN ({placeholders}))"
+            )
+            params.extend(tags)
+        else:
+            where.append(
+                f"m.id IN ("
+                f"SELECT mt.model_id FROM model_tags mt "
+                f"JOIN tags t ON t.id = mt.tag_id "
+                f"WHERE t.name IN ({placeholders}) "
+                f"GROUP BY mt.model_id "
+                f"HAVING COUNT(DISTINCT t.name) = ?)"
+            )
+            params.extend(tags)
+            params.append(len(tags))
 
     if rules.get("categories"):
         cats = rules["categories"]

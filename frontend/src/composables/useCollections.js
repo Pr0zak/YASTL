@@ -46,6 +46,7 @@ export function useCollections(showToast, showConfirm) {
         rules: {
             format: '',
             tags: [],
+            tagMatch: 'and',
             categories: [],
             library_id: null,
             favoritesOnly: false,
@@ -202,6 +203,7 @@ export function useCollections(showToast, showConfirm) {
                 : (existing.rules || {});
             smartCollectionForm.rules.format = rules.format || '';
             smartCollectionForm.rules.tags = rules.tags || [];
+            smartCollectionForm.rules.tagMatch = rules.tagMatch || 'and';
             smartCollectionForm.rules.categories = rules.categories || [];
             smartCollectionForm.rules.library_id = rules.library_id || null;
             smartCollectionForm.rules.favoritesOnly = rules.favoritesOnly || false;
@@ -215,6 +217,7 @@ export function useCollections(showToast, showConfirm) {
             smartCollectionForm.color = pickNextCollectionColor();
             smartCollectionForm.rules.format = '';
             smartCollectionForm.rules.tags = [];
+            smartCollectionForm.rules.tagMatch = 'and';
             smartCollectionForm.rules.categories = [];
             smartCollectionForm.rules.library_id = null;
             smartCollectionForm.rules.favoritesOnly = false;
@@ -233,7 +236,10 @@ export function useCollections(showToast, showConfirm) {
         // Build clean rules object (omit empty values)
         const rules = {};
         if (smartCollectionForm.rules.format) rules.format = smartCollectionForm.rules.format;
-        if (smartCollectionForm.rules.tags.length > 0) rules.tags = [...smartCollectionForm.rules.tags];
+        if (smartCollectionForm.rules.tags.length > 0) {
+            rules.tags = [...smartCollectionForm.rules.tags];
+            if (smartCollectionForm.rules.tagMatch === 'or') rules.tagMatch = 'or';
+        }
         if (smartCollectionForm.rules.categories.length > 0) rules.categories = [...smartCollectionForm.rules.categories];
         if (smartCollectionForm.rules.library_id) rules.library_id = smartCollectionForm.rules.library_id;
         if (smartCollectionForm.rules.favoritesOnly) rules.favoritesOnly = true;

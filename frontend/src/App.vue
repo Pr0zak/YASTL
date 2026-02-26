@@ -112,6 +112,7 @@ const collapsedSections = reactive({ format: true, tags: true, categories: true 
 const filters = reactive({
     format: '',
     tags: [],
+    tagMatch: 'and',
     categories: [],
     library_id: null,
     favoritesOnly: false,
@@ -385,7 +386,10 @@ async function fetchModels(append = false) {
         });
         if (filters.format) params.append('format', filters.format);
         if (filters.library_id) params.append('library_id', String(filters.library_id));
-        if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
+        if (filters.tags.length > 0) {
+            params.append('tags', filters.tags.join(','));
+            if (filters.tagMatch === 'or') params.append('tag_match', 'or');
+        }
         if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
         if (filters.favoritesOnly) params.append('favorites_only', 'true');
         if (filters.duplicatesOnly) params.append('duplicates_only', 'true');
@@ -443,7 +447,10 @@ async function searchModels(append = false) {
             offset: String(pagination.offset),
         });
         if (filters.format) params.append('format', filters.format);
-        if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
+        if (filters.tags.length > 0) {
+            params.append('tags', filters.tags.join(','));
+            if (filters.tagMatch === 'or') params.append('tag_match', 'or');
+        }
         if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
         if (filters.library_id) params.append('library_id', String(filters.library_id));
         // Zip grouping / filtering
@@ -935,6 +942,7 @@ function clearFilters() {
     filters.format = '';
     filters.library_id = null;
     filters.tags = [];
+    filters.tagMatch = 'and';
     filters.categories = [];
     filters.favoritesOnly = false;
     filters.duplicatesOnly = false;
@@ -1150,6 +1158,7 @@ function setCollectionFilter(collectionId) {
             const rules = typeof col.rules === 'string' ? JSON.parse(col.rules || '{}') : (col.rules || {});
             filters.format = rules.format || '';
             filters.tags = rules.tags ? [...rules.tags] : [];
+            filters.tagMatch = rules.tagMatch || 'and';
             filters.categories = rules.categories ? [...rules.categories] : [];
             filters.library_id = rules.library_id || null;
             filters.favoritesOnly = rules.favoritesOnly || false;
