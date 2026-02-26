@@ -39,6 +39,7 @@ const emit = defineEmits([
     'addLibrary',
     'deleteLibrary',
     'triggerScan',
+    'scanLibrary',
     'setThumbnailMode',
     'regenerateThumbnails',
     'autoTagAll',
@@ -84,6 +85,11 @@ const emit = defineEmits([
                                 <div class="library-name">{{ lib.name }}</div>
                                 <div class="library-path">{{ lib.path }}</div>
                             </div>
+                            <button class="btn-icon" @click="emit('scanLibrary', lib.id)"
+                                    :disabled="scanStatus.scanning"
+                                    :title="scanStatus.scanning ? 'Scan in progress' : 'Scan this library'">
+                                <span v-html="ICONS.scan"></span>
+                            </button>
                             <button class="btn-icon btn-icon-danger" @click="emit('deleteLibrary', lib)" title="Remove library">
                                 <span v-html="ICONS.trash"></span>
                             </button>

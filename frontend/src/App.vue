@@ -606,11 +606,13 @@ function toggleDuplicatesFilter() {
    Actions
    ============================================================== */
 
-async function triggerScan(mode = 'full') {
+async function triggerScan(mode = 'full', libraryId = null) {
     try {
-        const { ok, data } = await apiTriggerScan(mode);
+        const { ok, data } = await apiTriggerScan(mode, libraryId);
         if (ok) {
-            const label = mode === 'update' ? 'Quick scan started — checking for new files' : 'Library scan started';
+            const label = libraryId != null
+                ? `Scanning library...`
+                : mode === 'update' ? 'Quick scan started — checking for new files' : 'Library scan started';
             showToast(label, 'info');
             scanStatus.scanning = true;
             if (!scanPollTimer) {
@@ -623,6 +625,10 @@ async function triggerScan(mode = 'full') {
         showToast('Failed to start scan', 'error');
         console.error('triggerScan error:', err);
     }
+}
+
+async function scanLibrary(libraryId) {
+    await triggerScan('full', libraryId);
 }
 
 async function quickScan() {
@@ -1633,6 +1639,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @addLibrary="addLibrary"
         @deleteLibrary="deleteLibrary"
         @triggerScan="triggerScan"
+        @scanLibrary="scanLibrary"
         @setThumbnailMode="setThumbnailMode"
         @regenerateThumbnails="regenerateThumbnails"
         @autoTagAll="autoTagAll"

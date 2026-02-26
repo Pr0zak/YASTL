@@ -30,6 +30,9 @@ Thumbs.db
 frontend/node_modules/
 app/static/dist/
 
+# Sample/test model libraries
+3dprinting_sample/
+
 # Environment
 .env
 .env.local

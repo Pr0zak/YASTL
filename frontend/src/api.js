@@ -160,8 +160,10 @@ export async function apiRemoveLibrary(id) {
    Scan
    ================================================================== */
 
-export async function apiTriggerScan(mode = 'full') {
-    const res = await fetch(`/api/scan?mode=${mode}`, { method: 'POST' });
+export async function apiTriggerScan(mode = 'full', libraryId = null) {
+    let url = `/api/scan?mode=${mode}`;
+    if (libraryId != null) url += `&library_id=${libraryId}`;
+    const res = await fetch(url, { method: 'POST' });
     const json = await res.json();
     return { ok: res.ok, data: json };
 }
