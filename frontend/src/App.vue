@@ -649,16 +649,11 @@ async function cancelScan() {
 }
 
 async function viewModel(model) {
-    try {
-        const data = await apiGetModel(model.id);
-        selectedModel.value = data;
-    } catch {
-        selectedModel.value = { ...model };
-    }
-
-    editName.value = selectedModel.value.name || '';
-    editDesc.value = selectedModel.value.description || '';
-    editSourceUrl.value = selectedModel.value.source_url || '';
+    // Show detail panel immediately with grid data for instant feedback
+    selectedModel.value = { ...model };
+    editName.value = model.name || '';
+    editDesc.value = model.description || '';
+    editSourceUrl.value = model.source_url || '';
     isEditingName.value = false;
     isEditingDesc.value = false;
     isEditingSourceUrl.value = false;
@@ -667,12 +662,24 @@ async function viewModel(model) {
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
+    document.body.classList.add('modal-open');
+
+    // Fetch full model data — await if we're missing file_format (e.g. related model click),
+    // otherwise fire-and-forget to enrich tags/categories in background
+    const needsAwait = !model.file_format;
+    const modelPromise = apiGetModel(model.id).then(data => {
+        selectedModel.value = data;
+        editName.value = data.name || '';
+        editDesc.value = data.description || '';
+        editSourceUrl.value = data.source_url || '';
+    }).catch(() => {});
+
+    if (needsAwait) await modelPromise;
 
     // Fetch related models in background
     apiGetRelatedModels(selectedModel.value.id).then(data => {
         relatedModels.value = data.related || [];
     }).catch(() => {});
-    document.body.classList.add('modal-open');
 
     await nextTick();
 
