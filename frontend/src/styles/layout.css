@@ -66,6 +66,17 @@
     color: var(--accent);
 }
 
+.navbar-github {
+    width: 28px;
+    height: 28px;
+    opacity: 0.4;
+    transition: opacity var(--transition);
+}
+
+.navbar-github:hover {
+    opacity: 1;
+}
+
 /* ---- Search Bar ---- */
 .search-container {
     flex: 1;

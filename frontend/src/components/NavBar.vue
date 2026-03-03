@@ -47,6 +47,8 @@ function onSearchInput(e) {
         <!-- Brand -->
         <div class="navbar-brand">
             <h1><span>YA</span>STL</h1>
+            <a href="https://github.com/Pr0zak/YASTL" target="_blank" rel="noopener"
+               class="btn-icon navbar-github" title="View on GitHub" v-html="ICONS.github"></a>
         </div>
 
         <!-- Search -->
