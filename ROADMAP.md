@@ -24,6 +24,14 @@ Rule-based collections that auto-populate via live filter evaluation.
 - Sidebar section with zap icon, create/edit rules modal
 - Backend count query builder mirrors model listing filter logic
 
+### PWA / Mobile Install
+YASTL is installable as a Progressive Web App on phone/tablet.
+- `manifest.json` with app name, theme color, 192x192 + 512x512 PNG icons (any + maskable)
+- Minimal service worker (`sw.js`) with install/activate/fetch handlers (no offline caching)
+- iOS meta tags (`apple-mobile-web-app-capable`, touch icon)
+- Backend serves manifest at `/manifest.json` and SW at `/sw.js` with proper MIME types and no-cache headers
+- LAN installs (no HTTPS): use Chrome flag `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+
 ---
 
 ## High Priority
@@ -38,11 +46,9 @@ Link related STLs into a "project" so `base.stl + lid.stl + clip.stl` stay toget
 
 ## Medium Priority
 
-### 2. PWA / Mobile Layout
-Make YASTL installable on phone/tablet for quick reference at the printer.
-- Add manifest.json with app icon and theme color
-- Add service worker for offline shell caching
-- Polish responsive CSS: larger touch targets, swipe gestures, mobile-optimized detail panel
+### 2. Mobile Layout Polish
+Improve responsive CSS for phone/tablet use at the printer.
+- Larger touch targets, swipe gestures, mobile-optimized detail panel
 - Test on iOS Safari and Android Chrome
 
 ## Nice to Have
