@@ -421,116 +421,120 @@ function timeAgo(dateStr) {
                             </div>
                         </div>
 
-                        <!-- Updates -->
-                        <div class="settings-advanced-subsection">
-                            <div class="settings-subsection-title">Updates</div>
-
-                            <!-- Not a git repo -->
-                            <div v-if="updateInfo.checked && !updateInfo.is_git_repo" class="update-status update-status-unavailable">
-                                <div class="update-status-icon">
-                                    <span v-html="ICONS.warning"></span>
-                                </div>
-                                <div class="update-status-text">
-                                    <div class="update-status-title">Updates unavailable</div>
-                                    <div class="update-status-detail">
-                                        Not running from a git repository.
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Restarting -->
-                            <div v-else-if="updateInfo.restarting" class="update-status update-status-restarting">
-                                <div class="update-status-icon">
-                                    <div class="spinner spinner-sm"></div>
-                                </div>
-                                <div class="update-status-text">
-                                    <div class="update-status-title">Restarting...</div>
-                                    <div class="update-status-detail">
-                                        This page will reload automatically.
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Applying update -->
-                            <div v-else-if="updateInfo.applying" class="update-status update-status-applying">
-                                <div class="update-status-icon">
-                                    <div class="spinner spinner-sm"></div>
-                                </div>
-                                <div class="update-status-text">
-                                    <div class="update-status-title">Applying update...</div>
-                                </div>
-                            </div>
-
-                            <!-- Checking -->
-                            <div v-else-if="updateInfo.checking" class="update-status update-status-checking">
-                                <div class="update-status-icon">
-                                    <div class="spinner spinner-sm"></div>
-                                </div>
-                                <div class="update-status-text">
-                                    <div class="update-status-title">Checking for updates...</div>
-                                </div>
-                            </div>
-
-                            <!-- Update available -->
-                            <div v-else-if="updateInfo.update_available" class="update-status update-status-available">
-                                <div class="update-status-header">
-                                    <div class="update-status-icon update-icon-available">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="12" y2="16"/><line x1="16" y1="12" x2="12" y2="16"/></svg>
-                                    </div>
-                                    <div class="update-status-text">
-                                        <div class="update-status-title">Update available</div>
-                                        <div class="update-status-detail">
-                                            {{ updateInfo.commits_behind }} new commit{{ updateInfo.commits_behind !== 1 ? 's' : '' }}
-                                            on <code>{{ updateInfo.branch }}</code>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div v-if="updateInfo.commits.length" class="update-commits">
-                                    <div v-for="commit in updateInfo.commits" :key="commit.sha" class="update-commit">
-                                        <code class="commit-sha">{{ commit.sha }}</code>
-                                        <span class="commit-message">{{ commit.message }}</span>
-                                        <span class="commit-meta">{{ commit.author }} &middot; {{ commit.date }}</span>
-                                    </div>
-                                </div>
-                                <button class="btn btn-primary update-apply-btn"
-                                        @click="emit('applyUpdate')"
-                                        :disabled="updateInfo.applying">
-                                    <span v-html="ICONS.download"></span>
-                                    Update &amp; Restart
-                                </button>
-                            </div>
-
-                            <!-- Up to date -->
-                            <div v-else-if="updateInfo.checked && !updateInfo.error" class="update-status update-status-current">
-                                <div class="update-status-icon update-icon-current">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
-                                </div>
-                                <div class="update-status-text">
-                                    <div class="update-status-title">Up to date</div>
-                                    <div class="update-status-detail">
-                                        v{{ updateInfo.current_version }}
-                                        <span v-if="updateInfo.current_sha" class="text-muted">
-                                            &middot; {{ updateInfo.current_sha.substring(0, 8) }}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Error -->
-                            <div v-if="updateInfo.error" class="update-error">
-                                <span v-html="ICONS.warning"></span>
-                                {{ updateInfo.error }}
-                            </div>
-
-                            <!-- Check button -->
-                            <button class="btn btn-secondary update-check-btn"
-                                    @click="emit('checkForUpdates')"
-                                    :disabled="updateInfo.checking || updateInfo.applying || updateInfo.restarting">
-                                <span v-html="ICONS.refresh"></span>
-                                Check for Updates
-                            </button>
-                        </div>
                     </template>
+                </div>
+
+                <!-- ========== 6. Updates ========== -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.refresh"></span>
+                        Updates
+                    </div>
+
+                    <!-- Not a git repo -->
+                    <div v-if="updateInfo.checked && !updateInfo.is_git_repo" class="update-status update-status-unavailable">
+                        <div class="update-status-icon">
+                            <span v-html="ICONS.warning"></span>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Updates unavailable</div>
+                            <div class="update-status-detail">
+                                Not running from a git repository.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Restarting -->
+                    <div v-else-if="updateInfo.restarting" class="update-status update-status-restarting">
+                        <div class="update-status-icon">
+                            <div class="spinner spinner-sm"></div>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Restarting...</div>
+                            <div class="update-status-detail">
+                                This page will reload automatically.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Applying update -->
+                    <div v-else-if="updateInfo.applying" class="update-status update-status-applying">
+                        <div class="update-status-icon">
+                            <div class="spinner spinner-sm"></div>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Applying update...</div>
+                        </div>
+                    </div>
+
+                    <!-- Checking -->
+                    <div v-else-if="updateInfo.checking" class="update-status update-status-checking">
+                        <div class="update-status-icon">
+                            <div class="spinner spinner-sm"></div>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Checking for updates...</div>
+                        </div>
+                    </div>
+
+                    <!-- Update available -->
+                    <div v-else-if="updateInfo.update_available" class="update-status update-status-available">
+                        <div class="update-status-header">
+                            <div class="update-status-icon update-icon-available">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="12" y2="16"/><line x1="16" y1="12" x2="12" y2="16"/></svg>
+                            </div>
+                            <div class="update-status-text">
+                                <div class="update-status-title">Update available</div>
+                                <div class="update-status-detail">
+                                    {{ updateInfo.commits_behind }} new commit{{ updateInfo.commits_behind !== 1 ? 's' : '' }}
+                                    on <code>{{ updateInfo.branch }}</code>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="updateInfo.commits.length" class="update-commits">
+                            <div v-for="commit in updateInfo.commits" :key="commit.sha" class="update-commit">
+                                <code class="commit-sha">{{ commit.sha }}</code>
+                                <span class="commit-message">{{ commit.message }}</span>
+                                <span class="commit-meta">{{ commit.author }} &middot; {{ commit.date }}</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary update-apply-btn"
+                                @click="emit('applyUpdate')"
+                                :disabled="updateInfo.applying">
+                            <span v-html="ICONS.download"></span>
+                            Update &amp; Restart
+                        </button>
+                    </div>
+
+                    <!-- Up to date -->
+                    <div v-else-if="updateInfo.checked && !updateInfo.error" class="update-status update-status-current">
+                        <div class="update-status-icon update-icon-current">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
+                        </div>
+                        <div class="update-status-text">
+                            <div class="update-status-title">Up to date</div>
+                            <div class="update-status-detail">
+                                v{{ updateInfo.current_version }}
+                                <span v-if="updateInfo.current_sha" class="text-muted">
+                                    &middot; {{ updateInfo.current_sha.substring(0, 8) }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error -->
+                    <div v-if="updateInfo.error" class="update-error">
+                        <span v-html="ICONS.warning"></span>
+                        {{ updateInfo.error }}
+                    </div>
+
+                    <!-- Check button -->
+                    <button class="btn btn-secondary update-check-btn"
+                            @click="emit('checkForUpdates')"
+                            :disabled="updateInfo.checking || updateInfo.applying || updateInfo.restarting">
+                        <span v-html="ICONS.refresh"></span>
+                        Check for Updates
+                    </button>
                 </div>
             </div>
         </div>
