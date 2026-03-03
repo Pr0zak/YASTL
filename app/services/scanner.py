@@ -413,6 +413,12 @@ class Scanner:
                                 rec["file_path"],
                             )
 
+                # Update last_scanned_at for this library
+                await db.execute(
+                    "UPDATE libraries SET last_scanned_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (library_id,),
+                )
+
             # Pre-compute zip metadata (once per zip file)
             zip_meta_cache: dict[str, dict] = {}
             for zip_path, entry_name, library_id, scan_root in zip_entries:
@@ -541,6 +547,15 @@ class Scanner:
                                     rec["id"],
                                     rec["file_path"],
                                 )
+
+            # Update last_scanned_at for libraries that only had zip entries
+            zip_only_libs = {lid for _, _, lid, _ in zip_entries} - set(library_items.keys())
+            for lid in zip_only_libs:
+                if not self._cancel_requested:
+                    await db.execute(
+                        "UPDATE libraries SET last_scanned_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (lid,),
+                    )
 
             await db.commit()
         finally:

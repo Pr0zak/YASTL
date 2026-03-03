@@ -400,6 +400,62 @@
     line-height: 1.5;
 }
 
+/* ---- Settings utility classes ---- */
+.settings-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.settings-hint {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: -4px;
+    padding-bottom: 8px;
+}
+
+.settings-btn-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.settings-dim-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.settings-shape-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
+}
+
+.library-meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.settings-advanced-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.settings-advanced-header .settings-section-title {
+    margin-bottom: 0;
+}
+
+.settings-advanced-arrow {
+    margin-left: auto;
+    font-size: 0.75rem;
+    opacity: 0.5;
+}
+
 /* ---- Theme swatches ---- */
 /* ---- Library list ---- */
 .library-list {
