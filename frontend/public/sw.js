@@ -4,6 +4,7 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
-self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+self.addEventListener('fetch', () => {
+  // No-op: required for PWA installability but all requests use default
+  // network behaviour (no caching, no interception).
 });
