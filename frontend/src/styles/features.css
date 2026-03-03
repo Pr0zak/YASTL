@@ -370,13 +370,17 @@
 }
 
 .settings-content {
-    padding: 20px 24px;
+    padding: 16px 20px;
     overflow-y: auto;
     flex: 1;
 }
 
 .settings-section {
-    margin-bottom: 24px;
+    margin-bottom: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
 }
 
 .settings-section:last-child {
@@ -384,19 +388,28 @@
 }
 
 .settings-section-title {
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.settings-section-title svg,
+.settings-section-title span > svg {
+    opacity: 0.7;
 }
 
 .settings-section-desc {
     font-size: 0.8rem;
     color: var(--text-muted);
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     line-height: 1.5;
 }
 
@@ -446,14 +459,44 @@
     user-select: none;
 }
 
-.settings-advanced-header .settings-section-title {
+.settings-advanced-header:hover .settings-section-title {
+    color: var(--accent-hover);
+}
+
+.settings-section.settings-section-collapsed {
+    padding-bottom: 0;
+}
+
+.settings-section.settings-section-collapsed .settings-section-title {
     margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
 }
 
 .settings-advanced-arrow {
     margin-left: auto;
     font-size: 0.75rem;
     opacity: 0.5;
+    transition: transform 0.2s;
+}
+
+.settings-advanced-subsection {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.settings-advanced-subsection:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.settings-subsection-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 8px;
 }
 
 /* ---- Theme swatches ---- */
@@ -470,9 +513,9 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 12px;
-    background: var(--bg-card);
+    background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     gap: 12px;
 }
 
@@ -497,10 +540,10 @@
 
 /* ---- Add library form ---- */
 .add-library-form {
-    padding: 16px;
-    background: var(--bg-card);
+    padding: 12px;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -892,9 +935,9 @@ textarea.import-textarea {
 
 .import-cred-item {
     padding: 12px;
-    background: var(--bg-card);
+    background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);
 }
 
 .import-result-row {

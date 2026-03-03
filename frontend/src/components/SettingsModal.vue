@@ -357,7 +357,7 @@ function timeAgo(dateStr) {
                 </div>
 
                 <!-- ========== 5. Advanced (collapsible) ========== -->
-                <div class="settings-section">
+                <div class="settings-section" :class="{ 'settings-section-collapsed': !showAdvanced }">
                     <div class="settings-advanced-header" @click="showAdvanced = !showAdvanced">
                         <div class="settings-section-title">
                             <span v-html="ICONS.settings"></span>
@@ -368,8 +368,8 @@ function timeAgo(dateStr) {
 
                     <template v-if="showAdvanced">
                         <!-- Import Credentials -->
-                        <div style="margin-top:12px">
-                            <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px">Import Credentials</div>
+                        <div class="settings-advanced-subsection">
+                            <div class="settings-subsection-title">Import Credentials</div>
                             <div class="settings-section-desc">
                                 API keys or cookies for 3D model hosting sites to enable richer metadata extraction during URL import.
                             </div>
@@ -422,8 +422,8 @@ function timeAgo(dateStr) {
                         </div>
 
                         <!-- Updates -->
-                        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-                            <div style="font-weight:600;font-size:0.85rem;margin-bottom:8px">Updates</div>
+                        <div class="settings-advanced-subsection">
+                            <div class="settings-subsection-title">Updates</div>
 
                             <!-- Not a git repo -->
                             <div v-if="updateInfo.checked && !updateInfo.is_git_repo" class="update-status update-status-unavailable">
