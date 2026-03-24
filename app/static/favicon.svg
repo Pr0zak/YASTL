@@ -1,5 +1,35 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#1e293b"/>
-  <path d="M8 22 L16 6 L24 22 Z" fill="none" stroke="#61afef" stroke-width="2.5" stroke-linejoin="round"/>
-  <path d="M11 18 L21 18" stroke="#61afef" stroke-width="2" stroke-linecap="round"/>
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="#1a1a2e"/>
+
+  <!--
+    YASTL Favicon — Hexagonal mesh mark (simplified for small size)
+    Hexagon: center (16,16), radius 12.5, pointy-top
+    Vertices:
+      Top:          (16, 3.5)
+      Top-right:    (26.83, 9.75)
+      Bottom-right: (26.83, 22.25)
+      Bottom:       (16, 28.5)
+      Bottom-left:  (5.17, 22.25)
+      Top-left:     (5.17, 9.75)
+  -->
+
+  <!-- Triangular facets -->
+  <polygon points="16,16 16,3.5 26.83,9.75" fill="#61afef"/>
+  <polygon points="16,16 26.83,9.75 26.83,22.25" fill="#44aacc"/>
+  <polygon points="16,16 26.83,22.25 16,28.5" fill="#12b5a6"/>
+  <polygon points="16,16 16,28.5 5.17,22.25" fill="#16213e"/>
+  <polygon points="16,16 5.17,22.25 5.17,9.75" fill="#0f9b8e"/>
+  <polygon points="16,16 5.17,9.75 16,3.5" fill="#2ec4b6"/>
+
+  <!-- Wireframe — outer hexagon (thicker for small size) -->
+  <polygon points="16,3.5 26.83,9.75 26.83,22.25 16,28.5 5.17,22.25 5.17,9.75"
+           fill="none" stroke="#2a3a5c" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Wireframe — inner spokes -->
+  <line x1="16" y1="16" x2="16" y2="3.5" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="16" y1="16" x2="26.83" y2="9.75" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="16" y1="16" x2="26.83" y2="22.25" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="16" y1="16" x2="16" y2="28.5" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="16" y1="16" x2="5.17" y2="22.25" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="16" y1="16" x2="5.17" y2="9.75" stroke="#2a3a5c" stroke-width="1"/>
 </svg>

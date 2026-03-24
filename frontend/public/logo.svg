@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!--
+    YASTL Logo — Hexagonal mesh mark
+    6 triangular facets radiating from center, colored with project palette
+    Gradient sweep: lightest (top-right) to darkest (bottom-left)
+
+    Hexagon: center (50,50), radius 45, pointy-top orientation
+    Vertices (clockwise from top):
+      Top:          (50, 5)
+      Top-right:    (88.97, 27.5)
+      Bottom-right: (88.97, 72.5)
+      Bottom:       (50, 95)
+      Bottom-left:  (11.03, 72.5)
+      Top-left:     (11.03, 27.5)
+  -->
+
+  <!-- Triangular facets (center to adjacent vertices) -->
+  <!-- T0: top → top-right (lightest) -->
+  <polygon points="50,50 50,5 88.97,27.5" fill="#61afef"/>
+  <!-- T1: top-right → bottom-right -->
+  <polygon points="50,50 88.97,27.5 88.97,72.5" fill="#44aacc"/>
+  <!-- T2: bottom-right → bottom -->
+  <polygon points="50,50 88.97,72.5 50,95" fill="#12b5a6"/>
+  <!-- T3: bottom → bottom-left (darkest) -->
+  <polygon points="50,50 50,95 11.03,72.5" fill="#16213e"/>
+  <!-- T4: bottom-left → top-left -->
+  <polygon points="50,50 11.03,72.5 11.03,27.5" fill="#0f9b8e"/>
+  <!-- T5: top-left → top -->
+  <polygon points="50,50 11.03,27.5 50,5" fill="#2ec4b6"/>
+
+  <!-- Wireframe edges — outer hexagon -->
+  <polygon points="50,5 88.97,27.5 88.97,72.5 50,95 11.03,72.5 11.03,27.5"
+           fill="none" stroke="#2a3a5c" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Wireframe edges — inner spokes from center to each vertex -->
+  <line x1="50" y1="50" x2="50" y2="5" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="50" y1="50" x2="88.97" y2="27.5" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="50" y1="50" x2="88.97" y2="72.5" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="50" y1="50" x2="50" y2="95" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="50" y1="50" x2="11.03" y2="72.5" stroke="#2a3a5c" stroke-width="1"/>
+  <line x1="50" y1="50" x2="11.03" y2="27.5" stroke="#2a3a5c" stroke-width="1"/>
+</svg>
