@@ -1,6 +1,13 @@
-# YASTL - Yet Another STL
+<p align="center">
+  <img src="frontend/public/logo.svg" alt="YASTL Logo" width="128" height="128">
+</p>
 
-A personal 3D model library web application for browsing, searching, and previewing 3D model files. Built with Python/FastAPI backend and Vue 3 + Three.js frontend.
+<h1 align="center">YASTL - Yet Another STL</h1>
+
+<p align="center">
+  A personal 3D model library web application for browsing, searching, and previewing 3D model files.<br>
+  Built with Python/FastAPI backend and Vue 3 + Three.js frontend.
+</p>
 
 ![Grid View](docs/screenshots/grid-view.png)
 

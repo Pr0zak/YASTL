@@ -62,6 +62,9 @@ app/                    # Main application package
     zip_handler.py      # Zip archive support (extraction, caching)
     step_converter.py   # STEP→trimesh conversion (OCP or gmsh backends)
   static/               # Static file root
+    favicon.svg         # Browser favicon (hexagonal mesh mark with dark bg)
+    icon-192.png        # PWA icon 192x192
+    icon-512.png        # PWA icon 512x512
     dist/               # Vite build output
 frontend/               # Vite + Vue SFC source
   src/
@@ -69,6 +72,10 @@ frontend/               # Vite + Vue SFC source
     api.js              # API wrapper functions
     components/         # Vue SFC components (DetailPanel, ImportModal, SettingsPanel, etc.)
     composables/        # Vue composables (useImport, useViewer, etc.)
+  public/
+    logo.svg            # Master logo SVG (hexagonal mesh mark, transparent bg)
+    manifest.json       # PWA manifest
+    sw.js               # Service worker
   vite.config.js        # Vite config (builds to ../app/static/dist/)
 tests/                  # pytest test suite
   conftest.py           # Shared fixtures (temp dirs, temp DB, async client)
@@ -148,6 +155,7 @@ docker compose up -d
 - **Single-library scan** — `POST /api/scan?library_id=N` scans only one library. Settings UI has a per-library rescan button. `apiTriggerScan(mode, libraryId)` in `api.js` supports the optional `libraryId` param.
 - **Scan cancellation** — `POST /api/scan/cancel` sets `_cancel_requested` flag on the scanner. Cancellation is checked in all phases: file discovery, zip expansion, per-library processing, zip metadata extraction, and per-file iteration. Orphan reconciliation is skipped on cancel to avoid false "missing" status. UI shows a cancel button (X) in the scan progress banner.
 - **Busy timeout** — `_helpers.py` provides `open_db()` async context manager with `PRAGMA busy_timeout = 5000` to prevent SQLite lock contention when the scanner holds a write connection. Scanner also sets busy_timeout on its own connection.
+- **Logo & branding** — Hexagonal mesh mark: a regular hexagon subdivided into 6 triangular facets radiating from center (like a triangulated STL surface). Each facet uses a different shade from the project palette in a lightest-to-darkest diagonal sweep (top-right `#61afef` → bottom-left `#16213e`), with wireframe edges in `#2a3a5c`. Master SVG at `frontend/public/logo.svg` (transparent bg); favicon at `app/static/favicon.svg` (with `#1a1a2e` rounded-rect bg); PNG icons at `app/static/icon-{192,512}.png` for PWA. All 6 colors are from the existing CSS variable palette: `#61afef`, `#44aacc`, `#2ec4b6`, `#12b5a6`, `#0f9b8e`, `#16213e`.
 - **PWA support** — `manifest.json` (served at `/manifest.json` with `application/manifest+json`), minimal service worker (`sw.js` at root scope), and PNG icons (192x192 + 512x512 in `app/static/`). Manifest includes both `any` and `maskable` purpose icons. SW has install/activate/fetch handlers but no caching (app requires live API). iOS meta tags (`apple-mobile-web-app-capable`, etc.) in `index.html`. On LAN without HTTPS, use Chrome flag `chrome://flags/#unsafely-treat-insecure-origin-as-secure` with the server origin to enable PWA install.
 
 ## Database Migrations
