@@ -259,7 +259,7 @@ class TestModelFileWatcher:
         )
         assert w.supported_extensions == {".stl", ".obj", ".3mf"}
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_start_creates_observer(self, MockObserver):
         """start() creates and starts an Observer."""
         mock_observer = MagicMock()
@@ -272,7 +272,7 @@ class TestModelFileWatcher:
         assert self.watcher._observer is mock_observer
         assert self.watcher._handler is not None
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_start_sets_observer_as_daemon(self, MockObserver):
         """start() sets observer.daemon = True."""
         mock_observer = MagicMock()
@@ -282,7 +282,7 @@ class TestModelFileWatcher:
 
         assert mock_observer.daemon is True
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_watch_path_schedules_directory(self, MockObserver):
         """watch_path() schedules a directory for recursive watching."""
         mock_observer = MagicMock()
@@ -299,7 +299,7 @@ class TestModelFileWatcher:
         assert kwargs.get("recursive") is True
         assert "/models" in self.watcher.watched_paths
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_watch_path_nonexistent_directory(self, MockObserver):
         """watch_path() logs a warning and skips non-existent directories."""
         mock_observer = MagicMock()
@@ -313,7 +313,7 @@ class TestModelFileWatcher:
         mock_observer.schedule.assert_not_called()
         assert "/nonexistent/path" not in self.watcher.watched_paths
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_watch_path_duplicate_ignored(self, MockObserver):
         """watch_path() with an already-watched path is a no-op."""
         mock_observer = MagicMock()
@@ -327,7 +327,7 @@ class TestModelFileWatcher:
 
         assert mock_observer.schedule.call_count == 1
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_watch_path_before_start_does_nothing(self, MockObserver):
         """watch_path() before start() is a no-op."""
         self.watcher.watch_path("/models")
@@ -335,7 +335,7 @@ class TestModelFileWatcher:
         MockObserver.return_value.schedule.assert_not_called()
         assert "/models" not in self.watcher.watched_paths
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_unwatch_path_removes_directory(self, MockObserver):
         """unwatch_path() removes a watched directory."""
         mock_observer = MagicMock()
@@ -353,7 +353,7 @@ class TestModelFileWatcher:
         mock_observer.unschedule.assert_called_once_with(mock_watch)
         assert "/models" not in self.watcher.watched_paths
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_unwatch_path_not_watched_is_noop(self, MockObserver):
         """unwatch_path() for a path that was never watched is a no-op."""
         mock_observer = MagicMock()
@@ -364,7 +364,7 @@ class TestModelFileWatcher:
 
         mock_observer.unschedule.assert_not_called()
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_stop_cleans_up(self, MockObserver):
         """stop() stops the observer and cleans up state."""
         mock_observer = MagicMock()
@@ -383,12 +383,12 @@ class TestModelFileWatcher:
         assert self.watcher._handler is None
         assert self.watcher.watched_paths == set()
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_stop_before_start_is_safe(self, MockObserver):
         """stop() before start() does not raise."""
         self.watcher.stop()  # Should not raise
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_watched_paths_returns_copy(self, MockObserver):
         """watched_paths property returns a copy, not the internal set."""
         mock_observer = MagicMock()
@@ -415,7 +415,7 @@ class TestModelFileWatcher:
         )
         assert self.watcher._find_library_root("/other/path.stl") is None
 
-    @patch("app.services.watcher.Observer")
+    @patch("app.services.watcher.PollingObserver")
     def test_is_running_reflects_observer_state(self, MockObserver):
         """is_running reflects whether the observer is alive."""
         assert not self.watcher.is_running

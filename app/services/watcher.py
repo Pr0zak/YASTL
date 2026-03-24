@@ -17,7 +17,7 @@ from pathlib import Path
 
 import aiosqlite
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 from app.database import get_setting, update_fts_for_model
 from app.services import hasher, processor, thumbnail, zip_handler
@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 # Debounce window in seconds -- rapid events on the same path within this
 # window are collapsed into a single action.
 DEBOUNCE_SECONDS: float = 2.0
+
+# Polling interval in seconds for the PollingObserver.  We use polling
+# instead of inotify because library directories are typically NFS mounts
+# and inotify does not receive events for remote filesystem changes.
+POLLING_INTERVAL: float = 30.0
 
 
 class _DebouncedHandler(FileSystemEventHandler):
@@ -143,7 +148,7 @@ class ModelFileWatcher:
             ext.lower() for ext in supported_extensions
         }
 
-        self._observer: Observer | None = None
+        self._observer: PollingObserver | None = None
         self._handler: _DebouncedHandler | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._watched_paths: set[str] = set()
@@ -170,11 +175,14 @@ class ModelFileWatcher:
             supported_extensions=self.supported_extensions,
         )
 
-        self._observer = Observer()
+        self._observer = PollingObserver(timeout=POLLING_INTERVAL)
         self._observer.daemon = True
         self._observer.start()
 
-        logger.info("File watcher observer started.")
+        logger.info(
+            "File watcher observer started (polling every %ds).",
+            int(POLLING_INTERVAL),
+        )
 
     @property
     def is_running(self) -> bool:
