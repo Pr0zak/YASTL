@@ -66,7 +66,6 @@ class _DebouncedHandler(FileSystemEventHandler):
 
     def on_created(self, event: FileSystemEvent) -> None:
         if not event.is_directory:
-            logger.info("Watcher raw event: created %s", event.src_path)
             self._enqueue(event)
 
     def on_modified(self, event: FileSystemEvent) -> None:
@@ -75,12 +74,10 @@ class _DebouncedHandler(FileSystemEventHandler):
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         if not event.is_directory:
-            logger.info("Watcher raw event: deleted %s", event.src_path)
             self._enqueue(event)
 
     def on_moved(self, event: FileSystemEvent) -> None:
         if not event.is_directory:
-            logger.info("Watcher raw event: moved %s", event.src_path)
             self._enqueue(event)
 
     # ---- internal ------------------------------------------------------
