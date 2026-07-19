@@ -43,6 +43,27 @@
     z-index: 10;
 }
 
+.detail-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.detail-nav .btn-icon:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.detail-nav-pos {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 44px;
+    text-align: center;
+}
+
 .detail-header .detail-title {
     font-size: 1.15rem;
     font-weight: 600;

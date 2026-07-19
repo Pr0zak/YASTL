@@ -30,6 +30,7 @@ const emit = defineEmits([
     'setLibraryFilter',
     'setFormatFilter',
     'toggleTagFilter',
+    'setTagMatch',
     'toggleCategoryFilter',
     'toggleCategory',
     'toggleCollapsedSection',
@@ -132,6 +133,13 @@ const manualCollections = computed(() =>
                       v-html="ICONS.chevron"></span>
             </div>
             <template v-if="!collapsedSections.tags">
+                <div v-if="filters.tags.length > 1" class="tag-match-toggle">
+                    <span class="tag-match-label">Match</span>
+                    <button class="tag-match-btn" :class="{ active: (filters.tagMatch || 'and') === 'and' }"
+                            @click="emit('setTagMatch', 'and')" title="Models with ALL selected tags">All</button>
+                    <button class="tag-match-btn" :class="{ active: filters.tagMatch === 'or' }"
+                            @click="emit('setTagMatch', 'or')" title="Models with ANY selected tag">Any</button>
+                </div>
                 <div v-if="allTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
                     No tags yet
                 </div>

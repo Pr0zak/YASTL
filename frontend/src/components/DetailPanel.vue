@@ -12,6 +12,8 @@ const props = defineProps({
     viewerLoading: { type: Boolean, default: false },
     viewerProgress: { type: Number, default: null },
     viewerDecimated: { type: Boolean, default: false },
+    navIndex: { type: Number, default: -1 },
+    navTotal: { type: Number, default: 0 },
     editName: { type: String, default: '' },
     editDesc: { type: String, default: '' },
     editSourceUrl: { type: String, default: '' },
@@ -64,6 +66,7 @@ const emit = defineEmits([
     'openRelatedModel',
     'filterByTag',
     'loadFullResolution',
+    'navigate',
 ]);
 
 function viewerThumb(model) {
@@ -110,6 +113,17 @@ function formatClass(fmt) {
         <div class="detail-panel">
             <!-- Header -->
             <div class="detail-header">
+                <div class="detail-nav" v-if="navTotal > 1">
+                    <button class="btn-icon" :disabled="navIndex <= 0"
+                            @click="emit('navigate', -1)" title="Previous model (←)">
+                        <span v-html="ICONS.chevron" style="transform:rotate(90deg);display:inline-flex"></span>
+                    </button>
+                    <span class="detail-nav-pos">{{ navIndex + 1 }} / {{ navTotal }}</span>
+                    <button class="btn-icon" :disabled="navIndex >= navTotal - 1"
+                            @click="emit('navigate', 1)" title="Next model (→)">
+                        <span v-html="ICONS.chevron" style="transform:rotate(-90deg);display:inline-flex"></span>
+                    </button>
+                </div>
                 <div class="detail-title">
                     <template v-if="!isEditingName">
                         <span @dblclick="emit('startEditName')" title="Double-click to edit">

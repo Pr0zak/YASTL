@@ -32,9 +32,11 @@ function isError(model) {
     return model.status === 'error';
 }
 
-function onCardClick(model) {
+function onCardClick(model, idx, event) {
     if (isZipGroup(model)) {
         emit('expandZipGroup', model.zip_path);
+    } else if (props.selectionMode) {
+        emit('toggleSelect', model.id, idx, event && event.shiftKey);
     } else {
         emit('viewModel', model);
     }
@@ -96,8 +98,8 @@ function cardStyle(model) {
 
     <!-- Grid View -->
     <div v-else-if="viewMode === 'grid'" class="models-grid" :class="'density-' + density">
-        <div v-for="model in models" :key="model.id"
-             class="model-card" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-card': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model)">
+        <div v-for="(model, idx) in models" :key="model.id"
+             class="model-card" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-card': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model, idx, $event)">
             <!-- Thumbnail -->
             <div class="card-thumbnail">
                 <img :src="thumbUrl(model)"
@@ -124,7 +126,7 @@ function cardStyle(model) {
                     <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
                 </button>
                 <button v-if="selectionMode && !isZipGroup(model)" class="card-select-check"
-                        @click.stop="emit('toggleSelect', model.id)">
+                        @click.stop="emit('toggleSelect', model.id, idx, $event.shiftKey)">
                     <span v-html="ICONS.check"></span>
                 </button>
             </div>
@@ -185,8 +187,8 @@ function cardStyle(model) {
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="model in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-row': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model)">
-                    <td v-if="selectionMode" class="col-select" @click.stop="!isZipGroup(model) && emit('toggleSelect', model.id)" style="cursor:pointer;text-align:center">
+                <tr v-for="(model, idx) in models" :key="model.id" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-row': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model, idx, $event)">
+                    <td v-if="selectionMode" class="col-select" @click.stop="!isZipGroup(model) && emit('toggleSelect', model.id, idx, $event.shiftKey)" style="cursor:pointer;text-align:center">
                         <span v-if="!isZipGroup(model)" v-html="ICONS.check" :style="{ opacity: isSelected(model.id) ? 1 : 0.3 }"></span>
                     </td>
                     <td class="col-fav" @click.stop="!isZipGroup(model) && emit('toggleFavorite', model, $event)" style="cursor:pointer;text-align:center">

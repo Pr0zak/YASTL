@@ -1072,6 +1072,13 @@ function clearAllFilters() {
     clearFilters();
 }
 
+function setTagMatch(mode) {
+    if (filters.tagMatch === mode) return;
+    filters.tagMatch = mode;
+    pagination.offset = 0;
+    refreshCurrentView();
+}
+
 function setZipFilter(zipPathValue) {
     if (!zipPathValue) return;
     filters.zipPath = zipPathValue;
@@ -1515,8 +1522,34 @@ function onKeydown(e) {
         } else if (showDetail.value) {
             closeDetail();
         }
+    } else if (showDetail.value && !isEditingName.value && !isEditingDesc.value
+               && !isEditingSourceUrl.value) {
+        // Arrow keys page through the current result list without closing.
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            navigateModel(1);
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            navigateModel(-1);
+        }
     }
 }
+
+// Open the next/prev model in the current result list from the detail panel.
+function navigateModel(dir) {
+    const list = displayModels.value;
+    if (!selectedModel.value || !list.length) return;
+    const idx = list.findIndex((m) => m.id === selectedModel.value.id);
+    if (idx === -1) return;
+    const target = list[idx + dir];
+    if (target) viewModel(target);
+}
+
+const detailNavPosition = computed(() => {
+    const list = displayModels.value;
+    if (!selectedModel.value || !list.length) return { index: -1, total: 0 };
+    return { index: list.findIndex((m) => m.id === selectedModel.value.id), total: list.length };
+});
 
 /* ---- Lifecycle ---- */
 // ---- URL state sync -------------------------------------------------
@@ -1735,6 +1768,7 @@ const { pickNextCollectionColor } = collectionsComposable;
             @setLibraryFilter="setLibraryFilter"
             @setFormatFilter="setFormatFilter"
             @toggleTagFilter="toggleTagFilter"
+            @setTagMatch="setTagMatch"
             @toggleCategoryFilter="toggleCategoryFilter"
             @toggleCategory="toggleCategory"
             @toggleCollapsedSection="(section) => collapsedSections[section] = !collapsedSections[section]"
@@ -1880,6 +1914,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :viewerLoading="viewerLoading"
         :viewerProgress="viewerProgress"
         :viewerDecimated="viewerDecimated"
+        :navIndex="detailNavPosition.index"
+        :navTotal="detailNavPosition.total"
         :editName="editName"
         :editDesc="editDesc"
         :editSourceUrl="editSourceUrl"
@@ -1928,6 +1964,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @openRelatedModel="openRelatedModel"
         @filterByTag="filterByTag"
         @loadFullResolution="loadFullResolution"
+        @navigate="navigateModel"
         @regenerateThumbnail="regenerateThumbnail"
     />
 

@@ -35,12 +35,23 @@ export function useSelection(showToast, fetchModels, models, fetchTags, fetchFav
         }
     }
 
-    function toggleModelSelection(modelId) {
-        if (selectedModels.has(modelId)) {
+    let lastSelectedIndex = null;
+
+    function toggleModelSelection(modelId, index = null, shift = false) {
+        // Shift-click selects the contiguous range from the last click.
+        if (shift && lastSelectedIndex !== null && index !== null && models?.value) {
+            const [lo, hi] = [lastSelectedIndex, index].sort((a, b) => a - b);
+            for (let i = lo; i <= hi; i++) {
+                const m = models.value[i];
+                // Zip-group reps aren't individually selectable (see selectAll).
+                if (m && !(m.zip_model_count > 1)) selectedModels.add(m.id);
+            }
+        } else if (selectedModels.has(modelId)) {
             selectedModels.delete(modelId);
         } else {
             selectedModels.add(modelId);
         }
+        if (index !== null) lastSelectedIndex = index;
     }
 
     function selectAll() {

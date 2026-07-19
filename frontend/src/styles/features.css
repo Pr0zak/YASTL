@@ -1062,3 +1062,33 @@ textarea.import-textarea {
     background: rgba(52, 152, 219, 0.25);
     border-color: #3498db;
 }
+
+/* Tag AND/OR match toggle in the sidebar */
+.tag-match-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px 8px;
+}
+.tag-match-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-right: 4px;
+}
+.tag-match-btn {
+    font-size: 0.72rem;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.tag-match-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+}
