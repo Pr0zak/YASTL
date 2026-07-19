@@ -144,7 +144,7 @@ async def process_imported_file(
         # Generate thumbnail (CPU-bound)
         from app.config import settings as app_settings
         thumb_path = str(app_settings.MODEL_LIBRARY_THUMBNAIL_PATH)
-        thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+        thumb_mode = await get_setting("thumbnail_mode", "solid")
         thumb_quality = await get_setting("thumbnail_quality", "fast")
         thumb_filename: str | None = await run_cpu_job(
             thumbnail.generate_thumbnail,

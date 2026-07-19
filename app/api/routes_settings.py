@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 SETTINGS_SCHEMA: dict[str, dict] = {
     "thumbnail_mode": {
         "allowed": ["wireframe", "solid"],
-        "default": "wireframe",
+        "default": "solid",
     },
     "bed_shape": {
         "allowed": ["rectangular", "circular"],
@@ -159,7 +159,7 @@ async def regenerate_thumbnails(request: Request, background_tasks: BackgroundTa
         )
 
     thumbnail_path = str(app_settings.MODEL_LIBRARY_THUMBNAIL_PATH)
-    mode = await get_setting("thumbnail_mode", "wireframe")
+    mode = await get_setting("thumbnail_mode", "solid")
     quality = await get_setting("thumbnail_quality", "fast")
 
     background_tasks.add_task(_regenerate_all_thumbnails, thumbnail_path, mode, quality)

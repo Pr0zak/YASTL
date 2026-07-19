@@ -832,7 +832,7 @@ class Scanner:
         model_id = cursor.lastrowid
 
         # Try extracting embedded 3MF thumbnail (no trimesh -- zipfile + PIL)
-        thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+        thumb_mode = await get_setting("thumbnail_mode", "solid")
         thumb_quality = await get_setting("thumbnail_quality", "fast")
         skip_thumbnail = False
 
@@ -1075,7 +1075,7 @@ class Scanner:
             model_id = cursor.lastrowid
 
             # Try extracting embedded 3MF thumbnail (no trimesh -- zipfile + PIL)
-            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+            thumb_mode = await get_setting("thumbnail_mode", "solid")
             thumb_quality = await get_setting("thumbnail_quality", "fast")
             skip_thumbnail = False
             extracted_thumb: str | None = None

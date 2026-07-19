@@ -460,7 +460,7 @@ class ModelFileWatcher:
             model_id = cursor.lastrowid
 
             # Generate thumbnail
-            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+            thumb_mode = await get_setting("thumbnail_mode", "solid")
             thumb_filename: str | None = await run_cpu_job(
                 thumbnail.generate_thumbnail,
                 src_path,
@@ -554,7 +554,7 @@ class ModelFileWatcher:
             )
 
             # Regenerate thumbnail
-            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+            thumb_mode = await get_setting("thumbnail_mode", "solid")
             thumb_filename: str | None = await run_cpu_job(
                 thumbnail.generate_thumbnail,
                 src_path,
@@ -918,7 +918,7 @@ class ModelFileWatcher:
             )
             model_id = cursor.lastrowid
 
-            thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+            thumb_mode = await get_setting("thumbnail_mode", "solid")
             thumb_filename: str | None = await run_cpu_job(
                 thumbnail.generate_thumbnail,
                 tmp_path_str,

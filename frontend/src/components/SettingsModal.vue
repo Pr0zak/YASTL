@@ -14,7 +14,7 @@ defineProps({
     newLibName: { type: String, default: '' },
     newLibPath: { type: String, default: '' },
     addingLibrary: { type: Boolean, default: false },
-    thumbnailMode: { type: String, default: 'wireframe' },
+    thumbnailMode: { type: String, default: 'solid' },
     regeneratingThumbnails: { type: Boolean, default: false },
     regenProgress: { type: Object, default: () => ({ completed: 0, total: 0 }) },
     autoTagging: { type: Boolean, default: false },

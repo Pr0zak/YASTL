@@ -336,7 +336,7 @@ async def regenerate_model_thumbnail(request: Request, model_id: int):
     if actual_path is None:
         raise HTTPException(status_code=404, detail="Model file not found on disk")
 
-    thumb_mode = await get_setting("thumbnail_mode", "wireframe")
+    thumb_mode = await get_setting("thumbnail_mode", "solid")
     thumb_quality = await get_setting("thumbnail_quality", "fast")
 
     thumb_filename: str | None = await asyncio.to_thread(

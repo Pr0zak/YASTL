@@ -30,7 +30,7 @@ WIREFRAME_PADDING = 20
 
 # Solid rendering settings
 SOLID_BG_COLOR = (45, 45, 48)
-SOLID_BASE_COLOR = np.array([170, 175, 180], dtype=np.float64)
+SOLID_BASE_COLOR = np.array([96, 196, 186], dtype=np.float64)  # teal accent (#2ec4b6 family)
 SOLID_AMBIENT = 0.25
 SOLID_DIFFUSE = 0.75
 SOLID_LIGHT_DIR = np.array([0.3, 0.8, 0.5])  # normalised at use-time

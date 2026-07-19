@@ -42,7 +42,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     const newLibName = ref('');
     const newLibPath = ref('');
     const addingLibrary = ref(false);
-    const thumbnailMode = ref('wireframe');
+    const thumbnailMode = ref('solid');
     const regeneratingThumbnails = ref(false);
     const regenProgress = reactive({ running: false, total: 0, completed: 0 });
     const autoTagging = ref(false);
@@ -133,7 +133,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     async function fetchSettings() {
         try {
             const data = await apiGetSettings();
-            thumbnailMode.value = data.thumbnail_mode || 'wireframe';
+            thumbnailMode.value = data.thumbnail_mode || 'solid';
             // Bed settings
             bedConfig.enabled = data.bed_enabled === 'true';
             bedConfig.shape = data.bed_shape || 'rectangular';

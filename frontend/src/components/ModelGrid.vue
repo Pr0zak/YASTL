@@ -10,7 +10,7 @@ const props = defineProps({
     viewMode: { type: String, default: 'grid' },
     selectionMode: { type: Boolean, default: false },
     selectedModels: { type: Set, default: () => new Set() },
-    thumbnailMode: { type: String, default: 'wireframe' },
+    thumbnailMode: { type: String, default: 'solid' },
     collectionCardTint: { type: Boolean, default: false },
 });
 

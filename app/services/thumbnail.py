@@ -122,7 +122,7 @@ def generate_thumbnail(
     file_path: str,
     output_dir: str,
     model_id: int,
-    render_mode: str = "wireframe",
+    render_mode: str = "solid",
     render_quality: str = "fast",
 ) -> str | None:
     """
@@ -136,7 +136,7 @@ def generate_thumbnail(
         file_path: Absolute path to the 3D model file.
         output_dir: Directory where thumbnails should be saved.
         model_id: Unique ID for the model, used as the output filename.
-        render_mode: ``"wireframe"`` (default) or ``"solid"``.
+        render_mode: ``"solid"`` (default) or ``"wireframe"``.
         render_quality: ``"fast"`` (Pillow painter's algorithm) or
             ``"quality"`` (numpy z-buffer with Gouraud shading).
 

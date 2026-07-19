@@ -238,7 +238,7 @@ def process_and_thumbnail(
     file_path: str,
     output_dir: str,
     model_id: int,
-    render_mode: str = "wireframe",
+    render_mode: str = "solid",
     render_quality: str = "fast",
     skip_thumbnail: bool = False,
 ) -> dict:
