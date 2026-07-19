@@ -12,6 +12,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 /**
  * Create a new viewer instance scoped to the calling component.
@@ -44,14 +45,14 @@ export function useViewer() {
      *  insert its parsed object — it belongs to a superseded request. */
     let loadGeneration = 0;
 
-    /** Default material for models that don't carry their own (brighter teal accent).
-     *  Note: ACES tone mapping darkens mid-tones significantly — use a bright
-     *  base color and a subtle emissive so models are always clearly visible. */
-    const DEFAULT_MATERIAL = new THREE.MeshPhongMaterial({
+    /** Default material for models that don't carry their own (teal accent).
+     *  PBR + the scene's RoomEnvironment IBL gives surface definition that
+     *  the previous Phong material lacked under ACES tone mapping. */
+    const DEFAULT_MATERIAL = new THREE.MeshStandardMaterial({
         color: 0x2ec4b6,
-        emissive: 0x0a3d38,
-        specular: 0x444444,
-        shininess: 50,
+        roughness: 0.42,
+        metalness: 0.08,
+        envMapIntensity: 0.9,
         flatShading: false,
         side: THREE.DoubleSide,
     });
@@ -125,6 +126,7 @@ export function useViewer() {
         modelScaleFactor = 0;
         modelDimensions.value = null;
         clearBedOverlay();
+        requestRender();
     }
 
     /**
@@ -226,6 +228,7 @@ export function useViewer() {
                 scene.add(gridHelper);
             }
         }
+        requestRender();
     }
 
     /* ==================================================================
@@ -285,22 +288,37 @@ export function useViewer() {
         controls.minDistance = 0.1;
         controls.maxDistance = 500;
 
+        // ---- Environment (image-based lighting for the PBR material) ----
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+
         // ---- Lights ----
-        // Soft ambient fill
-        const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+        // Env map carries most of the fill; ambient stays low
+        const ambient = new THREE.AmbientLight(0xffffff, 0.15);
         scene.add(ambient);
 
-        // Main directional (key light)
-        const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
+        // Main directional (key light, casts the ground shadow)
+        const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
         keyLight.position.set(5, 10, 7);
         keyLight.castShadow = true;
         keyLight.shadow.mapSize.set(1024, 1024);
         scene.add(keyLight);
 
         // Secondary directional (fill light, slightly blue)
-        const fillLight = new THREE.DirectionalLight(0x8899bb, 0.35);
+        const fillLight = new THREE.DirectionalLight(0x8899bb, 0.25);
         fillLight.position.set(-5, 5, -5);
         scene.add(fillLight);
+
+        // ---- Shadow catcher ----
+        const shadowGround = new THREE.Mesh(
+            new THREE.PlaneGeometry(60, 60),
+            new THREE.ShadowMaterial({ opacity: 0.28 })
+        );
+        shadowGround.rotation.x = -Math.PI / 2;
+        shadowGround.position.y = -0.001;
+        shadowGround.receiveShadow = true;
+        scene.add(shadowGround);
 
         // ---- Grid ----
         const themeColors = THEME_COLORS[theme] || THEME_COLORS.default;
@@ -318,18 +336,33 @@ export function useViewer() {
             camera.aspect = cw / ch;
             camera.updateProjectionMatrix();
             renderer.setSize(cw, ch);
+            requestRender();
         });
         resizeObserver.observe(container);
 
-        // ---- Animation loop ----
-        function animate() {
-            animationId = requestAnimationFrame(animate);
-            if (controls) controls.update();
-            if (renderer && scene && camera) {
-                renderer.render(scene, camera);
-            }
-        }
-        animate();
+        // ---- Render-on-demand ----
+        // A continuous rAF loop burned GPU/battery while the viewer sat
+        // idle; frames are only scheduled on interaction/state changes,
+        // and damping keeps requesting frames until it settles.
+        controls.addEventListener('change', requestRender);
+        requestRender();
+    }
+
+    let renderRequested = false;
+
+    function requestRender() {
+        if (renderRequested || !renderer) return;
+        renderRequested = true;
+        animationId = requestAnimationFrame(renderFrame);
+    }
+
+    function renderFrame() {
+        renderRequested = false;
+        animationId = null;
+        if (!renderer || !scene || !camera) return;
+        const moving = controls ? controls.update() : false;
+        renderer.render(scene, camera);
+        if (moving) requestRender();
     }
 
     /**
@@ -509,6 +542,7 @@ export function useViewer() {
 
         camera.lookAt(controls.target);
         controls.update();
+        requestRender();
     }
 
     /**
@@ -517,6 +551,7 @@ export function useViewer() {
      */
     function dispose() {
         loadGeneration++;
+        renderRequested = false;
         // Stop animation
         if (animationId !== null) {
             cancelAnimationFrame(animationId);
@@ -587,6 +622,7 @@ export function useViewer() {
             });
             bedGroup = null;
         }
+        requestRender();
     }
 
     /**
@@ -728,6 +764,7 @@ export function useViewer() {
         }
 
         scene.add(bedGroup);
+        requestRender();
         return { fits };
     }
 
