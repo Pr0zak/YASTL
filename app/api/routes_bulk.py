@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
 from app.api._helpers import apply_auto_tags
+from app.database import update_fts_for_model
 
 router = APIRouter(prefix="/api/bulk", tags=["bulk"])
 
@@ -39,6 +40,7 @@ async def bulk_add_tags(request: Request):
         await db.execute("PRAGMA foreign_keys=ON")
 
         affected = 0
+        tagged_models: set[int] = set()
         for tag_name in tag_names:
             tag_name = tag_name.strip()
             if not tag_name:
@@ -69,8 +71,11 @@ async def bulk_add_tags(request: Request):
                     "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
                     (model_id, tag_id),
                 )
+                tagged_models.add(model_id)
                 affected += 1
 
+        for tagged_id in tagged_models:
+            await update_fts_for_model(db, tagged_id)
         await db.commit()
 
     return {"detail": "Tags applied to models", "affected": affected}

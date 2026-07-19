@@ -200,3 +200,41 @@ async def test_cascade_delete_model_tags(db):
         )
         row = await cursor.fetchone()
     assert row[0] == 0
+
+
+class TestFtsTagsMigration:
+    @pytest.mark.asyncio
+    async def test_old_fts_table_migrated_with_tags(self, tmp_path):
+        """init_db must rebuild a legacy 2-column models_fts with tags."""
+        db_path = str(tmp_path / "legacy.db")
+        await init_db(db_path)
+
+        # Downgrade to the legacy FTS shape with data present
+        async with aiosqlite.connect(db_path) as conn:
+            cursor = await conn.execute(
+                "INSERT INTO models (name, file_path, file_format, file_size) "
+                "VALUES ('wyvern', '/tmp/wyvern.stl', 'STL', 10)"
+            )
+            model_id = cursor.lastrowid
+            await conn.execute("INSERT INTO tags (name) VALUES ('scaly')")
+            await conn.execute(
+                "INSERT INTO model_tags (model_id, tag_id) "
+                "SELECT ?, id FROM tags WHERE name = 'scaly'",
+                (model_id,),
+            )
+            await conn.execute("DROP TABLE models_fts")
+            await conn.execute(
+                "CREATE VIRTUAL TABLE models_fts USING fts5("
+                "name, description, tokenize='porter unicode61')"
+            )
+            await conn.commit()
+
+        # Re-init triggers the migration and rebuild
+        await init_db(db_path)
+
+        async with aiosqlite.connect(db_path) as conn:
+            cursor = await conn.execute(
+                "SELECT rowid FROM models_fts WHERE models_fts MATCH 'scaly'"
+            )
+            rows = await cursor.fetchall()
+        assert [r[0] for r in rows] == [model_id]

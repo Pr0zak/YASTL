@@ -215,14 +215,22 @@ async def search_models(
         # fall back to most-recently-updated first.
         # -----------------------------------------------------------------
         if use_fts:
+            # FTS5 only populates the hidden `rank` column on the table
+            # instance being MATCHed, so rank must come from a MATCHed
+            # subquery — joining models_fts bare yields rank = NULL for
+            # every row (arbitrary result order).
             query_sql = f"""
-                SELECT m.*, models_fts.rank AS _fts_rank
+                SELECT m.*, fts.rank AS _fts_rank
                 FROM models m
-                JOIN models_fts ON models_fts.rowid = m.id
+                JOIN (
+                    SELECT rowid, rank FROM models_fts
+                    WHERE models_fts MATCH ?
+                ) AS fts ON fts.rowid = m.id
                 {where_sql}
-                ORDER BY models_fts.rank
+                ORDER BY fts.rank
                 LIMIT ? OFFSET ?
             """
+            page_params = [sanitized_q] + params + [limit, offset]
         else:
             query_sql = f"""
                 SELECT m.* FROM models m
@@ -230,7 +238,8 @@ async def search_models(
                 ORDER BY m.updated_at DESC
                 LIMIT ? OFFSET ?
             """
-        cursor = await db.execute(query_sql, params + [limit, offset])
+            page_params = params + [limit, offset]
+        cursor = await db.execute(query_sql, page_params)
         rows = await cursor.fetchall()
 
         # -----------------------------------------------------------------

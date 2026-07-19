@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from app.api._helpers import _get_db_path, _fetch_model_with_relations, open_db
+from app.database import update_fts_for_model
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ async def add_tags_to_model(request: Request, model_id: int):
             )
             added_tags.append(tag_name)
 
+        await update_fts_for_model(db, model_id)
         await db.commit()
 
         # Return updated model
@@ -125,6 +127,7 @@ async def remove_tag_from_model(request: Request, model_id: int, tag_name: str):
                 detail=f"Tag '{tag_name}' is not associated with model {model_id}",
             )
 
+        await update_fts_for_model(db, model_id)
         await db.commit()
 
     return {"detail": f"Tag '{tag_name}' removed from model {model_id}"}

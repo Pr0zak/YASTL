@@ -248,3 +248,48 @@ class TestSanitizeFtsQuery:
         result = _sanitize_fts_query("cat AND dog")
         # AND should be inside quotes, not treated as operator; each token gets prefix *
         assert result == '"cat"* "AND"* "dog"*'
+
+
+class TestFtsRankingAndTags:
+    async def test_relevance_ordering_uses_bm25(self, client):
+        """Best BM25 match must come first, not arbitrary rowid order."""
+        db_path = client._db_path
+        # Weak match inserted FIRST: the old NULL-rank query returned
+        # rows in insertion order, so this would have led the results.
+        await insert_test_model(
+            db_path, name="terrain tile", file_path="/tmp/tile.stl",
+            description="a scenic tile where a dragon appears once in the corner",
+        )
+        await insert_test_model(
+            db_path, name="dragon", file_path="/tmp/dragon.stl",
+            description="dragon dragon dragon",
+        )
+
+        resp = await client.get("/api/search?q=dragon")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert data["models"][0]["name"] == "dragon"
+
+    async def test_search_matches_tags(self, client):
+        """Text search should find models via their tags."""
+        db_path = client._db_path
+        model_id = await insert_test_model(
+            db_path, name="figurine", file_path="/tmp/figurine.stl"
+        )
+
+        resp = await client.post(
+            f"/api/models/{model_id}/tags", json={"tags": ["elvish"]}
+        )
+        assert resp.status_code == 200
+
+        resp = await client.get("/api/search?q=elvish")
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["models"][0]["id"] == model_id
+
+        # Removing the tag removes the FTS match
+        resp = await client.delete(f"/api/models/{model_id}/tags/elvish")
+        assert resp.status_code == 200
+        resp = await client.get("/api/search?q=elvish")
+        assert resp.json()["total"] == 0

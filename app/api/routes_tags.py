@@ -3,6 +3,16 @@
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
+from app.database import update_fts_for_model
+
+
+async def _refresh_fts_for_tag(db: aiosqlite.Connection, tag_id: int) -> list[int]:
+    """Return model ids linked to a tag (call BEFORE mutating the tag)."""
+    cursor = await db.execute(
+        "SELECT model_id FROM model_tags WHERE tag_id = ?", (tag_id,)
+    )
+    return [row["model_id"] for row in await cursor.fetchall()]
+
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 
 
@@ -99,8 +109,12 @@ async def delete_tag(request: Request, tag_id: int):
 
         tag_name = dict(row)["name"]
 
+        affected_models = await _refresh_fts_for_tag(db, tag_id)
+
         # Delete the tag (model_tags entries cascade)
         await db.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+        for model_id in affected_models:
+            await update_fts_for_model(db, model_id)
         await db.commit()
 
     return {"detail": f"Tag '{tag_name}' (id={tag_id}) deleted"}
@@ -147,6 +161,8 @@ async def rename_tag(request: Request, tag_id: int):
         await db.execute(
             "UPDATE tags SET name = ? WHERE id = ?", (new_name, tag_id)
         )
+        for model_id in await _refresh_fts_for_tag(db, tag_id):
+            await update_fts_for_model(db, model_id)
         await db.commit()
 
     return {"id": tag_id, "name": new_name}

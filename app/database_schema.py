@@ -131,6 +131,19 @@ FTS_SCHEMA_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS models_fts USING fts5(
     name,
     description,
+    tags,
     tokenize='porter unicode61'
 );
+"""
+
+# Rebuild the whole FTS index from the models table. Used by the
+# tags-column migration and available for manual reindex paths.
+FTS_REBUILD_SQL = """
+INSERT INTO models_fts(rowid, name, description, tags)
+SELECT m.id, m.name, m.description,
+       COALESCE((SELECT GROUP_CONCAT(t.name, ' ')
+                 FROM tags t
+                 JOIN model_tags mt ON mt.tag_id = t.id
+                 WHERE mt.model_id = m.id), '')
+FROM models m
 """

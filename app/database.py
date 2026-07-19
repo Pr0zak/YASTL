@@ -2,7 +2,13 @@ import aiosqlite
 from contextlib import asynccontextmanager
 from pathlib import Path
 from app.config import settings
-from app.database_schema import SCHEMA_SQL, FTS_SCHEMA_SQL, MIGRATION_SQL, _POST_MIGRATION_INDEXES
+from app.database_schema import (
+    SCHEMA_SQL,
+    FTS_SCHEMA_SQL,
+    FTS_REBUILD_SQL,
+    MIGRATION_SQL,
+    _POST_MIGRATION_INDEXES,
+)
 
 DB_PATH: Path = settings.MODEL_LIBRARY_DB
 
@@ -60,6 +66,16 @@ async def init_db(db_path: str | Path | None = None) -> None:
     async with get_db() as db:
         await db.executescript(SCHEMA_SQL)
         await db.executescript(FTS_SCHEMA_SQL)
+
+        # FTS migration: older databases have models_fts without the
+        # tags column. Virtual tables can't be ALTERed — drop, recreate,
+        # and rebuild from the models table.
+        cursor = await db.execute("PRAGMA table_info(models_fts)")
+        fts_columns = [row["name"] for row in await cursor.fetchall()]
+        if "tags" not in fts_columns:
+            await db.execute("DROP TABLE models_fts")
+            await db.executescript(FTS_SCHEMA_SQL)
+            await db.execute(FTS_REBUILD_SQL)
 
         # Run migrations for existing databases
         cursor = await db.execute("PRAGMA table_info(models)")
@@ -164,11 +180,7 @@ async def rebuild_fts() -> None:
     """Rebuild the full-text search index from current model data."""
     async with get_db() as db:
         await db.execute("DELETE FROM models_fts")
-        await db.execute("""
-            INSERT INTO models_fts(rowid, name, description)
-            SELECT m.id, m.name, m.description
-            FROM models m
-        """)
+        await db.execute(FTS_REBUILD_SQL)
         await db.commit()
 
 
@@ -205,11 +217,15 @@ async def update_fts_for_model(db: aiosqlite.Connection, model_id: int) -> None:
     """Update the FTS index for a single model within an existing connection."""
     # Remove old entry
     await db.execute("DELETE FROM models_fts WHERE rowid = ?", (model_id,))
-    # Insert updated entry
+    # Insert updated entry (tags included so text search matches them)
     await db.execute(
         """
-        INSERT INTO models_fts(rowid, name, description)
-        SELECT m.id, m.name, m.description
+        INSERT INTO models_fts(rowid, name, description, tags)
+        SELECT m.id, m.name, m.description,
+               COALESCE((SELECT GROUP_CONCAT(t.name, ' ')
+                         FROM tags t
+                         JOIN model_tags mt ON mt.tag_id = t.id
+                         WHERE mt.model_id = m.id), '')
         FROM models m
         WHERE m.id = ?
     """,
