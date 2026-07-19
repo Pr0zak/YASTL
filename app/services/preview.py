@@ -42,11 +42,18 @@ def build_preview_glb(file_path: str, max_faces: int = DEFAULT_MAX_FACES) -> byt
     Raises on unloadable input. Runs in a pool worker.
     """
     loaded = None
+    load_err = None
     try:
-        try:
-            loaded = trimesh.load(file_path, force=None)
-        except Exception as e:  # noqa: BLE001 - degrade to step/None below
-            logger.debug("trimesh.load failed for %s: %s", file_path, e)
+        # Retry once: reads can fail transiently (NFS hiccups) and a load
+        # can raise MemoryError if the worker is near RLIMIT_AS.
+        for _ in range(2):
+            try:
+                loaded = trimesh.load(file_path, force=None)
+                load_err = None
+                break
+            except Exception as e:  # noqa: BLE001 - retried / surfaced below
+                load_err = e
+                loaded = None
 
         if loaded is None or (
             isinstance(loaded, trimesh.Scene) and len(loaded.geometry) == 0
@@ -59,7 +66,12 @@ def build_preview_glb(file_path: str, max_faces: int = DEFAULT_MAX_FACES) -> byt
                     loaded = mesh
 
         if loaded is None:
-            raise ValueError(f"Cannot load file for preview: {file_path}")
+            # Surface the underlying cause instead of a generic message so
+            # failures (MemoryError, OSError, parse errors) are diagnosable.
+            raise ValueError(
+                f"Cannot load file for preview: {file_path}"
+                + (f" ({type(load_err).__name__}: {load_err})" if load_err else "")
+            ) from load_err
 
         mesh = _as_single_mesh(loaded, file_path)
 

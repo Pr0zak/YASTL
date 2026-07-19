@@ -186,7 +186,7 @@ def shutdown_pool() -> None:
         _pool = None
 
 
-async def run_cpu_job(func, *args, timeout: float = 300.0):
+async def run_cpu_job(func, *args, timeout: float = 300.0, recycle: bool = False):
     """Run a CPU-bound callable on the shared process pool.
 
     Encapsulates the ceremony every pool caller needs: timeout
@@ -194,6 +194,12 @@ async def run_cpu_job(func, *args, timeout: float = 300.0):
     ``BrokenProcessPool`` recovery, and job-count ticking for automatic
     recycling. Falls back to the default thread pool when the process
     pool is not initialised (unit tests).
+
+    ``recycle=True`` recycles the worker immediately after the job — use
+    it for uniformly heavy jobs (e.g. decimating multi-million-face
+    meshes) where memory from C extensions never returns to the OS and
+    would otherwise accumulate across the single worker until it hits
+    ``RLIMIT_AS`` and jobs start failing with ``MemoryError``.
 
     Raises ``TimeoutError`` or ``BrokenProcessPool`` to the caller after
     the pool has been recovered — callers decide how to degrade.
@@ -217,5 +223,8 @@ async def run_cpu_job(func, *args, timeout: float = 300.0):
         recover_pool()
         raise
     tick_job()
-    maybe_recycle()
+    if recycle:
+        recycle_pool()
+    else:
+        maybe_recycle()
     return result

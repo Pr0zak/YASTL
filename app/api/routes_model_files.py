@@ -171,7 +171,8 @@ async def serve_model_glb(request: Request, model_id: int):
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            "SELECT id, file_path, name, zip_path, zip_entry FROM models WHERE id = ?",
+            "SELECT id, file_path, name, zip_path, zip_entry, face_count "
+            "FROM models WHERE id = ?",
             (model_id,),
         )
         row = await cursor.fetchone()
@@ -205,8 +206,11 @@ async def serve_model_glb(request: Request, model_id: int):
     # Build a decimated preview GLB in the worker pool (OOM-protected, off
     # the event loop). Large meshes are simplified so the client parse is
     # trivial and the viewer never blocks; small meshes pass through.
+    # Recycle the worker after a big-mesh conversion so its memory doesn't
+    # linger for the next request (small meshes don't need it).
+    heavy = (model.get("face_count") or 0) > 200_000
     try:
-        glb_data = await run_cpu_job(build_preview_glb, file_path)
+        glb_data = await run_cpu_job(build_preview_glb, file_path, recycle=heavy)
     except Exception as e:
         logger.warning(
             "GLB conversion failed for model %d (%s): %s", model_id, file_path, e

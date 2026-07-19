@@ -253,7 +253,10 @@ async def _generate_all_previews() -> None:
                     os.path.exists(cache_path)
                     and os.path.getmtime(cache_path) >= os.path.getmtime(resolved)
                 ):
-                    glb = await run_cpu_job(build_preview_glb, resolved)
+                    # recycle=True: every preview here is a large mesh, so give
+                    # each a fresh worker instead of letting memory accumulate
+                    # across the batch until loads hit RLIMIT_AS.
+                    glb = await run_cpu_job(build_preview_glb, resolved, recycle=True)
                     with open(cache_path, "wb") as f:
                         f.write(glb)
                     _preview_progress["generated"] += 1
