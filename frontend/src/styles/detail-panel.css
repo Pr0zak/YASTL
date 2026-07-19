@@ -612,3 +612,63 @@
     display: flex;
     gap: 6px;
 }
+
+/* Model docs / README viewer */
+.doc-readme-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.doc-readme-text {
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+.doc-image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: 6px;
+    margin-top: 10px;
+}
+.doc-image-thumb {
+    display: block;
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+.doc-image-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.doc-file-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+.doc-file-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.76rem;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+.doc-file-link:hover { color: var(--accent); border-color: var(--accent); }
+.doc-file-link svg { width: 12px; height: 12px; }

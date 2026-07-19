@@ -27,6 +27,7 @@ const props = defineProps({
     tagSuggestions: { type: Array, default: () => [] },
     tagSuggestionsLoading: { type: Boolean, default: false },
     relatedTags: { type: Array, default: () => [] },
+    modelDocs: { type: Object, default: null },
     newTagInput: { type: String, default: '' },
     allTags: { type: Array, default: () => [] },
     allCategories: { type: Array, default: () => [] },
@@ -86,6 +87,18 @@ function viewerThumb(model) {
     if (model) return `/api/models/${model.id}/thumbnail`;
     return '';
 }
+
+function docFileUrl(name) {
+    const id = props.selectedModel?.id;
+    return `/api/models/${id}/docs/file?name=${encodeURIComponent(name)}`;
+}
+
+// Non-README doc files (license, etc.) shown as links, README excluded.
+const docLinks = computed(() => {
+    const docs = props.modelDocs?.docs || [];
+    const readmeName = props.modelDocs?.readme?.name;
+    return docs.filter((d) => d.name !== readmeName);
+});
 
 // Autocomplete suggestions for the add-tag input: existing tag names not
 // already applied to this model.
@@ -435,6 +448,31 @@ function formatClass(fmt) {
 
                         <!-- ==================== MORE TAB ==================== -->
                         <template v-if="detailTab === 'more'">
+                            <!-- Docs / README / photos -->
+                            <div v-if="modelDocs && (modelDocs.readme || (modelDocs.images && modelDocs.images.length) || (modelDocs.docs && modelDocs.docs.length))"
+                                 class="info-section">
+                                <div class="info-section-title">Docs &amp; Files</div>
+                                <div v-if="modelDocs.readme" class="doc-readme">
+                                    <div class="doc-readme-name">{{ modelDocs.readme.name }}</div>
+                                    <pre class="doc-readme-text">{{ modelDocs.readme.text }}<span v-if="modelDocs.readme.truncated" class="text-muted">
+… (truncated)</span></pre>
+                                </div>
+                                <div v-if="modelDocs.images && modelDocs.images.length" class="doc-image-grid">
+                                    <a v-for="img in modelDocs.images" :key="img.name"
+                                       :href="docFileUrl(img.name)" target="_blank" rel="noopener"
+                                       class="doc-image-thumb" :title="img.name">
+                                        <img :src="docFileUrl(img.name)" :alt="img.name" loading="lazy">
+                                    </a>
+                                </div>
+                                <div v-if="docLinks.length" class="doc-file-links">
+                                    <a v-for="f in docLinks" :key="f.name"
+                                       :href="docFileUrl(f.name)" target="_blank" rel="noopener"
+                                       class="doc-file-link">
+                                        <span v-html="ICONS.folder"></span> {{ f.name }}
+                                    </a>
+                                </div>
+                            </div>
+
                             <!-- Print tracking -->
                             <div class="info-section">
                                 <div class="info-section-title">Print History</div>

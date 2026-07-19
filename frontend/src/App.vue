@@ -53,6 +53,7 @@ import {
     apiLogPrint,
     apiUndoPrint,
     apiGetRelatedTags,
+    apiGetModelDocs,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -145,6 +146,7 @@ const tagSuggestions = ref([]);
 const tagSuggestionsLoading = ref(false);
 const relatedModels = ref([]);
 const relatedTags = ref([]);
+const modelDocs = ref(null);
 
 function fetchRelatedTags(modelId, seq) {
     apiGetRelatedTags(modelId).then(data => {
@@ -796,6 +798,7 @@ async function viewModel(model) {
     tagSuggestions.value = [];
     relatedModels.value = [];
     relatedTags.value = [];
+    modelDocs.value = null;
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
@@ -824,6 +827,12 @@ async function viewModel(model) {
 
     // Fetch co-occurring tag suggestions in background
     fetchRelatedTags(selectedModel.value.id, seq);
+
+    // Fetch adjacent docs (README/license/photos) in background
+    apiGetModelDocs(selectedModel.value.id).then(data => {
+        if (seq !== viewSeq) return;
+        modelDocs.value = data;
+    }).catch(() => { if (seq === viewSeq) modelDocs.value = null; });
 
     await nextTick();
     if (seq !== viewSeq) return;
@@ -2048,6 +2057,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :isEditingSourceUrl="isEditingSourceUrl"
         :tagSuggestions="tagSuggestions"
         :relatedTags="relatedTags"
+        :modelDocs="modelDocs"
         :tagSuggestionsLoading="tagSuggestionsLoading"
         :newTagInput="newTagInput"
         :allTags="allTags"

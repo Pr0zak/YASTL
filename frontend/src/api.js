@@ -587,3 +587,9 @@ export async function apiGetRelatedTags(id) {
     if (!res.ok) throw new Error('Failed to load related tags');
     return res.json();
 }
+
+export async function apiGetModelDocs(id) {
+    const res = await fetch(`/api/models/${id}/docs`);
+    if (!res.ok) throw new Error('Failed to load docs');
+    return res.json();
+}
