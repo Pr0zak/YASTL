@@ -331,7 +331,14 @@ export function useViewer() {
             const cw = container.clientWidth;
             const ch = container.clientHeight;
             if (cw === 0 || ch === 0) return;
-            camera.aspect = cw / ch;
+            if (camera.isOrthographicCamera) {
+                const halfH = (camera.top - camera.bottom) / 2;
+                const halfW = halfH * (cw / ch);
+                camera.left = -halfW;
+                camera.right = halfW;
+            } else {
+                camera.aspect = cw / ch;
+            }
             camera.updateProjectionMatrix();
             renderer.setSize(cw, ch);
             requestRender();
@@ -687,6 +694,51 @@ export function useViewer() {
         requestRender();
     }
 
+    /* ---- Orthographic / perspective toggle ---- */
+    let isOrtho = false;
+
+    function makeControls(cam) {
+        const c = new OrbitControls(cam, renderer.domElement);
+        c.enableDamping = true;
+        c.dampingFactor = 0.08;
+        c.screenSpacePanning = true;
+        c.minDistance = 0.1;
+        c.maxDistance = 500;
+        c.addEventListener('change', requestRender);
+        return c;
+    }
+
+    function toggleOrtho() {
+        if (!camera || !renderer || !container) return;
+        const w = container.clientWidth || 800;
+        const h = container.clientHeight || 500;
+        const pos = camera.position.clone();
+        const target = controls.target.clone();
+        const dist = pos.distanceTo(target);
+
+        let next;
+        if (!isOrtho) {
+            const halfH = Math.tan(THREE.MathUtils.degToRad(45) / 2) * dist;
+            const halfW = halfH * (w / h);
+            next = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, 10000);
+        } else {
+            next = new THREE.PerspectiveCamera(45, w / h, 0.01, 10000);
+        }
+        next.position.copy(pos);
+        next.lookAt(target);
+
+        const old = controls;
+        controls = makeControls(next);
+        controls.target.copy(target);
+        controls.update();
+        old.dispose();
+
+        camera = next;
+        isOrtho = !isOrtho;
+        requestRender();
+        return isOrtho;
+    }
+
     /* ---- Cross-section clipping plane ---- */
     let clipPlane = null;
     let clipEnabled = false;
@@ -732,6 +784,7 @@ export function useViewer() {
     function dispose() {
         loadGeneration++;
         renderRequested = false;
+        isOrtho = false;
         viewerProgress.value = null;
         // Terminate the parse worker and drop any pending callbacks.
         if (_worker) {
@@ -969,6 +1022,7 @@ export function useViewer() {
         loadModel,
         resetCamera,
         setView,
+        toggleOrtho,
         setClipping,
         setClipPosition,
         setViewerTheme,

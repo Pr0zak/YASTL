@@ -110,6 +110,12 @@ function onClipPosition(t) {
 }
 function setViewPreset(preset) { viewer?.setView(preset); }
 
+const viewerOrtho = ref(false);
+function toggleViewerOrtho() {
+    const r = viewer?.toggleOrtho();
+    if (r !== undefined) viewerOrtho.value = r;
+}
+
 /* ---- Core reactive state ---- */
 const models = ref([]);
 const selectedModel = ref(null);
@@ -813,6 +819,7 @@ async function viewModel(model) {
     viewerProgress.value = 0;
     viewerDecimated.value = false;
     viewerClipping.value = false;
+    viewerOrtho.value = false;
     await ensureViewer();
     if (seq !== viewSeq) return;
     initViewer('viewer-container', colorTheme.value);
@@ -1953,6 +1960,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :navTotal="detailNavPosition.total"
         :viewerClipping="viewerClipping"
         :viewerClipPos="viewerClipPos"
+        :viewerOrtho="viewerOrtho"
         :editName="editName"
         :editDesc="editDesc"
         :editSourceUrl="editSourceUrl"
@@ -2006,6 +2014,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @setView="setViewPreset"
         @toggleClipping="toggleClipping"
         @setClipPosition="onClipPosition"
+        @toggleOrtho="toggleViewerOrtho"
         @regenerateThumbnail="regenerateThumbnail"
     />
 

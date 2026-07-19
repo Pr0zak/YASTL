@@ -17,6 +17,7 @@ const props = defineProps({
     navTotal: { type: Number, default: 0 },
     viewerClipping: { type: Boolean, default: false },
     viewerClipPos: { type: Number, default: 0.55 },
+    viewerOrtho: { type: Boolean, default: false },
     editName: { type: String, default: '' },
     editDesc: { type: String, default: '' },
     editSourceUrl: { type: String, default: '' },
@@ -74,6 +75,7 @@ const emit = defineEmits([
     'setView',
     'toggleClipping',
     'setClipPosition',
+    'toggleOrtho',
 ]);
 
 function viewerThumb(model) {
@@ -210,6 +212,11 @@ function formatClass(fmt) {
                             <option value="top">Top</option>
                             <option value="bottom">Bottom</option>
                         </select>
+                        <button class="btn" :class="{ 'btn-active': viewerOrtho }"
+                                @click="emit('toggleOrtho')"
+                                :title="viewerOrtho ? 'Orthographic (click for perspective)' : 'Perspective (click for orthographic)'">
+                            {{ viewerOrtho ? 'Ortho' : 'Persp' }}
+                        </button>
                         <button class="btn" :class="{ 'btn-active': viewerClipping }"
                                 @click="emit('toggleClipping')"
                                 title="Cross-section: slice the model to inspect the interior">
