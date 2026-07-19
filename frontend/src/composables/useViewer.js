@@ -127,6 +127,7 @@ export function useViewer() {
         }
         modelScaleFactor = 0;
         modelDimensions.value = null;
+        clipEnabled = false;
         clearBedOverlay();
         requestRender();
     }
@@ -639,6 +640,74 @@ export function useViewer() {
     }
 
     /**
+     * Point the camera at the model from a named direction (front/top/iso/…),
+     * keeping it framed. 'fit' just re-frames from the current angle.
+     */
+    function setView(preset) {
+        if (!camera || !controls) return;
+        if (preset === 'fit') { resetCamera(); return; }
+        const center = new THREE.Vector3();
+        let maxDim = 4;
+        if (currentModel) {
+            const box = new THREE.Box3().setFromObject(currentModel);
+            box.getCenter(center);
+            const size = box.getSize(new THREE.Vector3());
+            maxDim = Math.max(size.x, size.y, size.z) || 4;
+        }
+        const dist = maxDim * 1.8;
+        const dirs = {
+            front: [0, 0, 1], back: [0, 0, -1],
+            left: [-1, 0, 0], right: [1, 0, 0],
+            top: [0, 1, 0.0001], bottom: [0, -1, 0.0001],
+            iso: [0.7, 0.5, 0.7],
+        };
+        const d = dirs[preset] || dirs.iso;
+        camera.position.set(center.x + d[0] * dist, center.y + d[1] * dist, center.z + d[2] * dist);
+        controls.target.copy(center);
+        camera.lookAt(center);
+        controls.update();
+        requestRender();
+    }
+
+    /* ---- Cross-section clipping plane ---- */
+    let clipPlane = null;
+    let clipEnabled = false;
+
+    function applyClipToModel() {
+        if (!currentModel) return;
+        currentModel.traverse((c) => {
+            if (c.isMesh && c.material) {
+                const mats = Array.isArray(c.material) ? c.material : [c.material];
+                mats.forEach((m) => {
+                    m.clippingPlanes = clipEnabled && clipPlane ? [clipPlane] : [];
+                    m.side = THREE.DoubleSide; // reveal the cut interior
+                    m.needsUpdate = true;
+                });
+            }
+        });
+    }
+
+    function setClipping(enabled) {
+        clipEnabled = enabled;
+        if (renderer) renderer.localClippingEnabled = enabled;
+        if (enabled && !clipPlane) {
+            // Horizontal plane; normal points down so we clip away everything above.
+            clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+        }
+        if (enabled) setClipPosition(0.55);
+        applyClipToModel();
+        requestRender();
+    }
+
+    function setClipPosition(t) {
+        if (!clipPlane || !currentModel) return;
+        const box = new THREE.Box3().setFromObject(currentModel);
+        // t=1 keeps the whole model; lower values slice down from the top.
+        clipPlane.constant = box.min.y + (box.max.y - box.min.y) * t;
+        requestRender();
+    }
+
+    /**
      * Clean up all Three.js resources: stop animation, dispose geometries,
      * materials, textures, renderer, and remove the canvas from the DOM.
      */
@@ -881,6 +950,9 @@ export function useViewer() {
         initViewer,
         loadModel,
         resetCamera,
+        setView,
+        setClipping,
+        setClipPosition,
         setViewerTheme,
         setBedOverlay,
         clearBedOverlay,

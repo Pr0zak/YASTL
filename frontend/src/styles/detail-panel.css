@@ -284,6 +284,24 @@
     color: #44aacc;
 }
 
+.viewer-toolbar .viewer-view-select {
+    background: var(--overlay-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.viewer-toolbar .viewer-clip-slider {
+    width: 90px;
+    align-self: center;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
 .bed-status {
     font-size: 0.75rem;
     font-weight: 600;

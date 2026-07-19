@@ -14,6 +14,8 @@ const props = defineProps({
     viewerDecimated: { type: Boolean, default: false },
     navIndex: { type: Number, default: -1 },
     navTotal: { type: Number, default: 0 },
+    viewerClipping: { type: Boolean, default: false },
+    viewerClipPos: { type: Number, default: 0.55 },
     editName: { type: String, default: '' },
     editDesc: { type: String, default: '' },
     editSourceUrl: { type: String, default: '' },
@@ -67,6 +69,9 @@ const emit = defineEmits([
     'filterByTag',
     'loadFullResolution',
     'navigate',
+    'setView',
+    'toggleClipping',
+    'setClipPosition',
 ]);
 
 function viewerThumb(model) {
@@ -183,6 +188,26 @@ function formatClass(fmt) {
                     <!-- Viewer toolbar -->
                     <div class="viewer-toolbar">
                         <button class="btn" @click="emit('resetView')">Reset View</button>
+                        <select class="btn viewer-view-select" title="Camera angle"
+                                @change="emit('setView', $event.target.value); $event.target.selectedIndex = 0">
+                            <option value="" disabled selected>View</option>
+                            <option value="iso">Isometric</option>
+                            <option value="front">Front</option>
+                            <option value="back">Back</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                            <option value="top">Top</option>
+                            <option value="bottom">Bottom</option>
+                        </select>
+                        <button class="btn" :class="{ 'btn-active': viewerClipping }"
+                                @click="emit('toggleClipping')"
+                                title="Cross-section: slice the model to inspect the interior">
+                            Clip
+                        </button>
+                        <input v-if="viewerClipping" type="range" min="0" max="1" step="0.01"
+                               class="viewer-clip-slider" :value="viewerClipPos"
+                               @input="emit('setClipPosition', parseFloat($event.target.value))"
+                               title="Cross-section height">
                         <button v-if="viewerDecimated && !viewerLoading" class="btn"
                                 @click="emit('loadFullResolution')"
                                 title="Showing a simplified preview — load the full-detail mesh">

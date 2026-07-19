@@ -90,10 +90,25 @@ async function ensureViewer() {
 const initViewer = (...a) => viewer?.initViewer(...a);
 const loadModel = (...a) => viewer?.loadModel(...a);
 const resetCamera = (...a) => viewer?.resetCamera(...a);
+const setView = (...a) => viewer?.setView(...a);
 const setViewerTheme = (...a) => viewer?.setViewerTheme(...a);
 const setBedOverlay = (...a) => viewer?.setBedOverlay(...a);
 const clearBedOverlay = (...a) => viewer?.clearBedOverlay(...a);
 const disposeViewer = (...a) => viewer?.dispose(...a);
+
+// Cross-section clip state (resets each time a model opens)
+const viewerClipping = ref(false);
+const viewerClipPos = ref(0.55);
+function toggleClipping() {
+    viewerClipping.value = !viewerClipping.value;
+    viewer?.setClipping(viewerClipping.value);
+    if (viewerClipping.value) viewer?.setClipPosition(viewerClipPos.value);
+}
+function onClipPosition(t) {
+    viewerClipPos.value = t;
+    viewer?.setClipPosition(t);
+}
+function setViewPreset(preset) { viewer?.setView(preset); }
 
 /* ---- Core reactive state ---- */
 const models = ref([]);
@@ -797,6 +812,7 @@ async function viewModel(model) {
     viewerLoading.value = true;
     viewerProgress.value = 0;
     viewerDecimated.value = false;
+    viewerClipping.value = false;
     await ensureViewer();
     if (seq !== viewSeq) return;
     initViewer('viewer-container', colorTheme.value);
@@ -1916,6 +1932,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :viewerDecimated="viewerDecimated"
         :navIndex="detailNavPosition.index"
         :navTotal="detailNavPosition.total"
+        :viewerClipping="viewerClipping"
+        :viewerClipPos="viewerClipPos"
         :editName="editName"
         :editDesc="editDesc"
         :editSourceUrl="editSourceUrl"
@@ -1965,6 +1983,9 @@ const { pickNextCollectionColor } = collectionsComposable;
         @filterByTag="filterByTag"
         @loadFullResolution="loadFullResolution"
         @navigate="navigateModel"
+        @setView="setViewPreset"
+        @toggleClipping="toggleClipping"
+        @setClipPosition="onClipPosition"
         @regenerateThumbnail="regenerateThumbnail"
     />
 
