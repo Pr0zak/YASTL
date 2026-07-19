@@ -46,6 +46,7 @@ const emit = defineEmits([
     'regenerateThumbnails',
     'autoTagAll',
     'extractMetadata',
+    'cleanupTags',
     'checkForUpdates',
     'applyUpdate',
     'saveImportCredential',
@@ -327,6 +328,12 @@ function timeAgo(dateStr) {
                                 title="Extract descriptions and tags from README files in zips and folders">
                             <span v-html="ICONS.refresh"></span>
                             Extract Metadata
+                        </button>
+                        <button class="btn btn-secondary"
+                                @click="emit('cleanupTags')"
+                                title="Delete tags not attached to any model">
+                            <span v-html="ICONS.wrench"></span>
+                            Clean Up Tags
                         </button>
                     </div>
 

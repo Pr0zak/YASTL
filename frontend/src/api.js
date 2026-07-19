@@ -522,3 +522,19 @@ export async function apiFindDuplicates(limit = 25, offset = 0) {
     if (!res.ok) throw new Error('Failed to load duplicates');
     return res.json();
 }
+
+export async function apiMergeTags(sourceIds, targetId) {
+    const res = await fetch('/api/tags/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_ids: sourceIds, target_id: targetId }),
+    });
+    if (!res.ok) throw new Error('Tag merge failed');
+    return res.json();
+}
+
+export async function apiCleanupTags() {
+    const res = await fetch('/api/tags/cleanup', { method: 'POST' });
+    if (!res.ok) throw new Error('Tag cleanup failed');
+    return res.json();
+}

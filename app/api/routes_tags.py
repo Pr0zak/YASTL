@@ -168,3 +168,90 @@ async def rename_tag(request: Request, tag_id: int):
         await db.commit()
 
     return {"id": tag_id, "name": new_name}
+
+
+# ---------------------------------------------------------------------------
+# Merge tags
+# ---------------------------------------------------------------------------
+
+
+@router.post("/merge")
+async def merge_tags(request: Request):
+    """Merge one or more source tags into a target tag.
+
+    Every model tagged with a source tag is retargeted to the target tag
+    (deduplicated), then the source tags are deleted. FTS is refreshed
+    for all affected models.
+
+    Body: {"source_ids": [2, 3], "target_id": 1}
+    """
+    db_path = _get_db_path(request)
+    body = await request.json()
+    source_ids = body.get("source_ids") or []
+    target_id = body.get("target_id")
+
+    if not isinstance(source_ids, list) or not source_ids:
+        raise HTTPException(status_code=400, detail="'source_ids' must be a non-empty list")
+    if target_id is None:
+        raise HTTPException(status_code=400, detail="'target_id' is required")
+    source_ids = [s for s in source_ids if s != target_id]
+    if not source_ids:
+        raise HTTPException(status_code=400, detail="No source tags distinct from target")
+
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys=ON")
+
+        cursor = await db.execute("SELECT id FROM tags WHERE id = ?", (target_id,))
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail=f"Target tag {target_id} not found")
+
+        ph = ", ".join("?" for _ in source_ids)
+        cursor = await db.execute(
+            f"SELECT DISTINCT model_id FROM model_tags WHERE tag_id IN ({ph})",
+            source_ids,
+        )
+        affected_models = [r["model_id"] for r in await cursor.fetchall()]
+
+        # Retarget links to the target tag (ignore rows that already have it)
+        await db.execute(
+            f"UPDATE OR IGNORE model_tags SET tag_id = ? WHERE tag_id IN ({ph})",
+            [target_id, *source_ids],
+        )
+        # Any leftover duplicate links (UPDATE OR IGNORE skipped them) are
+        # removed with the source tags via cascade.
+        await db.execute(f"DELETE FROM tags WHERE id IN ({ph})", source_ids)
+
+        for model_id in affected_models:
+            await update_fts_for_model(db, model_id)
+        await db.commit()
+
+    return {
+        "detail": f"Merged {len(source_ids)} tag(s) into target",
+        "target_id": target_id,
+        "models_updated": len(affected_models),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Delete unused (zero-count) tags
+# ---------------------------------------------------------------------------
+
+
+@router.post("/cleanup")
+async def cleanup_unused_tags(request: Request):
+    """Delete all tags not attached to any model."""
+    db_path = _get_db_path(request)
+
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys=ON")
+
+        cursor = await db.execute(
+            "DELETE FROM tags WHERE id NOT IN "
+            "(SELECT DISTINCT tag_id FROM model_tags)"
+        )
+        removed = cursor.rowcount
+        await db.commit()
+
+    return {"detail": f"Removed {removed} unused tag(s)", "removed": removed}

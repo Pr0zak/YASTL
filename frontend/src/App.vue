@@ -30,6 +30,7 @@ import {
     apiDeleteModel,
     apiRenameModelFile,
     apiGetTags,
+    apiCleanupTags,
     apiAddTagsToModel,
     apiRemoveTagFromModel,
     apiSuggestTags,
@@ -1350,6 +1351,32 @@ function toggleTagFilter(tagName) {
     fetchModels();
 }
 
+async function cleanupTags() {
+    if (!await showConfirm({
+        title: 'Clean Up Tags',
+        message: 'Delete all tags not attached to any model?',
+        action: 'Clean up',
+    })) return;
+    try {
+        const data = await apiCleanupTags();
+        showToast(`Removed ${data.removed} unused tag(s)`, 'success');
+        await fetchTags();
+    } catch {
+        showToast('Tag cleanup failed', 'error');
+    }
+}
+
+// Click a tag chip anywhere → add it to the active tag filter (and, from
+// the detail panel, drop back to the grid to show the results).
+function filterByTag(tagName) {
+    if (!filters.tags.includes(tagName)) {
+        filters.tags.push(tagName);
+        pagination.offset = 0;
+        fetchModels();
+    }
+    if (showDetail.value) closeDetail();
+}
+
 function toggleCategoryFilter(catName) {
     const idx = filters.categories.indexOf(catName);
     if (idx >= 0) {
@@ -1731,6 +1758,7 @@ const { pickNextCollectionColor } = collectionsComposable;
                 @toggleSelect="toggleModelSelection"
                 @toggleFavorite="toggleFavorite"
                 @expandZipGroup="setZipFilter"
+                @filterByTag="filterByTag"
             />
 
             <!-- Load More / Pagination Info -->
@@ -1810,6 +1838,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @deleteModel="deleteModel"
         @toggleBed="toggleBed"
         @openRelatedModel="openRelatedModel"
+        @filterByTag="filterByTag"
         @regenerateThumbnail="regenerateThumbnail"
     />
 
@@ -1851,6 +1880,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @regenerateThumbnails="regenerateThumbnails"
         @autoTagAll="autoTagAll"
         @extractMetadata="extractMetadata"
+        @cleanupTags="cleanupTags"
         @checkForUpdates="checkForUpdates"
         @applyUpdate="applyUpdate"
         @saveImportCredential="saveImportCredential"

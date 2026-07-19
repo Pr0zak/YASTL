@@ -133,3 +133,43 @@ class TestRenameTag:
 
         resp = await client.put(f"/api/tags/{tag_id}", json={"name": ""})
         assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+class TestTagMergeCleanup:
+    async def _mk_tag(self, client, name):
+        r = await client.post("/api/tags", json={"name": name})
+        return r.json()["id"]
+
+    async def test_merge_retargets_and_deletes_sources(self, client):
+        db_path = client._db_path
+        m1 = await insert_test_model(db_path, name="a", file_path="/tmp/a.stl")
+        m2 = await insert_test_model(db_path, name="b", file_path="/tmp/b.stl")
+
+        await client.post(f"/api/models/{m1}/tags", json={"tags": ["dragon"]})
+        await client.post(f"/api/models/{m2}/tags", json={"tags": ["dragons"]})
+
+        tags = {t["name"]: t["id"] for t in (await client.get("/api/tags")).json()["tags"]}
+        resp = await client.post(
+            "/api/tags/merge",
+            json={"source_ids": [tags["dragons"]], "target_id": tags["dragon"]},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["models_updated"] == 1
+
+        names = {t["name"] for t in (await client.get("/api/tags")).json()["tags"]}
+        assert "dragons" not in names and "dragon" in names
+        # m2 now searchable under the merged tag name
+        data = (await client.get("/api/search?q=dragon")).json()
+        assert {mdl["id"] for mdl in data["models"]} == {m1, m2}
+
+    async def test_cleanup_removes_unused(self, client):
+        await self._mk_tag(client, "orphan")
+        m1 = await insert_test_model(db_path=client._db_path, name="x", file_path="/tmp/x.stl")
+        await client.post(f"/api/models/{m1}/tags", json={"tags": ["used"]})
+
+        resp = await client.post("/api/tags/cleanup")
+        assert resp.status_code == 200
+        assert resp.json()["removed"] == 1
+        names = {t["name"] for t in (await client.get("/api/tags")).json()["tags"]}
+        assert "orphan" not in names and "used" in names

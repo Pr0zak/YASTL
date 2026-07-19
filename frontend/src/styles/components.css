@@ -151,6 +151,23 @@
     background: rgba(15, 155, 142, 0.25);
 }
 
+.tag-chip-clickable {
+    cursor: pointer;
+}
+
+.tag-chip .tag-filter-btn {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    padding: 0;
+    cursor: pointer;
+}
+
+.tag-chip .tag-filter-btn:hover {
+    text-decoration: underline;
+}
+
 .tag-chip .tag-remove {
     display: inline-flex;
     align-items: center;

@@ -16,6 +16,7 @@ const props = defineProps({
 
 const emit = defineEmits([
     'viewModel',
+    'filterByTag',
     'toggleSelect',
     'toggleFavorite',
     'expandZipGroup',
@@ -137,7 +138,8 @@ function cardStyle(model) {
                               class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
                     </div>
                     <div class="card-tags" v-if="model.tags && model.tags.length">
-                        <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip">{{ t }}</span>
+                        <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip tag-chip-clickable"
+                              @click.stop="emit('filterByTag', t)" title="Filter by this tag">{{ t }}</span>
                         <span v-if="model.tags.length > 3" class="tag-chip" style="opacity:0.7">
                             +{{ model.tags.length - 3 }}
                         </span>

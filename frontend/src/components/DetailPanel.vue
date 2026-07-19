@@ -60,6 +60,7 @@ const emit = defineEmits([
     'toggleBed',
     'regenerateThumbnail',
     'openRelatedModel',
+    'filterByTag',
 ]);
 
 const SLICER_FORMATS = ['stl', '3mf', 'obj'];
@@ -307,7 +308,7 @@ function formatClass(fmt) {
                             <div class="info-section">
                                 <div class="tags-list">
                                     <span v-for="tag in (selectedModel.tags || [])" :key="tag" class="tag-chip">
-                                        {{ tag }}
+                                        <button class="tag-filter-btn" @click="emit('filterByTag', tag)" title="Filter by this tag">{{ tag }}</button>
                                         <button class="tag-remove" @click="emit('removeTag', tag)" title="Remove tag">&times;</button>
                                     </span>
                                     <span v-if="!selectedModel.tags || !selectedModel.tags.length"
