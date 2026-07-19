@@ -606,3 +606,9 @@ export async function apiClearAutoTags(id) {
     if (!res.ok) throw new Error('Failed to clear auto tags');
     return res.json();
 }
+
+export async function apiFindNearDuplicates(limit = 25, offset = 0) {
+    const res = await fetch(`/api/models/near-duplicates?limit=${limit}&offset=${offset}`);
+    if (!res.ok) throw new Error('Failed to load near-duplicates');
+    return res.json();
+}

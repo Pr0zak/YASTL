@@ -511,3 +511,48 @@ class TestPrintTracking:
     async def test_print_nonexistent(self, client):
         r = await client.post("/api/models/999999/print")
         assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestNearDuplicates:
+    async def test_same_geometry_different_hash(self, client):
+        db_path = client._db_path
+        # Two models: identical vertex/face counts, DIFFERENT hashes
+        import aiosqlite
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "INSERT INTO models (name,file_path,file_format,status,vertex_count,face_count,file_hash) "
+                "VALUES ('a','/a.stl','STL','active',1000,500,'hashA')"
+            )
+            await conn.execute(
+                "INSERT INTO models (name,file_path,file_format,status,vertex_count,face_count,file_hash) "
+                "VALUES ('b','/b.obj','OBJ','active',1000,500,'hashB')"
+            )
+            # a third unrelated model
+            await conn.execute(
+                "INSERT INTO models (name,file_path,file_format,status,vertex_count,face_count,file_hash) "
+                "VALUES ('c','/c.stl','STL','active',77,33,'hashC')"
+            )
+            await conn.commit()
+
+        resp = await client.get("/api/models/near-duplicates")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_groups"] == 1
+        g = data["near_duplicate_groups"][0]
+        assert g["count"] == 2
+        assert {m["file_hash"] for m in g["models"]} == {"hashA", "hashB"}
+
+    async def test_exact_dupes_not_near(self, client):
+        # Same geometry AND same hash = exact dup, not a near-dup
+        db_path = client._db_path
+        import aiosqlite
+        async with aiosqlite.connect(db_path) as conn:
+            for nm in ("x", "y"):
+                await conn.execute(
+                    "INSERT INTO models (name,file_path,file_format,status,vertex_count,face_count,file_hash) "
+                    f"VALUES ('{nm}','/{nm}.stl','STL','active',10,5,'same')"
+                )
+            await conn.commit()
+        resp = await client.get("/api/models/near-duplicates")
+        assert resp.json()["total_groups"] == 0

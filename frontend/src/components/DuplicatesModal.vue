@@ -6,8 +6,8 @@
  * Built on GET /api/models/duplicates (paginated) + bulk delete.
  */
 import { ref, watch } from 'vue';
-import { apiFindDuplicates, apiBulkDelete } from '../api.js';
-import { formatFileSize } from '../search.js';
+import { apiFindDuplicates, apiFindNearDuplicates, apiBulkDelete } from '../api.js';
+import { formatFileSize, formatNumber } from '../search.js';
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -16,19 +16,30 @@ const props = defineProps({
 });
 const emit = defineEmits(['close', 'changed']);
 
+const mode = ref('exact'); // 'exact' | 'near'
 const groups = ref([]);
 const totalGroups = ref(0);
 const loading = ref(false);
 const offset = ref(0);
 const limit = 25;
-const busyHash = ref(null);
+const busyKey = ref(null);
+
+function groupKey(group) {
+    return group.file_hash || `${group.vertex_count}-${group.face_count}`;
+}
 
 async function load() {
     loading.value = true;
     try {
-        const data = await apiFindDuplicates(limit, offset.value);
-        groups.value = data.duplicate_groups || [];
-        totalGroups.value = data.total_groups || 0;
+        if (mode.value === 'near') {
+            const data = await apiFindNearDuplicates(limit, offset.value);
+            groups.value = data.near_duplicate_groups || [];
+            totalGroups.value = data.total_groups || 0;
+        } else {
+            const data = await apiFindDuplicates(limit, offset.value);
+            groups.value = data.duplicate_groups || [];
+            totalGroups.value = data.total_groups || 0;
+        }
     } catch {
         groups.value = [];
     } finally {
@@ -36,8 +47,16 @@ async function load() {
     }
 }
 
+function setMode(m) {
+    if (mode.value === m) return;
+    mode.value = m;
+    offset.value = 0;
+    load();
+}
+
 watch(() => props.show, (v) => {
     if (v) {
+        mode.value = 'exact';
         offset.value = 0;
         load();
     }
@@ -52,20 +71,23 @@ async function keepOne(group, keepId) {
     const toDelete = group.models.filter((m) => m.id !== keepId).map((m) => m.id);
     if (!toDelete.length) return;
     const keepName = group.models.find((m) => m.id === keepId)?.name;
+    const noun = group.file_hash ? 'cop' : 'variant';
+    const plural = toDelete.length === 1 ? (group.file_hash ? 'y' : '') : (group.file_hash ? 'ies' : 's');
     const confirmed = await props.confirmFn({
-        title: 'Delete duplicates',
-        message: `Delete ${toDelete.length} duplicate cop${toDelete.length === 1 ? 'y' : 'ies'}, keeping "${keepName}"?`,
-        action: 'Delete copies',
+        title: group.file_hash ? 'Delete duplicates' : 'Delete near-duplicates',
+        message: `Delete ${toDelete.length} ${noun}${plural}, keeping "${keepName}"?`
+            + (group.file_hash ? '' : ' (these have identical geometry but different files.)'),
+        action: 'Delete',
         danger: true,
     });
     if (!confirmed) return;
-    busyHash.value = group.file_hash;
+    busyKey.value = groupKey(group);
     try {
         await apiBulkDelete(toDelete);
         emit('changed');
         await load();
     } finally {
-        busyHash.value = null;
+        busyKey.value = null;
     }
 }
 
@@ -91,20 +113,28 @@ function prevPage() {
                 <button class="btn-icon" @click="emit('close')" aria-label="Close">✕</button>
             </div>
 
+            <div class="dup-mode-toggle">
+                <button class="tag-match-btn" :class="{ active: mode === 'exact' }" @click="setMode('exact')">Exact</button>
+                <button class="tag-match-btn" :class="{ active: mode === 'near' }" @click="setMode('near')">Near-duplicate</button>
+            </div>
+
             <div class="dup-body">
                 <p v-if="!loading && !groups.length" class="dup-empty">
-                    No duplicate files found. Every model has a unique hash.
+                    <template v-if="mode === 'near'">No near-duplicates found (no two models share identical geometry with different file content).</template>
+                    <template v-else>No duplicate files found. Every model has a unique hash.</template>
                 </p>
 
                 <p v-if="totalGroups" class="dup-count">
-                    {{ totalGroups }} duplicate group{{ totalGroups === 1 ? '' : 's' }}
-                    (each is a set of files with identical content)
+                    {{ totalGroups }} group{{ totalGroups === 1 ? '' : 's' }} —
+                    <template v-if="mode === 'near'">same geometry (vertex/face count), different file content.</template>
+                    <template v-else>files with identical content.</template>
                 </p>
 
-                <div v-for="group in groups" :key="group.file_hash" class="dup-group">
+                <div v-for="group in groups" :key="groupKey(group)" class="dup-group">
                     <div class="dup-group-head">
-                        <code class="dup-hash">{{ group.file_hash.slice(0, 12) }}</code>
-                        <span class="dup-badge">{{ group.count }} copies</span>
+                        <code v-if="group.file_hash" class="dup-hash">{{ group.file_hash.slice(0, 12) }}</code>
+                        <code v-else class="dup-hash">{{ formatNumber(group.vertex_count) }} verts · {{ formatNumber(group.face_count) }} faces</code>
+                        <span class="dup-badge">{{ group.count }} {{ mode === 'near' ? 'variants' : 'copies' }}</span>
                     </div>
                     <div class="dup-copies">
                         <div v-for="model in group.models" :key="model.id" class="dup-copy">
@@ -123,7 +153,7 @@ function prevPage() {
                             </div>
                             <button
                                 class="btn btn-sm btn-primary"
-                                :disabled="busyHash === group.file_hash"
+                                :disabled="busyKey === groupKey(group)"
                                 @click="keepOne(group, model.id)"
                             >
                                 Keep this
@@ -159,4 +189,5 @@ function prevPage() {
 .dup-meta { font-size: 0.78rem; color: var(--text-muted); }
 .dup-path { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.7; }
 .dup-pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px 0 4px; font-size: 0.82rem; color: var(--text-muted); }
+.dup-mode-toggle { display: flex; gap: 6px; padding: 4px 2px 10px; }
 </style>

@@ -345,6 +345,73 @@ async def find_duplicates(
         }
 
 
+@router.get("/near-duplicates")
+async def find_near_duplicates(
+    request: Request,
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Find near-duplicate groups: same geometry, different file content.
+
+    Models with identical (vertex_count, face_count) but 2+ distinct file
+    hashes are almost certainly the same mesh re-exported/re-saved (a
+    different format, a resave, a minor header change) — not caught by the
+    exact-hash duplicate finder.
+    """
+    db_path = _get_db_path(request)
+    group_filter = """
+        FROM models
+        WHERE status = 'active'
+          AND vertex_count IS NOT NULL AND vertex_count > 0
+          AND face_count IS NOT NULL AND face_count > 0
+        GROUP BY vertex_count, face_count
+        HAVING COUNT(*) > 1 AND COUNT(DISTINCT file_hash) > 1
+    """
+
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"SELECT COUNT(*) AS cnt FROM "
+            f"(SELECT vertex_count {group_filter})"
+        )
+        total_groups = dict(await cursor.fetchone())["cnt"]
+
+        cursor = await db.execute(
+            f"""
+            SELECT vertex_count, face_count, COUNT(*) as count
+            {group_filter}
+            ORDER BY count DESC, vertex_count DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        )
+        keys = [dict(r) for r in await cursor.fetchall()]
+
+        groups = []
+        for k in keys:
+            cursor = await db.execute(
+                "SELECT id, name, file_path, file_format, file_size, "
+                "thumbnail_path, zip_path, zip_entry, file_hash "
+                "FROM models WHERE status = 'active' "
+                "AND vertex_count = ? AND face_count = ? ORDER BY name",
+                (k["vertex_count"], k["face_count"]),
+            )
+            members = [dict(r) for r in await cursor.fetchall()]
+            groups.append({
+                "vertex_count": k["vertex_count"],
+                "face_count": k["face_count"],
+                "count": k["count"],
+                "models": members,
+            })
+
+    return {
+        "near_duplicate_groups": groups,
+        "total_groups": total_groups,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Get single model
 # ---------------------------------------------------------------------------
