@@ -9,6 +9,7 @@ are auto-created from the directory hierarchy (folder names become categories).
 import asyncio
 import concurrent.futures
 import concurrent.futures.process
+import json
 import logging
 import os
 import time
@@ -203,23 +204,67 @@ class Scanner:
             tuple[Path, str, int, Path]
         ] = []  # (zip_path, entry, lib_id, root)
 
-        for library_id, items in list(library_items.items()):
-            if self._cancel_requested:
-                break
-            regular: list[tuple[Path, Path]] = []
-            for file_path, scan_root in items:
-                if file_path.suffix.lower() == ".zip":
-                    entries = await loop.run_in_executor(
-                        None,
-                        zip_handler.list_models_in_zip,
-                        str(file_path),
-                        self.supported_extensions,
-                    )
-                    for entry in entries:
-                        zip_entries.append((file_path, entry, library_id, scan_root))
-                else:
-                    regular.append((file_path, scan_root))
-            library_items[library_id] = regular
+        # Zip entry listings are cached by (mtime, size): unchanged
+        # archives skip the re-read entirely — opening thousands of zips
+        # over NFS dominated rescan time.
+        cache_db = await aiosqlite.connect(self.db_path)
+        cache_db.row_factory = aiosqlite.Row
+        try:
+            zip_cache: dict[str, dict] = {}
+            cursor = await cache_db.execute(
+                "SELECT zip_path, mtime, file_size, entries FROM zip_archives"
+            )
+            for r in await cursor.fetchall():
+                zip_cache[r["zip_path"]] = dict(r)
+
+            for library_id, items in list(library_items.items()):
+                if self._cancel_requested:
+                    break
+                regular: list[tuple[Path, Path]] = []
+                for file_path, scan_root in items:
+                    if file_path.suffix.lower() == ".zip":
+                        zip_str = str(file_path)
+                        try:
+                            st = file_path.stat()
+                        except OSError:
+                            st = None
+                        cached = zip_cache.get(zip_str)
+                        if (
+                            st is not None
+                            and cached is not None
+                            and cached["mtime"] == st.st_mtime
+                            and cached["file_size"] == st.st_size
+                        ):
+                            entries = json.loads(cached["entries"] or "[]")
+                        else:
+                            entries = await loop.run_in_executor(
+                                None,
+                                zip_handler.list_models_in_zip,
+                                zip_str,
+                                self.supported_extensions,
+                            )
+                            if st is not None:
+                                await cache_db.execute(
+                                    "INSERT OR REPLACE INTO zip_archives "
+                                    "(zip_path, mtime, file_size, entries) "
+                                    "VALUES (?, ?, ?, ?)",
+                                    (
+                                        zip_str,
+                                        st.st_mtime,
+                                        st.st_size,
+                                        json.dumps(entries),
+                                    ),
+                                )
+                        for entry in entries:
+                            zip_entries.append(
+                                (file_path, entry, library_id, scan_root)
+                            )
+                    else:
+                        regular.append((file_path, scan_root))
+                library_items[library_id] = regular
+            await cache_db.commit()
+        finally:
+            await cache_db.close()
 
         all_count = sum(len(items) for items in library_items.values()) + len(
             zip_entries

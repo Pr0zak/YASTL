@@ -114,12 +114,30 @@ CREATE INDEX IF NOT EXISTS idx_models_library_id ON models(library_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 CREATE INDEX IF NOT EXISTS idx_collection_models_model ON collection_models(model_id);
 CREATE INDEX IF NOT EXISTS idx_collection_models_position ON collection_models(collection_id, position);
+CREATE INDEX IF NOT EXISTS idx_model_tags_tag ON model_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_model_categories_category ON model_categories(category_id);
+
+-- Cache of zip entry listings so rescans skip re-reading unchanged
+-- archives (mtime+size match) — a large win on NFS-mounted libraries.
+CREATE TABLE IF NOT EXISTS zip_archives (
+    zip_path TEXT PRIMARY KEY,
+    mtime REAL,
+    file_size INTEGER,
+    entries TEXT
+);
 """
 
 # Indexes on migrated columns — created after migrations in init_db()
 _POST_MIGRATION_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_models_status ON models(status)",
     "CREATE INDEX IF NOT EXISTS idx_models_zip_path ON models(zip_path)",
+    # Composite (status, sort-column) indexes serve the main listing
+    # query: WHERE status='active' ORDER BY <col> — without them every
+    # page sorts the full table.
+    "CREATE INDEX IF NOT EXISTS idx_models_status_updated ON models(status, updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_models_status_created ON models(status, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_models_status_name ON models(status, name)",
+    "CREATE INDEX IF NOT EXISTS idx_models_status_size ON models(status, file_size)",
 ]
 
 MIGRATION_SQL = """

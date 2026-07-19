@@ -220,3 +220,86 @@ async def apply_auto_tags(db: aiosqlite.Connection, model_id: int) -> int:
         tags_added += 1
 
     return tags_added
+
+
+async def enrich_models_page(db, models: list[dict]) -> list[dict]:
+    """Attach tags, categories, favorite/duplicate flags, and collections
+    to a page of model dicts.
+
+    Uses five batched IN-clause queries for the whole page instead of
+    four queries per model (the previous N+1 pattern cost ~200 queries
+    per 50-model page).
+    """
+    if not models:
+        return models
+
+    ids = [m["id"] for m in models]
+    ph = ", ".join("?" for _ in ids)
+
+    tags_map: dict[int, list[str]] = {}
+    cursor = await db.execute(
+        f"""SELECT mt.model_id AS mid, t.name FROM tags t
+            JOIN model_tags mt ON mt.tag_id = t.id
+            WHERE mt.model_id IN ({ph})
+            ORDER BY t.name""",
+        ids,
+    )
+    for r in await cursor.fetchall():
+        tags_map.setdefault(r["mid"], []).append(r["name"])
+
+    cats_map: dict[int, list[str]] = {}
+    cursor = await db.execute(
+        f"""SELECT mc.model_id AS mid, c.name FROM categories c
+            JOIN model_categories mc ON mc.category_id = c.id
+            WHERE mc.model_id IN ({ph})
+            ORDER BY c.name""",
+        ids,
+    )
+    for r in await cursor.fetchall():
+        cats_map.setdefault(r["mid"], []).append(r["name"])
+
+    cursor = await db.execute(
+        f"SELECT model_id FROM favorites WHERE model_id IN ({ph})", ids
+    )
+    fav_ids = {r["model_id"] for r in await cursor.fetchall()}
+
+    colls_map: dict[int, list[dict]] = {}
+    cursor = await db.execute(
+        f"""SELECT cm.model_id AS mid, c.name, c.color FROM collections c
+            JOIN collection_models cm ON cm.collection_id = c.id
+            WHERE cm.model_id IN ({ph})""",
+        ids,
+    )
+    for r in await cursor.fetchall():
+        colls_map.setdefault(r["mid"], []).append(
+            {"name": r["name"], "color": r["color"]}
+        )
+
+    hashes = [m["file_hash"] for m in models if m.get("file_hash")]
+    dup_hashes: set[str] = set()
+    if hashes:
+        hph = ", ".join("?" for _ in hashes)
+        cursor = await db.execute(
+            f"""SELECT file_hash FROM models
+                WHERE file_hash IN ({hph})
+                  AND file_hash IS NOT NULL AND file_hash != ''
+                  AND status = 'active'
+                GROUP BY file_hash
+                HAVING COUNT(*) > 1""",
+            hashes,
+        )
+        dup_hashes = {r["file_hash"] for r in await cursor.fetchall()}
+
+    for m in models:
+        mid = m["id"]
+        m["tags"] = tags_map.get(mid, [])
+        m["categories"] = cats_map.get(mid, [])
+        m["is_favorite"] = mid in fav_ids
+        m["collections"] = colls_map.get(mid, [])
+        m["collection_colors"] = [
+            c["color"] for c in m["collections"] if c["color"]
+        ]
+        m["is_duplicate"] = bool(
+            m.get("file_hash") and m["file_hash"] in dup_hashes
+        )
+    return models

@@ -5,7 +5,7 @@ import re
 from fastapi import APIRouter, Query, Request
 import aiosqlite
 
-from app.api._helpers import open_db
+from app.api._helpers import open_db, enrich_models_page
 
 from app.api.routes_models import _zip_display_name
 
@@ -245,59 +245,14 @@ async def search_models(
         rows = await cursor.fetchall()
 
         # -----------------------------------------------------------------
-        # Enrich each model with tags and categories
+        # Enrich the page (tags, categories, favorites, collections, dups)
         # -----------------------------------------------------------------
         models = []
         for row in rows:
             model = dict(row)
             model.pop("_fts_rank", None)
-            model_id = model["id"]
-
-            # Tags
-            cursor = await db.execute(
-                """
-                SELECT t.name FROM tags t
-                JOIN model_tags mt ON mt.tag_id = t.id
-                WHERE mt.model_id = ?
-                ORDER BY t.name
-                """,
-                (model_id,),
-            )
-            tag_rows = await cursor.fetchall()
-            model["tags"] = [dict(r)["name"] for r in tag_rows]
-
-            # Categories
-            cursor = await db.execute(
-                """
-                SELECT c.name FROM categories c
-                JOIN model_categories mc ON mc.category_id = c.id
-                WHERE mc.model_id = ?
-                ORDER BY c.name
-                """,
-                (model_id,),
-            )
-            cat_rows = await cursor.fetchall()
-            model["categories"] = [dict(r)["name"] for r in cat_rows]
-
-            # Collections (name + color for card display)
-            cursor = await db.execute(
-                """
-                SELECT c.name, c.color FROM collections c
-                JOIN collection_models cm ON cm.collection_id = c.id
-                WHERE cm.model_id = ?
-                """,
-                (model_id,),
-            )
-            col_rows = await cursor.fetchall()
-            model["collections"] = [
-                {"name": dict(r)["name"], "color": dict(r)["color"]}
-                for r in col_rows
-            ]
-            model["collection_colors"] = [
-                c["color"] for c in model["collections"] if c["color"]
-            ]
-
             models.append(model)
+        await enrich_models_page(db, models)
 
         # Attach zip group info to representative models
         if zip_group_map:

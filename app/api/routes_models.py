@@ -11,6 +11,7 @@ from app.config import settings
 from app.services import zip_handler
 from app.api._helpers import (
     open_db,
+    enrich_models_page,
     _get_db_path,
     _fetch_model_with_relations,
     _sanitize_filename,
@@ -246,82 +247,9 @@ async def list_models(
         cursor = await db.execute(query_sql, params + [limit, offset])
         rows = await cursor.fetchall()
 
-        # Enrich each model with tags, categories, and favorite status
-        models = []
-        for row in rows:
-            model = dict(row)
-            model_id = model["id"]
-
-            # Tags
-            cursor = await db.execute(
-                """
-                SELECT t.name FROM tags t
-                JOIN model_tags mt ON mt.tag_id = t.id
-                WHERE mt.model_id = ?
-                ORDER BY t.name
-                """,
-                (model_id,),
-            )
-            tag_rows = await cursor.fetchall()
-            model["tags"] = [dict(r)["name"] for r in tag_rows]
-
-            # Categories
-            cursor = await db.execute(
-                """
-                SELECT c.name FROM categories c
-                JOIN model_categories mc ON mc.category_id = c.id
-                WHERE mc.model_id = ?
-                ORDER BY c.name
-                """,
-                (model_id,),
-            )
-            cat_rows = await cursor.fetchall()
-            model["categories"] = [dict(r)["name"] for r in cat_rows]
-
-            # Favorite status
-            cursor = await db.execute(
-                "SELECT 1 FROM favorites WHERE model_id = ?", (model_id,)
-            )
-            model["is_favorite"] = await cursor.fetchone() is not None
-
-            # Collections (name + color for card display)
-            cursor = await db.execute(
-                """
-                SELECT c.name, c.color FROM collections c
-                JOIN collection_models cm ON cm.collection_id = c.id
-                WHERE cm.model_id = ?
-                """,
-                (model_id,),
-            )
-            col_rows = await cursor.fetchall()
-            model["collections"] = [
-                {"name": dict(r)["name"], "color": dict(r)["color"]}
-                for r in col_rows
-            ]
-            model["collection_colors"] = [
-                c["color"] for c in model["collections"] if c["color"]
-            ]
-
-            models.append(model)
-
-        # Mark duplicates: compute set of hashes that appear more than once
-        hashes_in_page = [m["file_hash"] for m in models if m.get("file_hash")]
-        dup_hashes: set[str] = set()
-        if hashes_in_page:
-            placeholders = ", ".join("?" for _ in hashes_in_page)
-            cursor = await db.execute(
-                f"""SELECT file_hash FROM models
-                    WHERE file_hash IN ({placeholders})
-                      AND file_hash IS NOT NULL AND file_hash != ''
-                      AND status = 'active'
-                    GROUP BY file_hash
-                    HAVING COUNT(*) > 1""",
-                hashes_in_page,
-            )
-            dup_hashes = {dict(r)["file_hash"] for r in await cursor.fetchall()}
-
-        for m in models:
-            m["is_duplicate"] = bool(m.get("file_hash") and m["file_hash"] in dup_hashes)
+        # Enrich the page with tags/categories/favorites/collections/dups
+        models = [dict(row) for row in rows]
+        await enrich_models_page(db, models)
 
         # Attach zip group info to representative models
         if zip_group_map:
@@ -668,12 +596,17 @@ async def get_related_models(request: Request, model_id: int):
         else:
             # Find other models in the same parent folder
             parent_folder = str(Path(model["file_path"]).parent)
+            # Range comparison instead of LIKE: SQLite's default
+            # case-insensitive LIKE can't use idx_models_file_path, so
+            # this was a full-table scan on every detail-panel open.
+            # '0' is the character after '/' in ASCII.
             cursor = await db.execute(
                 "SELECT id, name, file_format, file_size, thumbnail_path, zip_entry "
-                "FROM models WHERE file_path LIKE ? AND id != ? AND status = 'active' "
+                "FROM models WHERE file_path > ? AND file_path < ? "
+                "AND id != ? AND status = 'active' "
                 "AND zip_path IS NULL "
                 "ORDER BY name LIMIT 50",
-                (parent_folder + "/%", model_id),
+                (parent_folder + "/", parent_folder + "0", model_id),
             )
 
         related = [dict(r) for r in await cursor.fetchall()]
