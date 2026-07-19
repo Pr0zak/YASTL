@@ -8,6 +8,12 @@ import { ICONS } from '../icons.js';
 const TAG_PAGE_SIZE = 30;
 const tagSearch = ref('');
 const tagShowAll = ref(false);
+const dragOverCollection = ref(null);
+
+function onDropCollection(col) {
+    dragOverCollection.value = null;
+    emit('dropOnCollection', col.id);
+}
 
 const props = defineProps({
     sidebarOpen: { type: Boolean, default: false },
@@ -41,6 +47,7 @@ const emit = defineEmits([
     'openCollectionModal',
     'editCollection',
     'togglePinCollection',
+    'dropOnCollection',
     'startEditCollection',
     'saveCollectionName',
     'cancelEditCollection',
@@ -253,8 +260,12 @@ const manualCollections = computed(() =>
                         @click.stop="emit('openDuplicatesReview')">Review</button>
             </div>
             <div v-for="col in collections" :key="col.id"
-                 class="sidebar-item" :class="{ active: filters.collection === col.id }"
-                 @click="emit('setCollectionFilter', col.id)">
+                 class="sidebar-item" :class="{ active: filters.collection === col.id, 'drop-target': dragOverCollection === col.id }"
+                 @click="emit('setCollectionFilter', col.id)"
+                 @dragover.prevent="dragOverCollection = col.id"
+                 @dragenter.prevent="dragOverCollection = col.id"
+                 @dragleave="dragOverCollection === col.id && (dragOverCollection = null)"
+                 @drop.prevent="onDropCollection(col)">
                 <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
                 <template v-if="editingCollectionId === col.id">
                     <input class="sidebar-edit-input" :value="editCollectionName"

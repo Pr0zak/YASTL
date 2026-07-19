@@ -22,6 +22,8 @@ const emit = defineEmits([
     'toggleSelect',
     'toggleFavorite',
     'expandZipGroup',
+    'dragStart',
+    'dragEnd',
 ]);
 
 function isZipGroup(model) {
@@ -30,6 +32,16 @@ function isZipGroup(model) {
 
 function isError(model) {
     return model.status === 'error';
+}
+
+function onDragStart(model, event) {
+    if (isZipGroup(model)) {
+        event.preventDefault();
+        return;
+    }
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('text/plain', String(model.id));
+    emit('dragStart', model);
 }
 
 function onCardClick(model, idx, event) {
@@ -99,7 +111,11 @@ function cardStyle(model) {
     <!-- Grid View -->
     <div v-else-if="viewMode === 'grid'" class="models-grid" :class="'density-' + density">
         <div v-for="(model, idx) in models" :key="model.id"
-             class="model-card" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-card': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model, idx, $event)">
+             class="model-card" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-card': isZipGroup(model) }" :style="cardStyle(model)"
+             :draggable="!isZipGroup(model)"
+             @dragstart="onDragStart(model, $event)"
+             @dragend="emit('dragEnd')"
+             @click="onCardClick(model, idx, $event)">
             <!-- Thumbnail -->
             <div class="card-thumbnail">
                 <img :src="thumbUrl(model)"

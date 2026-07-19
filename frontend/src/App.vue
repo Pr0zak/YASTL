@@ -54,6 +54,7 @@ import {
     apiUndoPrint,
     apiGetRelatedTags,
     apiGetModelDocs,
+    apiBulkAddToCollection,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -1799,6 +1800,32 @@ async function undoPrint() {
     }
 }
 
+// Drag-and-drop model cards onto sidebar collections
+const draggedModelIds = ref([]);
+function onDragModelStart(model) {
+    // If the dragged card is part of the current selection, drag them all.
+    if (selectionMode.value && selectedModels.has(model.id)) {
+        draggedModelIds.value = [...selectedModels];
+    } else {
+        draggedModelIds.value = [model.id];
+    }
+}
+function onDragModelEnd() {
+    draggedModelIds.value = [];
+}
+async function onDropOnCollection(collectionId) {
+    const ids = draggedModelIds.value;
+    draggedModelIds.value = [];
+    if (!ids.length) return;
+    try {
+        await apiBulkAddToCollection(ids, collectionId);
+        await fetchCollections();
+        showToast(`Added ${ids.length} model${ids.length === 1 ? '' : 's'} to collection`, 'success');
+    } catch {
+        showToast('Failed to add to collection', 'error');
+    }
+}
+
 async function togglePinCollection(col) {
     try {
         await apiToggleCollectionPin(col.id);
@@ -1925,6 +1952,7 @@ const { pickNextCollectionColor } = collectionsComposable;
             @openCollectionModal="() => openSmartCollectionModal()"
             @editCollection="editSmartCollection"
             @togglePinCollection="togglePinCollection"
+            @dropOnCollection="onDropOnCollection"
             @startEditCollection="startEditCollection"
             @saveCollectionName="saveCollectionName"
             @cancelEditCollection="editingCollectionId = null"
@@ -2026,6 +2054,8 @@ const { pickNextCollectionColor } = collectionsComposable;
                 @toggleFavorite="toggleFavorite"
                 @expandZipGroup="setZipFilter"
                 @filterByTag="filterByTag"
+                @dragStart="onDragModelStart"
+                @dragEnd="onDragModelEnd"
             />
 
             <!-- Load More / Pagination Info -->
