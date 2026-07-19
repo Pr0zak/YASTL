@@ -52,9 +52,9 @@ export function useViewer() {
      *  the previous Phong material lacked under ACES tone mapping. */
     const DEFAULT_MATERIAL = new THREE.MeshStandardMaterial({
         color: 0x2ec4b6,
-        roughness: 0.42,
-        metalness: 0.08,
-        envMapIntensity: 0.9,
+        roughness: 0.62,
+        metalness: 0.0,
+        envMapIntensity: 0.5,
         flatShading: false,
         side: THREE.DoubleSide,
     });
@@ -272,7 +272,8 @@ export function useViewer() {
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
+        // Lower exposure so light/white materials don't wash out.
+        renderer.toneMappingExposure = 0.82;
         container.appendChild(renderer.domElement);
 
         // ---- Controls ----
@@ -286,6 +287,8 @@ export function useViewer() {
         // ---- Environment (image-based lighting for the PBR material) ----
         const pmrem = new THREE.PMREMGenerator(renderer);
         scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        // Dim the IBL — RoomEnvironment is bright and over-lit the models.
+        scene.environmentIntensity = 0.5;
         pmrem.dispose();
 
         // ---- Lights ----
@@ -553,6 +556,17 @@ export function useViewer() {
                 (gltf) => {
                     gltf.scene.traverse((child) => {
                         if (child.isMesh) {
+                            // Decimated STL previews come through as GLB with
+                            // trimesh's plain near-white material, which blows
+                            // out under the environment light. Give those the
+                            // teal default so previews match native models;
+                            // keep genuine textures / vertex colors as-is.
+                            const m = child.material;
+                            const hasOwnLook = m && (m.map || m.vertexColors
+                                || (m.color && !isNearWhite(m.color)));
+                            if (!hasOwnLook) {
+                                child.material = DEFAULT_MATERIAL.clone();
+                            }
                             child.castShadow = true;
                             child.receiveShadow = true;
                         }
@@ -562,6 +576,10 @@ export function useViewer() {
                 reject
             );
         });
+    }
+
+    function isNearWhite(color) {
+        return color.r > 0.85 && color.g > 0.85 && color.b > 0.85;
     }
 
     function parseObj(buffer) {
