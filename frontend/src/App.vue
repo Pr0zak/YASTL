@@ -8,7 +8,7 @@ import { debounce } from './search.js';
 import { ICONS } from './icons.js';
 import { useToast } from './composables/useToast.js';
 import { useConfirm } from './composables/useConfirm.js';
-import { useViewer } from './composables/useViewer.js';
+// useViewer (and all of Three.js) is loaded on demand — see ensureViewer().
 
 /* ---- Child components ---- */
 import ConfirmDialog from './components/ConfirmDialog.vue';
@@ -65,18 +65,30 @@ const {
     showConfirm, onConfirm, onCancel,
 } = useConfirm();
 
-/* ---- 3D Viewer ---- */
-const {
-    viewerLoading,
-    modelDimensions,
-    initViewer,
-    loadModel,
-    resetCamera,
-    setViewerTheme,
-    setBedOverlay,
-    clearBedOverlay,
-    dispose: disposeViewer,
-} = useViewer();
+/* ---- 3D Viewer (lazy-loaded) ----
+ * Three.js is ~600 KB — the largest slice of the bundle and only needed
+ * once a model detail is opened. The viewer composable is imported
+ * dynamically so it splits into its own chunk and never blocks initial
+ * page load. viewerLoading stays local so the template is reactive
+ * before the module resolves. */
+const viewerLoading = ref(false);
+let viewer = null;
+
+async function ensureViewer() {
+    if (!viewer) {
+        const mod = await import('./composables/useViewer.js');
+        viewer = mod.useViewer();
+    }
+    return viewer;
+}
+
+const initViewer = (...a) => viewer?.initViewer(...a);
+const loadModel = (...a) => viewer?.loadModel(...a);
+const resetCamera = (...a) => viewer?.resetCamera(...a);
+const setViewerTheme = (...a) => viewer?.setViewerTheme(...a);
+const setBedOverlay = (...a) => viewer?.setBedOverlay(...a);
+const clearBedOverlay = (...a) => viewer?.clearBedOverlay(...a);
+const disposeViewer = (...a) => viewer?.dispose(...a);
 
 /* ---- Core reactive state ---- */
 const models = ref([]);
@@ -772,6 +784,8 @@ async function viewModel(model) {
     }
 
     viewerLoading.value = true;
+    await ensureViewer();
+    if (seq !== viewSeq) return;
     initViewer('viewer-container', colorTheme.value);
 
     const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];

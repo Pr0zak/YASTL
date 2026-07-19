@@ -11,10 +11,20 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        // Include build timestamp in chunk filenames to bust caches on every deploy
+        // Split heavy vendor libs into their own long-lived chunks so a
+        // deploy that only touches app code doesn't force browsers to
+        // re-download Three.js. (Three.js is additionally behind a
+        // dynamic import, so it isn't fetched until a model is opened.)
+        manualChunks: {
+          three: ['three'],
+          vue: ['vue'],
+        },
+        // Timestamp only the entry filename to bust the index.html asset
+        // reference on every deploy; content-hashed chunks keep their
+        // names when unchanged so the browser cache survives updates.
         entryFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
-        chunkFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
-        assetFileNames: `assets/[name]-[hash]-${Date.now()}.[ext]`,
+        chunkFileNames: `assets/[name]-[hash].js`,
+        assetFileNames: `assets/[name]-[hash].[ext]`,
       },
     },
   },
