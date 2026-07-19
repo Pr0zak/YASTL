@@ -292,6 +292,34 @@
     gap: 12px;
     color: var(--text-muted);
     font-size: 0.85rem;
+    z-index: 2;
+}
+
+/* Static thumbnail shown behind the spinner so opening feels instant. */
+.viewer-thumb-underlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0.35;
+    filter: blur(1px);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.viewer-progress {
+    width: 160px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    overflow: hidden;
+}
+
+.viewer-progress-fill {
+    height: 100%;
+    background: var(--accent, #2ec4b6);
+    transition: width 0.15s ease;
 }
 
 .viewer-error-notice {

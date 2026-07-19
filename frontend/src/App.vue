@@ -72,6 +72,11 @@ const {
  * page load. viewerLoading stays local so the template is reactive
  * before the module resolves. */
 const viewerLoading = ref(false);
+const viewerProgress = ref(null);   // 0..1 while loading, else null
+const viewerDecimated = ref(false); // showing a decimated preview of a big mesh
+// Meshes above this face count load as a decimated GLB preview (fast,
+// no browser freeze) with an opt-in "Load full resolution" control.
+const DECIMATE_FACES = 250000;
 let viewer = null;
 
 async function ensureViewer() {
@@ -784,36 +789,49 @@ async function viewModel(model) {
     }
 
     viewerLoading.value = true;
+    viewerProgress.value = 0;
+    viewerDecimated.value = false;
     await ensureViewer();
     if (seq !== viewSeq) return;
     initViewer('viewer-container', colorTheme.value);
 
-    const supportedViewerFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
-    const fmt = (selectedModel.value.file_format || '').toLowerCase();
-    const glbUrl = `/api/models/${selectedModel.value.id}/file/glb`;
+    const cur = selectedModel.value;
+    const nativeFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
+    const fmt = (cur.file_format || '').toLowerCase();
+    const faceCount = cur.face_count || 0;
+    const fileUrl = `/api/models/${cur.id}/file`;
+    const glbUrl = `/api/models/${cur.id}/file/glb`;
+    const onProgress = (f) => { if (seq === viewSeq) viewerProgress.value = f; };
+    const isBig = faceCount > DECIMATE_FACES;
 
     let loaded = false;
-
-    if (supportedViewerFormats.includes(fmt)) {
-        const fileUrl = `/api/models/${selectedModel.value.id}/file`;
+    // Big meshes (or formats the browser can't parse) load a decimated GLB
+    // preview so the viewer never blocks; small native meshes load directly.
+    if (isBig || !nativeFormats.includes(fmt)) {
         try {
-            await loadModel(fileUrl, fmt);
+            await loadModel(glbUrl, 'glb', { onProgress });
+            loaded = true;
+            viewerDecimated.value = isBig;
+        } catch (err) {
+            console.warn('GLB preview failed, trying native:', err);
+            if (nativeFormats.includes(fmt)) {
+                try { await loadModel(fileUrl, fmt, { onProgress }); loaded = true; }
+                catch (e) { console.error('Native load also failed:', e); }
+            }
+        }
+    } else {
+        try {
+            await loadModel(fileUrl, fmt, { onProgress });
             loaded = true;
         } catch (err) {
             console.warn('Native loader failed for', fmt, '-- trying GLB fallback:', err);
-        }
-    }
-
-    if (!loaded && fmt) {
-        try {
-            await loadModel(glbUrl, 'glb');
-            loaded = true;
-        } catch (err) {
-            console.error('GLB fallback also failed:', err);
+            try { await loadModel(glbUrl, 'glb', { onProgress }); loaded = true; }
+            catch (e) { console.error('GLB fallback also failed:', e); }
         }
     }
     if (seq !== viewSeq) return;
     viewerLoading.value = false;
+    viewerProgress.value = null;
 
     // Auto-show bed overlay if enabled
     if (loaded && bedConfig.enabled) {
@@ -827,6 +845,31 @@ async function viewModel(model) {
         bedVisible.value = true;
     } else {
         bedVisible.value = false;
+    }
+}
+
+// Reload the current model at full resolution (native file, parsed off
+// the main thread with flat shading). Offered for decimated previews.
+async function loadFullResolution() {
+    const model = selectedModel.value;
+    if (!model) return;
+    const fmt = (model.file_format || '').toLowerCase();
+    const nativeFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
+    if (!nativeFormats.includes(fmt)) return;
+    viewerLoading.value = true;
+    viewerProgress.value = 0;
+    try {
+        await loadModel(`/api/models/${model.id}/file`, fmt, {
+            flat: true,
+            onProgress: (f) => { viewerProgress.value = f; },
+        });
+        viewerDecimated.value = false;
+    } catch (err) {
+        console.error('Full-resolution load failed:', err);
+        showToast('Could not load full resolution', 'error');
+    } finally {
+        viewerLoading.value = false;
+        viewerProgress.value = null;
     }
 }
 
@@ -1814,6 +1857,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :selectedModel="selectedModel"
         :showDetail="showDetail"
         :viewerLoading="viewerLoading"
+        :viewerProgress="viewerProgress"
+        :viewerDecimated="viewerDecimated"
         :editName="editName"
         :editDesc="editDesc"
         :editSourceUrl="editSourceUrl"
@@ -1861,6 +1906,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @toggleBed="toggleBed"
         @openRelatedModel="openRelatedModel"
         @filterByTag="filterByTag"
+        @loadFullResolution="loadFullResolution"
         @regenerateThumbnail="regenerateThumbnail"
     />
 

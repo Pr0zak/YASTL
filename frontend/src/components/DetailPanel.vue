@@ -10,6 +10,8 @@ const props = defineProps({
     selectedModel: { type: Object, default: null },
     showDetail: { type: Boolean, default: false },
     viewerLoading: { type: Boolean, default: false },
+    viewerProgress: { type: Number, default: null },
+    viewerDecimated: { type: Boolean, default: false },
     editName: { type: String, default: '' },
     editDesc: { type: String, default: '' },
     editSourceUrl: { type: String, default: '' },
@@ -61,7 +63,14 @@ const emit = defineEmits([
     'regenerateThumbnail',
     'openRelatedModel',
     'filterByTag',
+    'loadFullResolution',
 ]);
+
+function viewerThumb(model) {
+    if (model && model.thumbnail_path) return `/thumbnails/${model.thumbnail_path}`;
+    if (model) return `/api/models/${model.id}/thumbnail`;
+    return '';
+}
 
 const SLICER_FORMATS = ['stl', '3mf', 'obj'];
 const SLICER_PROTOCOLS = {
@@ -137,10 +146,18 @@ function formatClass(fmt) {
                 <!-- 3D Viewer -->
                 <div class="detail-viewer">
                     <div id="viewer-container">
+                        <!-- Thumbnail underlay so opening feels instant while 3D loads -->
+                        <img v-if="viewerLoading && selectedModel.status !== 'error'"
+                             :src="viewerThumb(selectedModel)" class="viewer-thumb-underlay" alt=""
+                             @error="(e) => (e.target.style.display = 'none')">
                         <!-- Viewer loading -->
                         <div v-if="viewerLoading" class="viewer-loading">
                             <div class="spinner"></div>
-                            <span>Loading 3D model...</span>
+                            <span>Loading 3D model…</span>
+                            <div v-if="viewerProgress != null" class="viewer-progress">
+                                <div class="viewer-progress-fill"
+                                     :style="{ width: Math.round(viewerProgress * 100) + '%' }"></div>
+                            </div>
                         </div>
                         <!-- Error model: no 3D preview -->
                         <div v-else-if="selectedModel.status === 'error'" class="viewer-error-notice">
@@ -152,6 +169,11 @@ function formatClass(fmt) {
                     <!-- Viewer toolbar -->
                     <div class="viewer-toolbar">
                         <button class="btn" @click="emit('resetView')">Reset View</button>
+                        <button v-if="viewerDecimated && !viewerLoading" class="btn"
+                                @click="emit('loadFullResolution')"
+                                title="Showing a simplified preview — load the full-detail mesh">
+                            Full resolution
+                        </button>
                         <button class="btn" :class="{ 'btn-active': bedVisible }"
                                 @click="emit('toggleBed')"
                                 :title="bedConfig.enabled ? bedConfig.width + '×' + bedConfig.depth + '×' + bedConfig.height + 'mm' : 'Enable print bed in Settings first'">
