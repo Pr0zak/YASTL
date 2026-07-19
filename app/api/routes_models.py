@@ -269,46 +269,80 @@ async def list_models(
 
 
 @router.get("/duplicates")
-async def find_duplicates(request: Request):
-    """Find all groups of duplicate files, grouped by file_hash where count > 1."""
+async def find_duplicates(
+    request: Request,
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Find groups of duplicate files (same file_hash, count > 1), paginated.
+
+    Only active models are grouped and listed — previously missing/error
+    rows leaked into groups, and every group ran its own member query.
+    """
     db_path = _get_db_path(request)
+
+    group_filter = """
+        FROM models
+        WHERE file_hash IS NOT NULL AND file_hash != ''
+          AND status = 'active'
+        GROUP BY file_hash
+        HAVING COUNT(*) > 1
+    """
 
     async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # Find hashes with more than one model
         cursor = await db.execute(
-            """
-            SELECT file_hash, COUNT(*) as count
-            FROM models
-            WHERE file_hash IS NOT NULL AND file_hash != ''
-              AND status = 'active'
-            GROUP BY file_hash
-            HAVING COUNT(*) > 1
-            ORDER BY count DESC
-            """
+            f"SELECT COUNT(*) AS cnt FROM (SELECT file_hash {group_filter})"
         )
-        hash_rows = await cursor.fetchall()
+        total_groups = dict(await cursor.fetchone())["cnt"]
+
+        cursor = await db.execute(
+            f"""
+            SELECT file_hash, COUNT(*) as count
+            {group_filter}
+            ORDER BY count DESC, file_hash
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        )
+        hash_rows = [dict(r) for r in await cursor.fetchall()]
 
         groups = []
-        for hash_row in hash_rows:
-            hash_dict = dict(hash_row)
-            file_hash = hash_dict["file_hash"]
-
+        if hash_rows:
+            hashes = [h["file_hash"] for h in hash_rows]
+            ph = ", ".join("?" for _ in hashes)
             cursor = await db.execute(
-                "SELECT * FROM models WHERE file_hash = ? ORDER BY name",
-                (file_hash,),
+                f"""
+                SELECT id, name, file_path, file_format, file_size,
+                       thumbnail_path, zip_path, zip_entry, created_at,
+                       file_hash
+                FROM models
+                WHERE file_hash IN ({ph}) AND status = 'active'
+                ORDER BY file_hash, name
+                """,
+                hashes,
             )
-            model_rows = await cursor.fetchall()
-            groups.append(
-                {
-                    "file_hash": file_hash,
-                    "count": hash_dict["count"],
-                    "models": [dict(r) for r in model_rows],
-                }
-            )
+            by_hash: dict[str, list[dict]] = {}
+            for r in await cursor.fetchall():
+                m = dict(r)
+                by_hash.setdefault(m["file_hash"], []).append(m)
 
-        return {"duplicate_groups": groups, "total_groups": len(groups)}
+            for h in hash_rows:
+                groups.append(
+                    {
+                        "file_hash": h["file_hash"],
+                        "count": h["count"],
+                        "models": by_hash.get(h["file_hash"], []),
+                    }
+                )
+
+        return {
+            "duplicate_groups": groups,
+            "total_groups": total_groups,
+            "limit": limit,
+            "offset": offset,
+        }
 
 
 # ---------------------------------------------------------------------------

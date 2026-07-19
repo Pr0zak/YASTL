@@ -36,6 +36,7 @@ const emit = defineEmits([
     'setCollectionFilter',
     'toggleFavoritesFilter',
     'toggleDuplicatesFilter',
+    'openDuplicatesReview',
     'openCollectionModal',
     'editCollection',
     'startEditCollection',
@@ -239,6 +240,8 @@ const manualCollections = computed(() =>
             <div class="sidebar-item" :class="{ active: filters.duplicatesOnly }" @click="emit('toggleDuplicatesFilter')">
                 <span v-html="ICONS.copy"></span>
                 <span>Duplicates</span>
+                <button class="sidebar-item-action" title="Review duplicates"
+                        @click.stop="emit('openDuplicatesReview')">Review</button>
             </div>
             <div v-for="col in collections" :key="col.id"
                  class="sidebar-item" :class="{ active: filters.collection === col.id }"

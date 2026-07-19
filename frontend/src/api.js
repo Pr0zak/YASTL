@@ -516,3 +516,9 @@ export async function apiBulkDelete(modelIds) {
     if (!res.ok) throw new Error('Bulk delete failed');
     return res.json();
 }
+
+export async function apiFindDuplicates(limit = 25, offset = 0) {
+    const res = await fetch(`/api/models/duplicates?limit=${limit}&offset=${offset}`);
+    if (!res.ok) throw new Error('Failed to load duplicates');
+    return res.json();
+}

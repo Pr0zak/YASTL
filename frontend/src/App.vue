@@ -18,6 +18,7 @@ import ModelGrid from './components/ModelGrid.vue';
 import DetailPanel from './components/DetailPanel.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import StatsModal from './components/StatsModal.vue';
+import DuplicatesModal from './components/DuplicatesModal.vue';
 import ImportModal from './components/ImportModal.vue';
 import CollectionModal from './components/CollectionModal.vue';
 import SmartCollectionModal from './components/SmartCollectionModal.vue';
@@ -150,6 +151,12 @@ const saveSearchName = ref('');
 
 // Stats dashboard
 const showStats = ref(false);
+const showDuplicates = ref(false);
+function openDuplicatesReview() { showDuplicates.value = true; }
+async function onDuplicatesChanged() {
+    await fetchModels();
+    await fetchFavoritesCount();
+}
 const statsData = ref(null);
 const statsLoading = ref(false);
 
@@ -1629,6 +1636,7 @@ const { pickNextCollectionColor } = collectionsComposable;
             @setCollectionFilter="setCollectionFilter"
             @toggleFavoritesFilter="toggleFavoritesFilter"
             @toggleDuplicatesFilter="toggleDuplicatesFilter"
+            @openDuplicatesReview="openDuplicatesReview"
             @openCollectionModal="() => openSmartCollectionModal()"
             @editCollection="editSmartCollection"
             @startEditCollection="startEditCollection"
@@ -1868,6 +1876,13 @@ const { pickNextCollectionColor } = collectionsComposable;
         :systemStatus="systemStatus"
         @close="closeStats"
         @restartApp="restartApp"
+    />
+
+    <DuplicatesModal
+        :show="showDuplicates"
+        :confirmFn="showConfirm"
+        @close="showDuplicates = false"
+        @changed="onDuplicatesChanged"
     />
 
     <!-- ============================================================
