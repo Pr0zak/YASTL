@@ -34,10 +34,13 @@ _pool: ProcessPoolExecutor | None = None
 _max_workers: int = 1
 
 # Memory limit for each worker process (in MB).  When a worker exceeds
-# this limit the OS kills it with SIGKILL, which surfaces as a
-# BrokenProcessPool exception that callers can catch and recover from.
-# Set to ~60% of container RAM to leave room for the main process and OS.
-_WORKER_MEMORY_LIMIT_MB: int = 4096  # 4 GB
+# this limit malloc fails and the job raises MemoryError (or the worker
+# dies -> BrokenProcessPool), both of which callers catch and recover
+# from — so this cap is what *prevents* a container-wide OOM.
+# 6 GB on the 8 GB container: with max_workers=1 that leaves ~2 GB for
+# the main process + OS. Raised from 4 GB (a 4 GB-container-era value)
+# so large 3MF previews, which are very memory-hungry to load, fit.
+_WORKER_MEMORY_LIMIT_MB: int = 6144  # 6 GB
 
 # Worker recycling: track how many CPU-bound jobs have been dispatched
 # and recycle the pool after a threshold to shed accumulated memory.
