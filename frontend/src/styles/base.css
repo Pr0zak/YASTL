@@ -22,7 +22,16 @@
     --danger-hover: #ff5544;
     --warning: #f39c12;
     --success: #27ae60;
+    /* Brand aliases so --color-* usages don't fall back to off-brand blue */
+    --color-primary: var(--accent);
+    --color-success: var(--success);
     --shadow: rgba(0, 0, 0, 0.35);
+    /* Theme-scoped overlays so light mode isn't a partial reskin */
+    --overlay-bg: rgba(22, 33, 62, 0.75);
+    --overlay-bg-strong: rgba(22, 33, 62, 0.95);
+    --row-stripe: rgba(30, 42, 69, 0.3);
+    --hover-wash: rgba(255, 255, 255, 0.08);
+    --dot-border: rgba(255, 255, 255, 0.15);
     --radius: 8px;
     --radius-sm: 4px;
     --radius-lg: 12px;
@@ -49,7 +58,15 @@
     --border-light: #e0e0e0;
     --danger: #dc3545;
     --danger-hover: #e04050;
+    --warning: #d98a0b;
+    --success: #1f9d55;
     --shadow: rgba(0, 0, 0, 0.1);
+    /* Light-theme overrides for the shared overlay/utility vars */
+    --overlay-bg: rgba(255, 255, 255, 0.85);
+    --overlay-bg-strong: rgba(255, 255, 255, 0.96);
+    --row-stripe: rgba(0, 0, 0, 0.035);
+    --hover-wash: rgba(0, 0, 0, 0.05);
+    --dot-border: rgba(0, 0, 0, 0.12);
 }
 
 /* ---- Reset & Base ---- */

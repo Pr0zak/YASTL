@@ -12,6 +12,8 @@ const props = defineProps({
     selectedModels: { type: Set, default: () => new Set() },
     thumbnailMode: { type: String, default: 'solid' },
     collectionCardTint: { type: Boolean, default: false },
+    loading: { type: Boolean, default: false },
+    density: { type: String, default: 'comfortable' },
 });
 
 const emit = defineEmits([
@@ -80,14 +82,28 @@ function cardStyle(model) {
 </script>
 
 <template>
+    <!-- Skeleton grid while the first page loads -->
+    <div v-if="loading && !models.length && viewMode === 'grid'"
+         class="models-grid" :class="'density-' + density">
+        <div v-for="n in 12" :key="'sk' + n" class="model-card skeleton-card">
+            <div class="card-thumbnail skeleton-shimmer"></div>
+            <div class="card-body">
+                <div class="skeleton-line skeleton-shimmer" style="width:70%"></div>
+                <div class="skeleton-line skeleton-shimmer" style="width:40%"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Grid View -->
-    <div v-if="viewMode === 'grid'" class="models-grid">
+    <div v-else-if="viewMode === 'grid'" class="models-grid" :class="'density-' + density">
         <div v-for="model in models" :key="model.id"
              class="model-card" :class="{ selected: selectionMode && isSelected(model.id), 'zip-group-card': isZipGroup(model) }" :style="cardStyle(model)" @click="onCardClick(model)">
             <!-- Thumbnail -->
             <div class="card-thumbnail">
                 <img :src="thumbUrl(model)"
                      :alt="model.name"
+                     class="card-thumb-img"
+                     @load="(e) => e.target.classList.add('loaded')"
                      @error="onThumbError"
                      loading="lazy">
                 <div class="no-thumbnail" style="display:none">

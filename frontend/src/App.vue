@@ -100,6 +100,11 @@ const models = ref([]);
 const selectedModel = ref(null);
 const searchQuery = ref('');
 const viewMode = ref('grid');
+const gridDensity = ref(localStorage.getItem('yastl_grid_density') || 'comfortable');
+function toggleGridDensity() {
+    gridDensity.value = gridDensity.value === 'compact' ? 'comfortable' : 'compact';
+    localStorage.setItem('yastl_grid_density', gridDensity.value);
+}
 const loading = ref(false);
 const showDetail = ref(false);
 const allTags = ref([]);
@@ -1062,6 +1067,11 @@ function clearFilters() {
     refreshCurrentView();
 }
 
+function clearAllFilters() {
+    searchQuery.value = '';
+    clearFilters();
+}
+
 function setZipFilter(zipPathValue) {
     if (!zipPathValue) return;
     filters.zipPath = zipPathValue;
@@ -1639,12 +1649,14 @@ const { pickNextCollectionColor } = collectionsComposable;
     <NavBar
         :searchQuery="searchQuery"
         :viewMode="viewMode"
+        :gridDensity="gridDensity"
         :scanStatus="scanStatus"
         :systemStatus="systemStatus"
         :selectionMode="selectionMode"
         :sidebarOpen="sidebarOpen"
         @update:searchQuery="searchQuery = $event"
         @update:viewMode="viewMode = $event"
+        @toggleGridDensity="toggleGridDensity"
         @update:sidebarOpen="sidebarOpen = $event"
         @openSettings="openSettings"
         @openImportModal="openImportModal"
@@ -1772,8 +1784,8 @@ const { pickNextCollectionColor } = collectionsComposable;
                 <span class="scan-stats">{{ bgTaskPercent }}%</span>
             </div>
 
-            <!-- Loading State -->
-            <div v-if="loading && models.length === 0" class="loading-overlay">
+            <!-- Loading State (list view uses a spinner; grid uses skeleton cards) -->
+            <div v-if="loading && models.length === 0 && viewMode === 'list'" class="loading-overlay">
                 <div class="spinner"></div>
                 <span>Loading models...</span>
             </div>
@@ -1786,7 +1798,7 @@ const { pickNextCollectionColor } = collectionsComposable;
                     No results for "{{ searchQuery }}". Try a different search term or adjust your filters.
                 </div>
                 <div class="empty-message" v-else-if="hasActiveFilters">
-                    No models match the current filters. Try clearing some filters.
+                    No models match the current filters.
                 </div>
                 <div class="empty-message" v-else-if="!hasLibraries">
                     Get started by adding a library. Point YASTL at a local directory containing your 3D model files.
@@ -1794,7 +1806,13 @@ const { pickNextCollectionColor } = collectionsComposable;
                 <div class="empty-message" v-else>
                     Your library is empty. Click "Scan" in the toolbar to discover and import 3D models from your directories.
                 </div>
-                <button v-if="!searchQuery && !hasActiveFilters && !hasLibraries"
+                <button v-if="searchQuery || hasActiveFilters"
+                        class="btn btn-primary"
+                        @click="clearAllFilters">
+                    <span v-html="ICONS.close"></span>
+                    Clear search &amp; filters
+                </button>
+                <button v-else-if="!hasLibraries"
                         class="btn btn-primary"
                         @click="openSettings">
                     <span v-html="ICONS.plus"></span>
@@ -1820,6 +1838,8 @@ const { pickNextCollectionColor } = collectionsComposable;
                 :selectedModels="selectedModels"
                 :thumbnailMode="thumbnailMode"
                 :collectionCardTint="collectionCardTint"
+                :loading="loading"
+                :density="gridDensity"
                 @viewModel="viewModel"
                 @toggleSelect="toggleModelSelection"
                 @toggleFavorite="toggleFavorite"

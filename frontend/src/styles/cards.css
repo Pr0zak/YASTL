@@ -9,6 +9,65 @@
     gap: 16px;
 }
 
+/* Grid density */
+.models-grid.density-compact {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+.models-grid.density-compact .card-thumbnail {
+    height: 120px;
+}
+
+/* Thumbnail fade-in: images start transparent, fade in on load */
+.card-thumb-img {
+    opacity: 0;
+    transition: opacity 0.35s ease;
+}
+.card-thumb-img.loaded {
+    opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+    .card-thumb-img { transition: none; opacity: 1; }
+}
+
+/* Skeleton loading cards */
+.skeleton-card {
+    cursor: default;
+    pointer-events: none;
+}
+.skeleton-card:hover {
+    transform: none;
+    border-color: var(--border);
+    box-shadow: none;
+}
+.skeleton-card .card-body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.skeleton-line {
+    height: 10px;
+    border-radius: 4px;
+}
+.skeleton-shimmer {
+    background: linear-gradient(
+        100deg,
+        var(--bg-card) 30%,
+        var(--bg-hover) 50%,
+        var(--bg-card) 70%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-slide 1.3s ease-in-out infinite;
+}
+@keyframes skeleton-slide {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer { animation: none; }
+}
+
 .model-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -169,7 +228,7 @@
 }
 
 .models-table tbody tr:nth-child(even) {
-    background: rgba(30, 42, 69, 0.3);
+    background: var(--row-stripe);
 }
 
 .models-table tbody tr:hover {
@@ -219,7 +278,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: rgba(22, 33, 62, 0.75);
+    background: var(--overlay-bg);
     backdrop-filter: blur(4px);
     border: none;
     color: var(--text-muted);
@@ -239,7 +298,7 @@
 }
 
 .card-fav-btn:hover {
-    background: rgba(22, 33, 62, 0.95);
+    background: var(--overlay-bg-strong);
     transform: scale(1.1);
 }
 
@@ -263,7 +322,7 @@
     width: 22px;
     height: 22px;
     border-radius: 4px;
-    background: rgba(22, 33, 62, 0.75);
+    background: var(--overlay-bg);
     backdrop-filter: blur(4px);
     border: 2px solid var(--border-light);
     color: transparent;

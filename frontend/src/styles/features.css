@@ -733,7 +733,7 @@
 }
 
 .update-status-detail code {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--hover-wash);
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 0.78rem;
@@ -820,7 +820,7 @@
     height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid var(--dot-border);
 }
 
 .sidebar-item-delete {
@@ -880,7 +880,7 @@
 .sidebar-item-action:hover {
     opacity: 1 !important;
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--hover-wash);
 }
 
 .sidebar-smart-icon {

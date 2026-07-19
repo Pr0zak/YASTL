@@ -36,9 +36,14 @@
 .navbar-brand {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
     cursor: default;
+}
+
+.navbar-brand .navbar-logo {
+    flex-shrink: 0;
+    display: block;
 }
 
 .navbar-brand .logo-icon {
