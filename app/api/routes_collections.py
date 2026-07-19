@@ -146,6 +146,31 @@ async def list_collections(request: Request):
     return {"collections": results}
 
 
+@router.post("/preview-count")
+async def preview_smart_count(request: Request):
+    """Count models that match a smart-collection rules object.
+
+    Used by the smart-collection editor to show a live match count as
+    rules are edited, before saving. Body: {"rules": {...}}.
+    """
+    db_path = _get_db_path(request)
+    body = await request.json()
+    rules = body.get("rules") or {}
+    if not isinstance(rules, dict):
+        raise HTTPException(status_code=400, detail="'rules' must be an object")
+
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        try:
+            sql, params = _build_smart_count_query(rules)
+            cursor = await db.execute(sql, params)
+            count = dict(await cursor.fetchone())["cnt"]
+        except Exception as e:  # noqa: BLE001 - malformed rules -> 0
+            logger.warning("Smart-count preview failed: %s", e)
+            count = 0
+    return {"count": count}
+
+
 @router.post("", status_code=201)
 async def create_collection(request: Request):
     """Create a new collection (regular or smart).

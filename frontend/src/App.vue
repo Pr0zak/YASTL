@@ -1661,6 +1661,21 @@ onMounted(() => {
 });
 
 // Smart collection form helpers
+function createCollectionFromCurrentView() {
+    openSmartCollectionModal(); // reset to a fresh smart collection
+    const r = smartCollectionForm.rules;
+    r.format = filters.format || '';
+    r.tags = [...filters.tags];
+    r.tagMatch = filters.tagMatch || 'and';
+    r.categories = [...filters.categories];
+    r.library_id = filters.library_id || null;
+    r.favoritesOnly = filters.favoritesOnly || false;
+    r.duplicatesOnly = filters.duplicatesOnly || false;
+    smartCollectionForm.name = searchQuery.value.trim()
+        ? `"${searchQuery.value.trim()}"`
+        : 'Filtered view';
+}
+
 function updateSmartRuleName(val) { smartCollectionForm.name = val; }
 function updateSmartRuleColor(val) { smartCollectionForm.color = val; }
 function updateSmartRule(key, val) { smartCollectionForm.rules[key] = val; }
@@ -1757,6 +1772,10 @@ const { pickNextCollectionColor } = collectionsComposable;
             <span class="breadcrumb-count">
                 <strong>{{ pagination.total }}</strong> model{{ pagination.total !== 1 ? 's' : '' }}
             </span>
+            <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="createCollectionFromCurrentView"
+                    title="Save these filters as a smart collection">
+                <span v-html="ICONS.collection"></span> Save as collection
+            </button>
             <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="clearFilters">Clear all</button>
         </div>
     </div>

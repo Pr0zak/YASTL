@@ -553,3 +553,13 @@ export async function apiCleanupTags() {
     if (!res.ok) throw new Error('Tag cleanup failed');
     return res.json();
 }
+
+export async function apiPreviewSmartCount(rules) {
+    const res = await fetch('/api/collections/preview-count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules }),
+    });
+    if (!res.ok) throw new Error('Preview count failed');
+    return res.json();
+}

@@ -2,8 +2,9 @@
 /**
  * SmartCollectionModal - Unified collection modal (supports optional smart rules).
  */
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { ICONS } from '../icons.js';
+import { apiPreviewSmartCount } from '../api.js';
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -78,6 +79,37 @@ const rulesExpanded = computed(() => {
     return showRules.value || hasActiveRules();
 });
 
+// Live match count as rules are edited (debounced)
+const previewCount = ref(null);
+const previewLoading = ref(false);
+let previewTimer = null;
+let previewSeq = 0;
+
+watch(
+    () => [props.show, JSON.stringify(props.form.rules)],
+    () => {
+        if (!props.show || !hasActiveRules()) {
+            previewCount.value = null;
+            return;
+        }
+        if (previewTimer) clearTimeout(previewTimer);
+        previewLoading.value = true;
+        const seq = ++previewSeq;
+        const rules = JSON.parse(JSON.stringify(props.form.rules));
+        previewTimer = setTimeout(async () => {
+            try {
+                const data = await apiPreviewSmartCount(rules);
+                if (seq === previewSeq) previewCount.value = data.count;
+            } catch {
+                if (seq === previewSeq) previewCount.value = null;
+            } finally {
+                if (seq === previewSeq) previewLoading.value = false;
+            }
+        }, 350);
+    },
+    { immediate: true, deep: true }
+);
+
 function toggleRules() {
     showRules.value = !showRules.value;
 }
@@ -124,6 +156,13 @@ function toggleRules() {
                               v-html="ICONS.chevron" style="margin-left:auto"></span>
                     </div>
                     <template v-if="rulesExpanded">
+                    <div class="smart-preview-count">
+                        <span v-if="previewLoading" class="text-muted">Counting…</span>
+                        <span v-else-if="previewCount != null">
+                            <strong>{{ previewCount }}</strong> model{{ previewCount === 1 ? '' : 's' }} match
+                        </span>
+                        <span v-else class="text-muted">Add a rule to preview matches</span>
+                    </div>
                     <p class="text-muted text-sm" style="margin-bottom:12px;margin-top:8px">
                         Models matching all rules below will automatically appear in this collection.
                     </p>
