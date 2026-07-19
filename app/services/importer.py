@@ -249,6 +249,7 @@ def extract_zip_metadata(zip_path: Path) -> dict:
         "model_files": [],
         "site": None,
         "description": None,
+        "license": None,
     }
 
     stem = zip_path.stem
@@ -335,6 +336,20 @@ def _parse_attribution(text: str, meta: dict) -> None:
         clean = re.sub(r"<[^>]+>", "", line).strip()
         if not clean:
             continue
+
+        # License line, or a bare Creative Commons mention
+        if meta.get("license") is None:
+            lic = re.match(r"^License\s*:\s*(.+)", clean, re.IGNORECASE)
+            if lic:
+                meta["license"] = lic.group(1).strip()[:120]
+            else:
+                cc = re.search(
+                    r"(CC0(?:\s*1\.0)?|CC[- ]BY(?:[- ](?:SA|NC|ND|NC-SA|NC-ND))?"
+                    r"(?:\s*\d\.\d)?|Creative Commons[\w\s-]{0,40}|Public Domain)",
+                    clean, re.IGNORECASE,
+                )
+                if cc:
+                    meta["license"] = cc.group(1).strip()[:120]
 
         # Look for key: value patterns
         kv = re.match(r"^(Title|URL|Creator|Tags|Description)\s*:\s*(.+)", clean, re.IGNORECASE)

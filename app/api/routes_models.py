@@ -451,12 +451,17 @@ async def update_model(request: Request, model_id: int):
     # source_url can be a string or null/empty to clear
     source_url = body.get("source_url")
     has_source_url = "source_url" in body
+    license_val = body.get("license")
+    has_license = "license" in body
 
-    if name is None and description is None and not has_source_url:
+    if name is None and description is None and not has_source_url and not has_license:
         raise HTTPException(
             status_code=400,
-            detail="At least one of 'name', 'description', or 'source_url' is required",
+            detail="At least one of 'name', 'description', 'source_url', or 'license' is required",
         )
+
+    if has_license and license_val is not None:
+        license_val = license_val.strip()[:120] or None
 
     # Validate source_url format
     if has_source_url and source_url is not None:
@@ -491,6 +496,9 @@ async def update_model(request: Request, model_id: int):
         if has_source_url:
             set_clauses.append("source_url = ?")
             params.append(source_url)
+        if has_license:
+            set_clauses.append("license = ?")
+            params.append(license_val)
 
         set_clauses.append("updated_at = CURRENT_TIMESTAMP")
         params.append(model_id)

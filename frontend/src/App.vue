@@ -177,9 +177,11 @@ const sidebarOpen = ref(window.innerWidth > 768);
 const editName = ref('');
 const editDesc = ref('');
 const editSourceUrl = ref('');
+const editLicense = ref('');
 const isEditingName = ref(false);
 const isEditingDesc = ref(false);
 const isEditingSourceUrl = ref(false);
+const isEditingLicense = ref(false);
 
 // Detail panel tab state
 const detailTab = ref('info');
@@ -810,9 +812,11 @@ async function viewModel(model) {
     editName.value = model.name || '';
     editDesc.value = model.description || '';
     editSourceUrl.value = model.source_url || '';
+    editLicense.value = model.license || '';
     isEditingName.value = false;
     isEditingDesc.value = false;
     isEditingSourceUrl.value = false;
+    isEditingLicense.value = false;
     tagSuggestions.value = [];
     relatedModels.value = [];
     relatedTags.value = [];
@@ -1045,6 +1049,7 @@ async function updateModel(modelId, data) {
         editName.value = updated.name || '';
         editDesc.value = updated.description || '';
         editSourceUrl.value = updated.source_url || '';
+        editLicense.value = updated.license || '';
         updateModelInList(updated);
         showToast('Model updated');
     } catch (err) {
@@ -1053,6 +1058,7 @@ async function updateModel(modelId, data) {
     isEditingName.value = false;
     isEditingDesc.value = false;
     isEditingSourceUrl.value = false;
+    isEditingLicense.value = false;
 }
 
 async function renameModelFile() {
@@ -1353,6 +1359,21 @@ function saveSourceUrl() {
 function startEditSourceUrl() {
     editSourceUrl.value = selectedModel.value?.source_url || '';
     isEditingSourceUrl.value = true;
+}
+
+function saveLicense() {
+    if (!selectedModel.value) return;
+    const val = editLicense.value.trim();
+    if (val !== (selectedModel.value.license || '')) {
+        updateModel(selectedModel.value.id, { license: val || null });
+    } else {
+        isEditingLicense.value = false;
+    }
+}
+
+function startEditLicense() {
+    editLicense.value = selectedModel.value?.license || '';
+    isEditingLicense.value = true;
 }
 
 // ---- Favorites count ----
@@ -2135,6 +2156,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :isEditingName="isEditingName"
         :isEditingDesc="isEditingDesc"
         :isEditingSourceUrl="isEditingSourceUrl"
+        :editLicense="editLicense"
+        :isEditingLicense="isEditingLicense"
         :tagSuggestions="tagSuggestions"
         :relatedTags="relatedTags"
         :modelDocs="modelDocs"
@@ -2159,6 +2182,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         @update:isEditingName="isEditingName = $event"
         @update:isEditingDesc="isEditingDesc = $event"
         @update:isEditingSourceUrl="isEditingSourceUrl = $event"
+        @update:editLicense="editLicense = $event"
+        @update:isEditingLicense="isEditingLicense = $event"
         @update:newTagInput="newTagInput = $event"
         @saveName="saveName"
         @saveDesc="saveDesc"
@@ -2166,6 +2191,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         @startEditName="startEditName"
         @startEditDesc="startEditDesc"
         @startEditSourceUrl="startEditSourceUrl"
+        @saveLicense="saveLicense"
+        @startEditLicense="startEditLicense"
         @resetView="handleResetView"
         @toggleFavorite="toggleFavorite"
         @openAddToCollection="openAddToCollection"

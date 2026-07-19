@@ -23,9 +23,11 @@ const props = defineProps({
     editName: { type: String, default: '' },
     editDesc: { type: String, default: '' },
     editSourceUrl: { type: String, default: '' },
+    editLicense: { type: String, default: '' },
     isEditingName: { type: Boolean, default: false },
     isEditingDesc: { type: Boolean, default: false },
     isEditingSourceUrl: { type: Boolean, default: false },
+    isEditingLicense: { type: Boolean, default: false },
     tagSuggestions: { type: Array, default: () => [] },
     tagSuggestionsLoading: { type: Boolean, default: false },
     relatedTags: { type: Array, default: () => [] },
@@ -48,6 +50,7 @@ const emit = defineEmits([
     'update:editName',
     'update:editDesc',
     'update:editSourceUrl',
+    'update:editLicense',
     'update:isEditingName',
     'update:isEditingDesc',
     'update:isEditingSourceUrl',
@@ -57,6 +60,9 @@ const emit = defineEmits([
     'saveName',
     'saveDesc',
     'saveSourceUrl',
+    'update:isEditingLicense',
+    'startEditLicense',
+    'saveLicense',
     'startEditName',
     'startEditDesc',
     'startEditSourceUrl',
@@ -347,6 +353,36 @@ function formatClass(fmt) {
                                                style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:0.85rem"
                                                autofocus>
                                     </div>
+                                </template>
+                            </div>
+
+                            <!-- License -->
+                            <div class="info-section">
+                                <div class="info-section-title">License</div>
+                                <template v-if="!isEditingLicense">
+                                    <div v-if="selectedModel.license"
+                                         style="display:flex;align-items:center;gap:6px">
+                                        <span style="flex:1;font-size:0.85rem;color:var(--text-secondary)">{{ selectedModel.license }}</span>
+                                        <button class="btn-icon" style="width:20px;height:20px;flex-shrink:0"
+                                                @click="emit('startEditLicense')" title="Edit license">
+                                            <span v-html="ICONS.edit || '&#9998;'"></span>
+                                        </button>
+                                    </div>
+                                    <div v-else @dblclick="emit('startEditLicense')"
+                                         style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);padding:4px 0">
+                                        Double-click to add a license…
+                                    </div>
+                                </template>
+                                <template v-else>
+                                    <input type="text"
+                                           :value="editLicense"
+                                           @input="emit('update:editLicense', $event.target.value)"
+                                           @blur="emit('saveLicense')"
+                                           @keydown.enter="emit('saveLicense')"
+                                           @keydown.escape="emit('update:isEditingLicense', false)"
+                                           placeholder="e.g. CC-BY 4.0"
+                                           style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:0.85rem"
+                                           autofocus>
                                 </template>
                             </div>
 

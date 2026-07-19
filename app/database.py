@@ -159,6 +159,15 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass  # Columns already exist or table just created with them
 
+        # Add license column
+        if "license" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN license TEXT DEFAULT NULL"
+                )
+            except Exception:
+                pass
+
         # Add last_scanned_at column to libraries table
         cursor = await db.execute("PRAGMA table_info(libraries)")
         lib_columns = [row["name"] for row in await cursor.fetchall()]

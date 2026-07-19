@@ -556,3 +556,16 @@ class TestNearDuplicates:
             await conn.commit()
         resp = await client.get("/api/models/near-duplicates")
         assert resp.json()["total_groups"] == 0
+
+
+@pytest.mark.asyncio
+class TestLicense:
+    async def test_set_and_clear_license(self, client):
+        db_path = client._db_path
+        mid = await insert_test_model(db_path, name="m", file_path="/m.stl")
+        r = await client.put(f"/api/models/{mid}", json={"license": "CC-BY 4.0"})
+        assert r.status_code == 200
+        assert r.json()["license"] == "CC-BY 4.0"
+        # clear
+        r = await client.put(f"/api/models/{mid}", json={"license": ""})
+        assert r.json()["license"] is None

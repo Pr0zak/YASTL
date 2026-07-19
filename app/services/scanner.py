@@ -829,14 +829,15 @@ class Scanner:
 
         description = folder_meta.get("description") or ""
         source_url = folder_meta.get("source_url")
+        license_val = folder_meta.get("license")
 
         # INSERT with basic fields (no trimesh metadata yet -- we need model_id)
         cursor = await db.execute(
             """
             INSERT INTO models (
                 name, description, file_path, file_format, file_size,
-                file_hash, library_id, source_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                file_hash, library_id, source_url, license
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -847,6 +848,7 @@ class Scanner:
                 file_hash,
                 library_id,
                 source_url,
+                license_val,
             ),
         )
         model_id = cursor.lastrowid
@@ -1064,20 +1066,22 @@ class Scanner:
             except OSError:
                 file_size = None
 
-            # Extract description and source_url from zip metadata
+            # Extract description, source_url, license from zip metadata
             description = ""
             source_url = None
+            license_val = None
             if zip_meta:
                 description = zip_meta.get("description") or ""
                 source_url = zip_meta.get("source_url")
+                license_val = zip_meta.get("license")
 
             # INSERT with basic fields (no trimesh metadata yet -- we need model_id)
             cursor = await db.execute(
                 """
                 INSERT INTO models (
                     name, description, file_path, file_format, file_size,
-                    file_hash, library_id, zip_path, zip_entry, source_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    file_hash, library_id, zip_path, zip_entry, source_url, license
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -1090,6 +1094,7 @@ class Scanner:
                     zip_path_str,
                     entry_name,
                     source_url,
+                    license_val,
                 ),
             )
             model_id = cursor.lastrowid
