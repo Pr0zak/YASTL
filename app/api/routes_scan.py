@@ -7,6 +7,8 @@ import os
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 import aiosqlite
 
+from app.api._helpers import open_db
+
 from app.config import settings as app_settings
 from app.database import get_db, get_setting, update_fts_for_model
 from app.services import hasher, processor, thumbnail, zip_handler
@@ -145,20 +147,16 @@ async def rebuild_fts_index(request: Request):
     """
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Clear existing FTS data
         await db.execute("DELETE FROM models_fts")
 
-        # Re-populate from all models
-        await db.execute(
-            """
-            INSERT INTO models_fts(rowid, name, description)
-            SELECT m.id, m.name, m.description
-            FROM models m
-            """
-        )
+        # Re-populate from all models (includes tags)
+        from app.database_schema import FTS_REBUILD_SQL
+
+        await db.execute(FTS_REBUILD_SQL)
         await db.commit()
 
         # Report how many models were indexed

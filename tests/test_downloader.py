@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.services.downloader import (
     _sanitize_filename,
     _deduplicate_path,
@@ -277,3 +279,31 @@ class AsyncContextManagerMock:
 
     async def __aexit__(self, *args):
         pass
+
+
+class TestSafeSubfolder:
+    """safe_subfolder must confine import destinations to the library."""
+
+    def test_normal_subfolder(self, tmp_path):
+        from app.services.downloader import safe_subfolder
+
+        result = safe_subfolder(tmp_path, "minis/dragons")
+        assert result == tmp_path.resolve() / "minis" / "dragons"
+
+    def test_absolute_path_rejected(self, tmp_path):
+        from app.services.downloader import safe_subfolder
+
+        with pytest.raises(ValueError):
+            safe_subfolder(tmp_path, "/etc/cron.d")
+
+    def test_dotdot_traversal_rejected(self, tmp_path):
+        from app.services.downloader import safe_subfolder
+
+        with pytest.raises(ValueError):
+            safe_subfolder(tmp_path, "../../outside")
+
+    def test_sneaky_nested_dotdot_rejected(self, tmp_path):
+        from app.services.downloader import safe_subfolder
+
+        with pytest.raises(ValueError):
+            safe_subfolder(tmp_path, "ok/../../../outside")

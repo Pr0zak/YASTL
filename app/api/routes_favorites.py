@@ -3,6 +3,8 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 import aiosqlite
 
+from app.api._helpers import open_db
+
 router = APIRouter(prefix="/api", tags=["favorites"])
 
 
@@ -19,7 +21,7 @@ async def list_favorites(
     """List all favorited models with pagination."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -85,7 +87,7 @@ async def add_favorite(request: Request, model_id: int):
     """Add a model to favorites."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -109,7 +111,7 @@ async def remove_favorite(request: Request, model_id: int):
     """Remove a model from favorites."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 

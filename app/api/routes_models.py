@@ -10,6 +10,7 @@ from pathlib import Path
 from app.config import settings
 from app.services import zip_handler
 from app.api._helpers import (
+    open_db,
     _get_db_path,
     _fetch_model_with_relations,
     _sanitize_filename,
@@ -88,7 +89,7 @@ async def list_models(
     if categories:
         category_list.extend(c.strip() for c in categories.split(",") if c.strip())
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Build dynamic query with filters
@@ -343,7 +344,7 @@ async def find_duplicates(request: Request):
     """Find all groups of duplicate files, grouped by file_hash where count > 1."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Find hashes with more than one model
@@ -391,7 +392,7 @@ async def get_model(request: Request, model_id: int):
     """Get a single model by ID with its tags and categories."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         model = await _fetch_model_with_relations(db, model_id)
 
@@ -435,7 +436,7 @@ async def update_model(request: Request, model_id: int):
                 detail="source_url must start with http:// or https://",
             )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -491,7 +492,7 @@ async def rename_model_file(request: Request, model_id: int):
     """
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -560,7 +561,7 @@ async def delete_model(request: Request, model_id: int):
     """Delete a model, its thumbnail, and the source file from disk."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -641,7 +642,7 @@ async def get_related_models(request: Request, model_id: int):
     """
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Get the model's zip_path and file_path

@@ -13,7 +13,7 @@ import trimesh
 from app.config import settings
 from app.database import get_setting
 from app.services import thumbnail
-from app.api._helpers import _get_db_path, _resolve_model_file, MIME_TYPES
+from app.api._helpers import open_db, _get_db_path, _resolve_model_file, MIME_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ async def serve_model_file(request: Request, model_id: int):
     """Serve the actual 3D model file for the Three.js viewer."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -115,7 +115,7 @@ async def download_model_file(request: Request, model_id: int, filename: str | N
     """
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -167,7 +167,7 @@ async def serve_model_glb(request: Request, model_id: int):
     """
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -284,7 +284,7 @@ async def serve_thumbnail(request: Request, model_id: int):
     """Serve the thumbnail image for a model."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -318,7 +318,7 @@ async def regenerate_model_thumbnail(request: Request, model_id: int):
     db_path = _get_db_path(request)
     thumbnail_path = str(settings.MODEL_LIBRARY_THUMBNAIL_PATH)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -353,7 +353,7 @@ async def regenerate_model_thumbnail(request: Request, model_id: int):
             status_code=422, detail="Failed to generate thumbnail"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         await db.execute(
             "UPDATE models SET thumbnail_path = ?, thumbnail_mode = ?, thumbnail_quality = ?, thumbnail_generated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (thumb_filename, thumb_mode, thumb_quality, model_id),

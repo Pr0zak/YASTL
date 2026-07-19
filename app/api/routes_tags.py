@@ -3,6 +3,8 @@
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
+from app.api._helpers import open_db
+
 from app.database import update_fts_for_model
 
 
@@ -31,7 +33,7 @@ async def list_tags(request: Request):
     """List all tags with the number of models associated with each."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -68,7 +70,7 @@ async def create_tag(request: Request):
 
     name = name.strip()
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Check if tag already exists (case-insensitive due to COLLATE NOCASE)
@@ -97,7 +99,7 @@ async def delete_tag(request: Request, tag_id: int):
     """Delete a tag by ID. Also removes all model-tag associations."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -140,7 +142,7 @@ async def rename_tag(request: Request, tag_id: int):
 
     new_name = new_name.strip()
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Verify tag exists

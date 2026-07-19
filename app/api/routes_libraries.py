@@ -6,6 +6,8 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
+from app.api._helpers import open_db
+
 from app.services.watcher import ModelFileWatcher
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,7 @@ async def list_libraries(request: Request):
     """Return all configured libraries with model counts."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """
@@ -79,7 +81,7 @@ async def create_library(request: Request):
             detail=f"Path does not exist or is not a directory: {path}",
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -147,7 +149,7 @@ async def update_library(request: Request, library_id: int):
             detail=f"Path does not exist or is not a directory: {path}",
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -204,7 +206,7 @@ async def delete_library(request: Request, library_id: int):
     """Delete a library. Models from this library remain in the database."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 

@@ -5,6 +5,8 @@ import os
 import signal
 
 import aiosqlite
+
+from app.api._helpers import open_db
 from fastapi import APIRouter, Request
 
 from app.config import settings
@@ -48,7 +50,7 @@ async def get_system_status(request: Request):
     # --- Database ---
     db_path = str(settings.MODEL_LIBRARY_DB)
     try:
-        async with aiosqlite.connect(db_path) as db:
+        async with open_db(db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT COUNT(*) as cnt FROM models")
             row = await cursor.fetchone()

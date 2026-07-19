@@ -5,6 +5,8 @@ import json
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
+from app.api._helpers import open_db
+
 router = APIRouter(prefix="/api/saved-searches", tags=["saved-searches"])
 
 
@@ -17,7 +19,7 @@ async def list_saved_searches(request: Request):
     """List all saved searches."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -67,7 +69,7 @@ async def create_saved_search(request: Request):
 
     filters_json = json.dumps(filters) if isinstance(filters, dict) else "{}"
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -116,7 +118,7 @@ async def update_saved_search(request: Request, search_id: int):
             status_code=400, detail="'sort_order' must be 'asc' or 'desc'"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -173,7 +175,7 @@ async def delete_saved_search(request: Request, search_id: int):
     """Delete a saved search."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(

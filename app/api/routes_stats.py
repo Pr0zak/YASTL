@@ -1,6 +1,8 @@
 """API route for library statistics dashboard."""
 
 import aiosqlite
+
+from app.api._helpers import open_db
 from fastapi import APIRouter
 
 from app.config import settings
@@ -13,7 +15,7 @@ async def get_stats():
     """Return aggregated library statistics."""
     db_path = str(settings.MODEL_LIBRARY_DB)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Total active models and file size

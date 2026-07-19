@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
-from app.api._helpers import apply_auto_tags
+from app.api._helpers import open_db, apply_auto_tags
 from app.database import update_fts_for_model
 
 router = APIRouter(prefix="/api/bulk", tags=["bulk"])
@@ -35,7 +35,7 @@ async def bulk_add_tags(request: Request):
             status_code=400, detail="'tags' must be a non-empty list"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -101,7 +101,7 @@ async def bulk_add_categories(request: Request):
             status_code=400, detail="'category_ids' must be a non-empty list"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -153,7 +153,7 @@ async def bulk_add_to_collection(request: Request):
             status_code=400, detail="'collection_id' is required"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -215,7 +215,7 @@ async def bulk_favorite(request: Request):
             status_code=400, detail="'model_ids' must be a non-empty list"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -259,7 +259,7 @@ async def bulk_delete(request: Request):
             status_code=400, detail="'model_ids' must be a non-empty list"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -315,7 +315,7 @@ async def bulk_auto_tags(request: Request):
             status_code=400, detail="'model_ids' must be a non-empty list"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 

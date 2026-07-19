@@ -16,6 +16,7 @@ from app.services.importer import (
     mask_credentials,
     process_imported_file,
     process_uploaded_zip,
+    safe_subfolder,
     scrape_metadata,
     set_credentials,
     _deduplicate_path,
@@ -162,7 +163,13 @@ async def upload_files(
     library_path = lib["path"]
     dest_dir = Path(library_path)
     if subfolder:
-        dest_dir = dest_dir / subfolder
+        try:
+            dest_dir = safe_subfolder(dest_dir, subfolder)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="subfolder must stay inside the library directory",
+            )
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     # Parse tags

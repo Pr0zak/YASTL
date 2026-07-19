@@ -25,6 +25,22 @@ def _sanitize_filename(name: str) -> str:
     return name or "download"
 
 
+def safe_subfolder(base_dir: Path, subfolder: str) -> Path:
+    """Resolve ``base_dir/subfolder`` while confining it to ``base_dir``.
+
+    ``Path / subfolder`` silently replaces the base when given an absolute
+    path, and ``..`` segments walk out of the library — either would let
+    an import write files anywhere on the filesystem.
+
+    Raises ValueError when the resolved path escapes ``base_dir``.
+    """
+    base = Path(base_dir).resolve()
+    candidate = (base / subfolder).resolve()
+    if candidate != base and base not in candidate.parents:
+        raise ValueError(f"subfolder escapes the library directory: {subfolder!r}")
+    return candidate
+
+
 def _deduplicate_path(dest: Path) -> Path:
     """Append _1, _2, etc. if the file already exists."""
     if not dest.exists():

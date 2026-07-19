@@ -3,6 +3,8 @@
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
+from app.api._helpers import open_db
+
 router = APIRouter(prefix="/api/categories", tags=["categories"])
 
 
@@ -52,7 +54,7 @@ async def list_categories(request: Request):
     """
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -97,7 +99,7 @@ async def create_category(request: Request):
 
     name = name.strip()
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -160,7 +162,7 @@ async def update_category(request: Request, category_id: int):
             detail="At least one of 'name' or 'parent_id' is required",
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -249,7 +251,7 @@ async def delete_category(request: Request, category_id: int):
     """
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 

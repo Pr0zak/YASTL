@@ -5,6 +5,8 @@ import re
 from fastapi import APIRouter, Query, Request
 import aiosqlite
 
+from app.api._helpers import open_db
+
 from app.api.routes_models import _zip_display_name
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -88,7 +90,7 @@ async def search_models(
     if categories:
         cat_list = [c.strip() for c in categories.split(",") if c.strip()]
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # -----------------------------------------------------------------

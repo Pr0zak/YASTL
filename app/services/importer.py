@@ -32,6 +32,7 @@ from app.services.downloader import (  # noqa: F401
     _sanitize_filename,
     _deduplicate_path,
     _is_presigned_s3,
+    safe_subfolder,
 )
 from app.services.import_credentials import (  # noqa: F401
     CREDENTIAL_SETTINGS_KEY,
@@ -496,7 +497,7 @@ async def process_uploaded_zip(
 
     dest_dir = Path(library_path)
     if subfolder:
-        dest_dir = dest_dir / subfolder
+        dest_dir = safe_subfolder(dest_dir, subfolder)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -605,7 +606,7 @@ async def import_from_url(
         # Determine destination directory
         dest_dir = Path(library_path)
         if subfolder:
-            dest_dir = dest_dir / subfolder
+            dest_dir = safe_subfolder(dest_dir, subfolder)
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         # Download and process each file

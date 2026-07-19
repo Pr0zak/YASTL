@@ -6,6 +6,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Query, Request
 import aiosqlite
 
+from app.api._helpers import open_db
+
 logger = logging.getLogger("yastl")
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
@@ -111,7 +113,7 @@ async def list_collections(request: Request):
     """List all collections with model counts."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -168,7 +170,7 @@ async def create_collection(request: Request):
     name = name.strip()
     rules_json = json.dumps(rules) if isinstance(rules, dict) else "{}"
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -188,7 +190,7 @@ async def create_collection(request: Request):
     # Compute smart collection count
     if is_smart:
         try:
-            async with aiosqlite.connect(db_path) as db:
+            async with open_db(db_path) as db:
                 db.row_factory = aiosqlite.Row
                 sql, params = _build_smart_count_query(rules)
                 cursor = await db.execute(sql, params)
@@ -211,7 +213,7 @@ async def get_collection(
     """Get a collection with its models."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         # Fetch collection
@@ -313,7 +315,7 @@ async def update_collection(request: Request, collection_id: int):
             detail="At least one of 'name', 'description', 'color', or 'rules' is required",
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -391,7 +393,7 @@ async def delete_collection(request: Request, collection_id: int):
     """Delete a collection. Models are NOT deleted."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -426,7 +428,7 @@ async def add_models_to_collection(request: Request, collection_id: int):
             status_code=400, detail="'model_ids' must be a non-empty list"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -488,7 +490,7 @@ async def remove_model_from_collection(
     """Remove a model from a collection."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -527,7 +529,7 @@ async def reorder_collection_models(request: Request, collection_id: int):
             status_code=400, detail="'model_ids' must be a non-empty list"
         )
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(

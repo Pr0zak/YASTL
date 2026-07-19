@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
-from app.api._helpers import _get_db_path, _fetch_model_with_relations
+from app.api._helpers import open_db, _get_db_path, _fetch_model_with_relations
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ async def add_category_to_model(request: Request, model_id: int):
     if category_id is None:
         raise HTTPException(status_code=400, detail="'category_id' is required")
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
@@ -70,7 +70,7 @@ async def remove_category_from_model(request: Request, model_id: int, category_i
     """Remove a category from a model."""
     db_path = _get_db_path(request)
 
-    async with aiosqlite.connect(db_path) as db:
+    async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA foreign_keys=ON")
 
