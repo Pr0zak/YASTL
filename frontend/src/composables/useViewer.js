@@ -40,6 +40,9 @@ export function useViewer() {
     let modelScaleFactor = 0;
     /** Group holding all bed overlay meshes. */
     let bedGroup = null;
+    /** Monotonic token: a loader callback whose token is stale must not
+     *  insert its parsed object — it belongs to a superseded request. */
+    let loadGeneration = 0;
 
     /** Default material for models that don't carry their own (brighter teal accent).
      *  Note: ACES tone mapping darkens mid-tones significantly — use a bright
@@ -237,6 +240,12 @@ export function useViewer() {
      * @param {'default'|'light'} [theme='default'] - Color theme for the scene.
      */
     function initViewer(containerId, theme) {
+        if (renderer) {
+            // Re-entry without an intervening dispose (e.g. double-click
+            // opening a model twice) would stack canvases and rAF loops
+            // and leak the previous WebGL context.
+            dispose();
+        }
         container = document.getElementById(containerId);
         if (!container) {
             console.warn('YASTL viewer: container not found:', containerId);
@@ -338,12 +347,25 @@ export function useViewer() {
         viewerError.value = null;
 
         const fmt = (format || '').toLowerCase().replace(/^\./, '');
+        const gen = ++loadGeneration;
 
         return new Promise((resolve, reject) => {
             const onError = (err) => {
+                if (gen !== loadGeneration) {
+                    resolve();
+                    return;
+                }
                 console.error(`YASTL viewer: failed to load ${fmt} model:`, err);
                 viewerError.value = `Failed to load ${fmt} model`;
                 reject(err);
+            };
+            // Loader callbacks are async: by the time a parse finishes the
+            // user may have opened a different model or closed the viewer.
+            const addIfCurrent = (object3d) => {
+                if (gen === loadGeneration && scene) {
+                    addModelToScene(object3d);
+                }
+                resolve();
             };
 
             switch (fmt) {
@@ -355,8 +377,7 @@ export function useViewer() {
                             const mesh = new THREE.Mesh(geometry, DEFAULT_MATERIAL.clone());
                             mesh.castShadow = true;
                             mesh.receiveShadow = true;
-                            addModelToScene(mesh);
-                            resolve();
+                            addIfCurrent(mesh);
                         },
                         undefined,
                         onError
@@ -374,8 +395,7 @@ export function useViewer() {
                                     child.receiveShadow = true;
                                 }
                             });
-                            addModelToScene(group);
-                            resolve();
+                            addIfCurrent(group);
                         },
                         undefined,
                         onError
@@ -394,8 +414,7 @@ export function useViewer() {
                                     child.receiveShadow = true;
                                 }
                             });
-                            addModelToScene(gltf.scene);
-                            resolve();
+                            addIfCurrent(gltf.scene);
                         },
                         undefined,
                         onError
@@ -410,8 +429,7 @@ export function useViewer() {
                             const mesh = new THREE.Mesh(geometry, DEFAULT_MATERIAL.clone());
                             mesh.castShadow = true;
                             mesh.receiveShadow = true;
-                            addModelToScene(mesh);
-                            resolve();
+                            addIfCurrent(mesh);
                         },
                         undefined,
                         onError
@@ -440,8 +458,7 @@ export function useViewer() {
                                     child.receiveShadow = true;
                                 }
                             });
-                            addModelToScene(group);
-                            resolve();
+                            addIfCurrent(group);
                         },
                         undefined,
                         onError
@@ -455,8 +472,7 @@ export function useViewer() {
                         (geometry) => {
                             geometry.computeVertexNormals();
                             const mesh = new THREE.Mesh(geometry, DEFAULT_MATERIAL.clone());
-                            addModelToScene(mesh);
-                            resolve();
+                            addIfCurrent(mesh);
                         },
                         undefined,
                         onError
@@ -500,6 +516,7 @@ export function useViewer() {
      * materials, textures, renderer, and remove the canvas from the DOM.
      */
     function dispose() {
+        loadGeneration++;
         // Stop animation
         if (animationId !== null) {
             cancelAnimationFrame(animationId);

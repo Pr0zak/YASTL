@@ -729,7 +729,12 @@ async function cancelScan() {
     }
 }
 
+// Monotonic token: rapid open/close/open leaves async work from the
+// previous model in flight — stale callbacks must not touch the panel.
+let viewSeq = 0;
+
 async function viewModel(model) {
+    const seq = ++viewSeq;
     // Show detail panel immediately with grid data for instant feedback
     selectedModel.value = { ...model };
     editName.value = model.name || '';
@@ -749,6 +754,7 @@ async function viewModel(model) {
     // otherwise fire-and-forget to enrich tags/categories in background
     const needsAwait = !model.file_format;
     const modelPromise = apiGetModel(model.id).then(data => {
+        if (seq !== viewSeq) return;
         selectedModel.value = enrichWithSmartCollections(data);
         editName.value = data.name || '';
         editDesc.value = data.description || '';
@@ -756,13 +762,16 @@ async function viewModel(model) {
     }).catch(() => {});
 
     if (needsAwait) await modelPromise;
+    if (seq !== viewSeq) return;
 
     // Fetch related models in background
     apiGetRelatedModels(selectedModel.value.id).then(data => {
+        if (seq !== viewSeq) return;
         relatedModels.value = data.related || [];
     }).catch(() => {});
 
     await nextTick();
+    if (seq !== viewSeq) return;
 
     // Skip 3D loading for error models — they may be oversized or corrupted
     // and would lock up the browser or OOM the worker during GLB conversion.
@@ -800,6 +809,7 @@ async function viewModel(model) {
             console.error('GLB fallback also failed:', err);
         }
     }
+    if (seq !== viewSeq) return;
     viewerLoading.value = false;
 
     // Auto-show bed overlay if enabled
@@ -827,6 +837,7 @@ async function openRelatedModel(modelId) {
 }
 
 function closeDetail() {
+    viewSeq++;
     showDetail.value = false;
     bedVisible.value = false;
     disposeViewer();
@@ -1282,12 +1293,22 @@ async function deleteSavedSearch(id) {
 async function toggleFavorite(model, e) {
     if (e) e.stopPropagation();
     const wasFav = model.is_favorite;
-    model.is_favorite = !wasFav;
+    // The card object and selectedModel are separate copies of the same
+    // model — sync both so the grid heart and detail panel agree.
+    const setFav = (val) => {
+        model.is_favorite = val;
+        const gridModel = models.value.find((m) => m.id === model.id);
+        if (gridModel) gridModel.is_favorite = val;
+        if (selectedModel.value?.id === model.id) {
+            selectedModel.value.is_favorite = val;
+        }
+    };
+    setFav(!wasFav);
     try {
         await apiToggleFavorite(model.id, wasFav);
         favoritesCount.value += wasFav ? -1 : 1;
     } catch {
-        model.is_favorite = wasFav;
+        setFav(wasFav);
     }
 }
 
