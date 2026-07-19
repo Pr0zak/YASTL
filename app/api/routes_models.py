@@ -359,10 +359,13 @@ async def find_near_duplicates(
     exact-hash duplicate finder.
     """
     db_path = _get_db_path(request)
+    # Require a minimum vertex count so trivial primitives (cubes,
+    # calibration swatches, simple brackets) that share the same low-poly
+    # geometry by coincidence don't cluster as false near-duplicates.
     group_filter = """
         FROM models
         WHERE status = 'active'
-          AND vertex_count IS NOT NULL AND vertex_count > 0
+          AND vertex_count IS NOT NULL AND vertex_count >= 100
           AND face_count IS NOT NULL AND face_count > 0
         GROUP BY vertex_count, face_count
         HAVING COUNT(*) > 1 AND COUNT(DISTINCT file_hash) > 1
