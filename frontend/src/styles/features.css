@@ -1107,3 +1107,16 @@ textarea.import-textarea {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
 }
+
+/* Pinned collection marker */
+.sidebar-pin-mark {
+    display: inline-flex;
+    align-items: center;
+    color: var(--accent);
+    opacity: 0.85;
+    flex-shrink: 0;
+}
+.sidebar-pin-mark svg {
+    width: 12px;
+    height: 12px;
+}

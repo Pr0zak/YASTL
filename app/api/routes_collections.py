@@ -122,7 +122,7 @@ async def list_collections(request: Request):
             FROM collections c
             LEFT JOIN collection_models cm ON cm.collection_id = c.id
             GROUP BY c.id
-            ORDER BY c.updated_at DESC
+            ORDER BY COALESCE(c.pinned, 0) DESC, c.updated_at DESC
             """
         )
         rows = await cursor.fetchall()
@@ -144,6 +144,26 @@ async def list_collections(request: Request):
             results.append(coll)
 
     return {"collections": results}
+
+
+@router.post("/{collection_id}/pin")
+async def toggle_pin(request: Request, collection_id: int):
+    """Toggle whether a collection is pinned to the top of the sidebar."""
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT pinned FROM collections WHERE id = ?", (collection_id,)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        new_val = 0 if dict(row).get("pinned") else 1
+        await db.execute(
+            "UPDATE collections SET pinned = ? WHERE id = ?", (new_val, collection_id)
+        )
+        await db.commit()
+    return {"id": collection_id, "pinned": bool(new_val)}
 
 
 @router.post("/preview-count")

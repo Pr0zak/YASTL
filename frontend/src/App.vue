@@ -49,6 +49,7 @@ import {
     apiRegenerateThumbnail,
     apiGetRelatedModels,
     apiRestartApp,
+    apiToggleCollectionPin,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -1704,6 +1705,15 @@ function removeSmartRuleCategory(cat) {
     const idx = smartCollectionForm.rules.categories.indexOf(cat);
     if (idx >= 0) smartCollectionForm.rules.categories.splice(idx, 1);
 }
+async function togglePinCollection(col) {
+    try {
+        await apiToggleCollectionPin(col.id);
+        await fetchCollections();
+    } catch {
+        showToast('Failed to pin collection', 'error');
+    }
+}
+
 function editSmartCollection(col) {
     openSmartCollectionModal(col);
 }
@@ -1820,6 +1830,7 @@ const { pickNextCollectionColor } = collectionsComposable;
             @openDuplicatesReview="openDuplicatesReview"
             @openCollectionModal="() => openSmartCollectionModal()"
             @editCollection="editSmartCollection"
+            @togglePinCollection="togglePinCollection"
             @startEditCollection="startEditCollection"
             @saveCollectionName="saveCollectionName"
             @cancelEditCollection="editingCollectionId = null"

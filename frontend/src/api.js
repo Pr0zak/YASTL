@@ -563,3 +563,9 @@ export async function apiPreviewSmartCount(rules) {
     if (!res.ok) throw new Error('Preview count failed');
     return res.json();
 }
+
+export async function apiToggleCollectionPin(id) {
+    const res = await fetch(`/api/collections/${id}/pin`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to pin collection');
+    return res.json();
+}

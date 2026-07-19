@@ -40,6 +40,7 @@ const emit = defineEmits([
     'openDuplicatesReview',
     'openCollectionModal',
     'editCollection',
+    'togglePinCollection',
     'startEditCollection',
     'saveCollectionName',
     'cancelEditCollection',
@@ -265,10 +266,13 @@ const manualCollections = computed(() =>
                            autofocus>
                 </template>
                 <template v-else>
+                    <span v-if="col.pinned" class="sidebar-pin-mark" v-html="ICONS.bookmark" title="Pinned"></span>
                     <span class="truncate" @dblclick.stop="emit('startEditCollection', col)">{{ col.name }}</span>
                     <span v-if="col.is_smart" class="sidebar-smart-icon" v-html="ICONS.zap" title="Smart collection"></span>
                 </template>
                 <span class="item-count">{{ col.model_count }}</span>
+                <button class="sidebar-item-action" @click.stop="emit('togglePinCollection', col)"
+                        :title="col.pinned ? 'Unpin' : 'Pin to top'" v-html="ICONS.bookmark"></button>
                 <button v-if="col.is_smart" class="sidebar-item-action" @click.stop="emit('editCollection', col)"
                         title="Edit rules" v-html="ICONS.settings"></button>
                 <button class="sidebar-item-delete" @click.stop="emit('deleteCollection', col.id)">&times;</button>

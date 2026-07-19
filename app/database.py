@@ -160,6 +160,13 @@ async def init_db(db_path: str | Path | None = None) -> None:
                 )
             except Exception:
                 pass  # Columns already exist or table just created with them
+        if "pinned" not in coll_columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE collections ADD COLUMN pinned INTEGER DEFAULT 0"
+                )
+            except Exception:
+                pass
 
         # Create indexes on migrated columns (must run after migrations)
         for sql in _POST_MIGRATION_INDEXES:
