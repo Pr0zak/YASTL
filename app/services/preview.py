@@ -17,9 +17,19 @@ import trimesh
 
 logger = logging.getLogger("yastl")
 
-# Target triangle budget for the interactive preview. ~200k triangles
-# parse in well under 100 ms on the main thread and keep the GLB small.
-DEFAULT_MAX_FACES = 200_000
+# Target triangle budget for the interactive preview. Higher = more detail;
+# a ~500k GLB still parses in a few hundred ms on the main thread and stays
+# reasonably small, and previews look much closer to the full mesh.
+DEFAULT_MAX_FACES = 500_000
+
+# Bump when the preview generation changes (e.g. face target) so cached
+# GLBs regenerate instead of serving a stale, lower-detail version.
+PREVIEW_CACHE_VERSION = 2
+
+
+def preview_cache_name(model_id: int) -> str:
+    """Filename for a model's cached preview GLB (version-tagged)."""
+    return f"{model_id}.v{PREVIEW_CACHE_VERSION}.glb"
 
 
 def _as_single_mesh(loaded, file_path: str):

@@ -10,7 +10,7 @@ from app.config import settings as app_settings
 from app.database import get_all_settings, get_db, get_setting, set_setting, update_fts_for_model
 from app.services import thumbnail
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
-from app.services.preview import build_preview_glb
+from app.services.preview import build_preview_glb, preview_cache_name
 from app.api._helpers import apply_auto_tags
 from app.workers import get_pool, log_memory, tick_job, maybe_recycle, run_cpu_job
 
@@ -246,7 +246,7 @@ async def _generate_all_previews() -> None:
     try:
         for row in rows:
             model_id = row["id"]
-            cache_path = os.path.join(cache_dir, f"{model_id}.glb")
+            cache_path = os.path.join(cache_dir, preview_cache_name(model_id))
             resolved = _resolve_model_file(row)
             try:
                 if resolved and not (

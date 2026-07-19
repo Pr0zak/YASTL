@@ -108,6 +108,29 @@ export function useViewer() {
     }
 
     /**
+     * Whether a vertex-color buffer is a single uniform color across the mesh.
+     * trimesh exports plain (colorless) meshes as GLB with a uniform vertex
+     * color; that isn't a "real" color, so callers treat uniform buffers as
+     * material-less and apply the default material.
+     * @param {THREE.BufferAttribute} colorAttr
+     * @returns {boolean}
+     */
+    function isVertexColorUniform(colorAttr) {
+        const count = colorAttr.count;
+        if (count < 2) return true;
+        const r0 = colorAttr.getX(0), g0 = colorAttr.getY(0), b0 = colorAttr.getZ(0);
+        const step = Math.max(1, Math.floor(count / 200));
+        for (let i = step; i < count; i += step) {
+            if (Math.abs(colorAttr.getX(i) - r0) > 0.02
+                || Math.abs(colorAttr.getY(i) - g0) > 0.02
+                || Math.abs(colorAttr.getZ(i) - b0) > 0.02) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Remove and dispose the current model from the scene.
      */
     function clearCurrentModel() {
@@ -563,15 +586,17 @@ export function useViewer() {
                 (gltf) => {
                     gltf.scene.traverse((child) => {
                         if (child.isMesh) {
-                            // Decimated STL previews come through as GLB with
-                            // trimesh's plain near-white material, which blows
-                            // out under the environment light. Give those the
-                            // teal default so previews match native models;
-                            // keep genuine textures / vertex colors as-is.
+                            // Decimated/converted previews come through as GLB
+                            // with trimesh's UNIFORM vertex colors — not a real
+                            // material, and it renders flat/pale. Give those the
+                            // teal default so previews match native models; keep
+                            // genuine textures or varied vertex colors.
                             const m = child.material;
-                            const hasOwnLook = m && (m.map || m.vertexColors
-                                || (m.color && !isNearWhite(m.color)));
-                            if (!hasOwnLook) {
+                            const colorAttr = child.geometry
+                                && child.geometry.getAttribute('color');
+                            const hasRealColor = (m && m.map)
+                                || (colorAttr && !isVertexColorUniform(colorAttr));
+                            if (!hasRealColor) {
                                 child.material = DEFAULT_MATERIAL.clone();
                             }
                             child.castShadow = true;
@@ -583,10 +608,6 @@ export function useViewer() {
                 reject
             );
         });
-    }
-
-    function isNearWhite(color) {
-        return color.r > 0.85 && color.g > 0.85 && color.b > 0.85;
     }
 
     function parseObj(buffer) {

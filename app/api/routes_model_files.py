@@ -191,7 +191,9 @@ async def serve_model_glb(request: Request, model_id: int):
         str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache"
     )
     os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, f"{model_id}.glb")
+    from app.services.preview import preview_cache_name
+
+    cache_path = os.path.join(cache_dir, preview_cache_name(model_id))
 
     if os.path.exists(cache_path):
         src_mtime = os.path.getmtime(file_path)

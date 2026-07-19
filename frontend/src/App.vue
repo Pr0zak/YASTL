@@ -826,25 +826,40 @@ async function viewModel(model) {
     initViewer('viewer-container', colorTheme.value);
 
     const cur = selectedModel.value;
-    const nativeFormats = ['stl', 'obj', 'gltf', 'glb', 'ply', '3mf'];
     const fmt = (cur.file_format || '').toLowerCase();
     const faceCount = cur.face_count || 0;
+    const fileSize = cur.file_size || 0;
     const fileUrl = `/api/models/${cur.id}/file`;
     const glbUrl = `/api/models/${cur.id}/file/glb`;
     const onProgress = (f) => { if (seq === viewSeq) viewerProgress.value = f; };
-    const isBig = faceCount > DECIMATE_FACES;
+
+    // Load strategy — prefer full resolution, decimate only when necessary:
+    //  - STL/PLY parse off the main thread in a Web Worker, so they load at
+    //    full res without freezing unless the raw file is too big to transfer.
+    //  - OBJ (text) parses quickly on the main thread; same size guard.
+    //  - GLB/glTF parse on the main thread, so decimate only very high-poly ones.
+    //  - Everything else (3MF/STEP/…) must be server-converted to GLB, which
+    //    decimates server-side only when the mesh exceeds the target.
+    const HUGE_FILE = 120 * 1024 * 1024;
+    let useDecimated;
+    if (['stl', 'ply', 'obj'].includes(fmt)) {
+        useDecimated = fileSize > HUGE_FILE;
+    } else if (['glb', 'gltf'].includes(fmt)) {
+        useDecimated = faceCount > 800000;
+    } else {
+        useDecimated = true;
+    }
 
     let loaded = false;
-    // Big meshes (or formats the browser can't parse) load a decimated GLB
-    // preview so the viewer never blocks; small native meshes load directly.
-    if (isBig || !nativeFormats.includes(fmt)) {
+    if (useDecimated) {
         try {
             await loadModel(glbUrl, 'glb', { onProgress });
             loaded = true;
-            viewerDecimated.value = isBig;
+            // Only a genuinely reduced mesh counts as "decimated" for the UI.
+            viewerDecimated.value = faceCount > DECIMATE_FACES;
         } catch (err) {
             console.warn('GLB preview failed, trying native:', err);
-            if (nativeFormats.includes(fmt)) {
+            if (fmt) {
                 try { await loadModel(fileUrl, fmt, { onProgress }); loaded = true; }
                 catch (e) { console.error('Native load also failed:', e); }
             }
@@ -855,7 +870,7 @@ async function viewModel(model) {
             loaded = true;
         } catch (err) {
             console.warn('Native loader failed for', fmt, '-- trying GLB fallback:', err);
-            try { await loadModel(glbUrl, 'glb', { onProgress }); loaded = true; }
+            try { await loadModel(glbUrl, 'glb', { onProgress }); loaded = true; viewerDecimated.value = faceCount > DECIMATE_FACES; }
             catch (e) { console.error('GLB fallback also failed:', e); }
         }
     }

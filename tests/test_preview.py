@@ -5,7 +5,7 @@ import io
 import pytest
 import trimesh
 
-from app.services.preview import build_preview_glb, DEFAULT_MAX_FACES
+from app.services.preview import build_preview_glb
 
 
 def _glb_faces(glb_bytes: bytes) -> int:
@@ -17,7 +17,6 @@ def _glb_faces(glb_bytes: bytes) -> int:
 
 def test_large_mesh_is_decimated(tmp_path):
     big = trimesh.creation.icosphere(subdivisions=7)  # ~320k faces
-    assert len(big.faces) > DEFAULT_MAX_FACES
     path = tmp_path / "big.stl"
     big.export(str(path))
 

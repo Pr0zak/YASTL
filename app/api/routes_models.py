@@ -572,8 +572,11 @@ async def delete_model(request: Request, model_id: int):
             pass
 
     # Remove cached GLB preview if it exists
+    from app.services.preview import preview_cache_name
+
     glb_cache_path = os.path.join(
-        str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache", f"{model_id}.glb"
+        str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache",
+        preview_cache_name(model_id),
     )
     if os.path.exists(glb_cache_path):
         try:
