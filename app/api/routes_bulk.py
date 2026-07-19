@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 import aiosqlite
 
-from app.api._helpers import open_db, apply_auto_tags
+from app.api._helpers import open_db, apply_auto_tags, resolve_thumbnail
 from app.database import update_fts_for_model
 
 router = APIRouter(prefix="/api/bulk", tags=["bulk"])
@@ -265,18 +265,26 @@ async def bulk_delete(request: Request):
 
         deleted = 0
         thumbnail_paths = []
+        source_files = []
 
         for model_id in model_ids:
             cursor = await db.execute(
-                "SELECT id, thumbnail_path FROM models WHERE id = ?", (model_id,)
+                "SELECT id, thumbnail_path, file_path, zip_path "
+                "FROM models WHERE id = ?",
+                (model_id,),
             )
             row = await cursor.fetchone()
             if row is None:
                 continue
 
             model_dict = dict(row)
-            if model_dict.get("thumbnail_path"):
-                thumbnail_paths.append(model_dict["thumbnail_path"])
+            thumb_file = resolve_thumbnail(model_dict.get("thumbnail_path"))
+            if thumb_file:
+                thumbnail_paths.append(thumb_file)
+            # Zip members share an archive with other models — only
+            # standalone source files are removed from disk.
+            if model_dict.get("file_path") and not model_dict.get("zip_path"):
+                source_files.append(model_dict["file_path"])
 
             await db.execute(
                 "DELETE FROM models_fts WHERE rowid = ?", (model_id,)
@@ -285,6 +293,15 @@ async def bulk_delete(request: Request):
             deleted += 1
 
         await db.commit()
+
+    # Delete source files from disk — otherwise the next scan re-indexes
+    # every "deleted" model.
+    for path in source_files:
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     # Clean up thumbnail files
     for path in thumbnail_paths:

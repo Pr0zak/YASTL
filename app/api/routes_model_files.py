@@ -13,7 +13,7 @@ import trimesh
 from app.config import settings
 from app.database import get_setting
 from app.services import thumbnail
-from app.api._helpers import open_db, _get_db_path, _resolve_model_file, MIME_TYPES
+from app.api._helpers import open_db, _get_db_path, _resolve_model_file, resolve_thumbnail, MIME_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +296,7 @@ async def serve_thumbnail(request: Request, model_id: int):
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
     model = dict(row)
-    thumbnail_path = model.get("thumbnail_path")
+    thumbnail_path = resolve_thumbnail(model.get("thumbnail_path"))
 
     if not thumbnail_path or not os.path.exists(thumbnail_path):
         raise HTTPException(status_code=404, detail="Thumbnail not available")

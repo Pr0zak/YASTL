@@ -12,6 +12,7 @@ from app.services import zip_handler
 from app.api._helpers import (
     open_db,
     enrich_models_page,
+    resolve_thumbnail,
     _get_db_path,
     _fetch_model_with_relations,
     _sanitize_filename,
@@ -529,9 +530,10 @@ async def delete_model(request: Request, model_id: int):
                 logger.warning("Failed to delete model file %s: %s", real_path, e)
 
     # Remove thumbnail file from disk
-    if thumbnail_path and os.path.exists(thumbnail_path):
+    thumb_file = resolve_thumbnail(thumbnail_path)
+    if thumb_file and os.path.exists(thumb_file):
         try:
-            os.remove(thumbnail_path)
+            os.remove(thumb_file)
         except OSError:
             pass
 

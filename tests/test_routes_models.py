@@ -423,3 +423,65 @@ class TestModelCategories:
 
         resp = await client.delete(f"/api/models/{model_id}/categories/999")
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestThumbnailPathResolution:
+    """thumbnail_path stores a bare filename — it must be resolved
+    against the thumbnail directory, not treated as an absolute path."""
+
+    async def test_thumbnail_served_from_bare_filename(self, client, monkeypatch):
+        import aiosqlite
+        from app.config import settings as app_settings
+
+        db_path = client._db_path
+        thumb_dir = client._thumb_dir
+        monkeypatch.setattr(
+            app_settings, "MODEL_LIBRARY_THUMBNAIL_PATH", thumb_dir
+        )
+        (thumb_dir / "model_x.png").write_bytes(b"\x89PNG-fake")
+
+        model_id = await insert_test_model(
+            db_path, name="thumbed", file_path="/tmp/thumbed.stl"
+        )
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "UPDATE models SET thumbnail_path = 'model_x.png' WHERE id = ?",
+                (model_id,),
+            )
+            await conn.commit()
+
+        resp = await client.get(f"/api/models/{model_id}/thumbnail")
+        assert resp.status_code == 200
+        assert resp.content == b"\x89PNG-fake"
+
+    async def test_delete_removes_resolved_thumbnail(
+        self, client, create_stl, monkeypatch
+    ):
+        import aiosqlite
+        from app.config import settings as app_settings
+
+        db_path = client._db_path
+        scan_dir = client._scan_dir
+        thumb_dir = client._thumb_dir
+        monkeypatch.setattr(
+            app_settings, "MODEL_LIBRARY_THUMBNAIL_PATH", thumb_dir
+        )
+        thumb_file = thumb_dir / "model_del.png"
+        thumb_file.write_bytes(b"png")
+
+        stl_path = scan_dir / "delme.stl"
+        create_stl(stl_path)
+        model_id = await insert_test_model(
+            db_path, name="delme", file_path=str(stl_path)
+        )
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(
+                "UPDATE models SET thumbnail_path = 'model_del.png' WHERE id = ?",
+                (model_id,),
+            )
+            await conn.commit()
+
+        resp = await client.delete(f"/api/models/{model_id}")
+        assert resp.status_code == 200
+        assert not thumb_file.exists()

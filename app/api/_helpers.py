@@ -20,6 +20,21 @@ logger = logging.getLogger(__name__)
 _BUSY_TIMEOUT_MS = 5000
 
 
+def resolve_thumbnail(thumb_filename: str | None) -> str | None:
+    """Resolve a stored thumbnail_path value to a real filesystem path.
+
+    The column stores a bare filename relative to the configured
+    thumbnail directory; code that treated it as an absolute path never
+    found the file (thumbnails were never served or cleaned up).
+    Legacy absolute values pass through unchanged.
+    """
+    if not thumb_filename:
+        return None
+    if os.path.isabs(thumb_filename):
+        return thumb_filename
+    return os.path.join(str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), thumb_filename)
+
+
 @asynccontextmanager
 async def open_db(db_path: str):
     """Open an aiosqlite connection with sensible defaults.
