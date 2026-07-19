@@ -3,6 +3,7 @@
  * DetailPanel - Model detail overlay with 3D viewer and tabbed info panel.
  * Tabs: Info (description, source, file summary, categories), Tags, More (collections, duplicates).
  */
+import { computed } from 'vue';
 import { ICONS } from '../icons.js';
 import { formatFileSize, formatNumber, formatDimensions } from '../search.js';
 
@@ -25,6 +26,7 @@ const props = defineProps({
     tagSuggestions: { type: Array, default: () => [] },
     tagSuggestionsLoading: { type: Boolean, default: false },
     newTagInput: { type: String, default: '' },
+    allTags: { type: Array, default: () => [] },
     allCategories: { type: Array, default: () => [] },
     collections: { type: Array, default: () => [] },
     relatedModels: { type: Array, default: () => [] },
@@ -79,6 +81,15 @@ function viewerThumb(model) {
     if (model) return `/api/models/${model.id}/thumbnail`;
     return '';
 }
+
+// Autocomplete suggestions for the add-tag input: existing tag names not
+// already applied to this model.
+const tagAutocomplete = computed(() => {
+    const applied = new Set((props.selectedModel?.tags || []).map((t) => t.toLowerCase()));
+    return props.allTags
+        .map((t) => t.name)
+        .filter((name) => name && !applied.has(name.toLowerCase()));
+});
 
 const SLICER_FORMATS = ['stl', '3mf', 'obj'];
 const SLICER_PROTOCOLS = {
@@ -378,9 +389,13 @@ function formatClass(fmt) {
                                 <div class="tag-add-row">
                                     <input type="text"
                                            :value="newTagInput"
+                                           list="detail-tag-suggestions"
                                            @input="emit('update:newTagInput', $event.target.value)"
                                            placeholder="Add tag..."
                                            @keydown.enter="emit('addTag')">
+                                    <datalist id="detail-tag-suggestions">
+                                        <option v-for="t in tagAutocomplete" :key="t" :value="t"></option>
+                                    </datalist>
                                     <button class="btn btn-sm btn-primary" @click="emit('addTag')">Add</button>
                                 </div>
                                 <!-- Tag suggestions -->

@@ -1943,6 +1943,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :tagSuggestions="tagSuggestions"
         :tagSuggestionsLoading="tagSuggestionsLoading"
         :newTagInput="newTagInput"
+        :allTags="allTags"
         :allCategories="allCategories"
         :collections="collections"
         :relatedModels="relatedModels"

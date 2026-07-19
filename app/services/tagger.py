@@ -88,6 +88,28 @@ def _classify_size(dims_x: float | None, dims_y: float | None, dims_z: float | N
         return "large"
 
 
+def _classify_shape(
+    dims_x: float | None, dims_y: float | None, dims_z: float | None
+) -> list[str]:
+    """Derive shape tags from the bounding-box aspect ratio.
+
+    - ``flat``: one dimension is much thinner than the others (a plate).
+    - ``tall``: the height (Z, print-bed convention) far exceeds the
+      footprint (a figurine / tower).
+    """
+    vals = [d for d in (dims_x, dims_y, dims_z) if d is not None and d > 0]
+    if len(vals) < 3:
+        return []
+    tags: list[str] = []
+    footprint = max(dims_x, dims_y)
+    if dims_z > footprint * 2.2:
+        tags.append("tall")
+    ordered = sorted((dims_x, dims_y, dims_z))
+    if ordered[0] < ordered[1] * 0.18:
+        tags.append("flat")
+    return tags
+
+
 def _classify_complexity(vertex_count: int | None, face_count: int | None) -> str | None:
     """Classify mesh complexity.
 
@@ -190,6 +212,14 @@ def suggest_tags(model: dict) -> list[str]:
     )
     if size_tag:
         _add(size_tag)
+
+    # 4b. Shape classification (flat / tall) from the bounding box
+    for shape_tag in _classify_shape(
+        model.get("dimensions_x"),
+        model.get("dimensions_y"),
+        model.get("dimensions_z"),
+    ):
+        _add(shape_tag)
 
     # 5. Complexity classification
     complexity_tag = _classify_complexity(
