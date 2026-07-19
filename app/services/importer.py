@@ -6,7 +6,6 @@ feeds them through the standard processing pipeline (metadata extraction,
 hashing, thumbnail generation, DB insert, FTS update).
 """
 
-import asyncio
 import logging
 import os
 import re
@@ -17,6 +16,7 @@ import httpx
 
 from app.database import get_db, get_setting, update_fts_for_model
 from app.services import hasher, processor, thumbnail
+from app.workers import run_cpu_job
 
 # Re-export submodule names so existing ``from app.services.importer import ...``
 # statements continue to work without changes.
@@ -62,7 +62,6 @@ async def process_imported_file(
     Returns the new model ID, or None on failure.
     """
     file_path_str = str(file_path)
-    loop = asyncio.get_running_loop()
 
     # Check extension is supported
     ext = file_path.suffix.lower()
@@ -77,14 +76,25 @@ async def process_imported_file(
         logger.warning("Unsupported format %s for imported file %s", ext, file_path_str)
         return None
 
-    # Extract metadata (CPU-bound)
-    metadata: dict = await loop.run_in_executor(
-        None, processor.extract_metadata, file_path_str,
+    # Oversized files would blow up trimesh in the worker; skip like the scanner
+    from app.services.scanner import MAX_FILE_SIZE_MB
+
+    size_mb = os.path.getsize(file_path_str) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        logger.warning(
+            "Imported file too large to process (%.0f MB > %d MB limit): %s",
+            size_mb, MAX_FILE_SIZE_MB, file_path_str,
+        )
+        return None
+
+    # Extract metadata (CPU-bound, worker pool)
+    metadata: dict = await run_cpu_job(
+        processor.extract_metadata, file_path_str,
     )
 
-    # Compute hash (I/O-bound)
-    file_hash: str = await loop.run_in_executor(
-        None, hasher.compute_file_hash, file_path_str,
+    # Compute hash (CPU-bound, worker pool)
+    file_hash: str = await run_cpu_job(
+        hasher.compute_file_hash, file_path_str,
     )
 
     # Derive fields
@@ -135,8 +145,7 @@ async def process_imported_file(
         thumb_path = str(app_settings.MODEL_LIBRARY_THUMBNAIL_PATH)
         thumb_mode = await get_setting("thumbnail_mode", "wireframe")
         thumb_quality = await get_setting("thumbnail_quality", "fast")
-        thumb_filename: str | None = await loop.run_in_executor(
-            None,
+        thumb_filename: str | None = await run_cpu_job(
             thumbnail.generate_thumbnail,
             file_path_str,
             thumb_path,

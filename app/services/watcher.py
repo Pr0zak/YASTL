@@ -21,6 +21,7 @@ from watchdog.observers.polling import PollingObserver
 
 from app.database import get_setting, update_fts_for_model
 from app.services import hasher, processor, thumbnail, zip_handler
+from app.workers import run_cpu_job
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +313,22 @@ class ModelFileWatcher:
                 continue
         return None
 
+    def _too_large(self, path: str) -> bool:
+        """Skip oversized files: trimesh can expand them to many GB in RAM."""
+        from app.services.scanner import MAX_FILE_SIZE_MB
+
+        try:
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+        except OSError:
+            return False
+        if size_mb > MAX_FILE_SIZE_MB:
+            logger.warning(
+                "Skipping oversized file (%.0f MB > %d MB limit): %s",
+                size_mb, MAX_FILE_SIZE_MB, path,
+            )
+            return True
+        return False
+
     def _library_root_healthy(self, file_path: str) -> bool:
         """Check the watched library root still looks mounted and populated.
 
@@ -383,16 +400,17 @@ class ModelFileWatcher:
                     logger.debug("File already in database, skipping: %s", src_path)
                 return
 
-            loop = asyncio.get_running_loop()
+            if self._too_large(src_path):
+                return
 
-            # Extract metadata
-            metadata: dict = await loop.run_in_executor(
-                None, processor.extract_metadata, src_path
+            # Extract metadata (worker pool: keeps trimesh out of this process)
+            metadata: dict = await run_cpu_job(
+                processor.extract_metadata, src_path
             )
 
             # Compute hash
-            file_hash: str = await loop.run_in_executor(
-                None, hasher.compute_file_hash, src_path
+            file_hash: str = await run_cpu_job(
+                hasher.compute_file_hash, src_path
             )
 
             name = Path(src_path).stem
@@ -443,8 +461,7 @@ class ModelFileWatcher:
 
             # Generate thumbnail
             thumb_mode = await get_setting("thumbnail_mode", "wireframe")
-            thumb_filename: str | None = await loop.run_in_executor(
-                None,
+            thumb_filename: str | None = await run_cpu_job(
                 thumbnail.generate_thumbnail,
                 src_path,
                 self.thumbnail_path,
@@ -494,16 +511,18 @@ class ModelFileWatcher:
                 return
 
             model_id = row[0] if not isinstance(row, dict) else row["id"]
-            loop = asyncio.get_running_loop()
 
-            # Re-extract metadata
-            metadata: dict = await loop.run_in_executor(
-                None, processor.extract_metadata, src_path
+            if self._too_large(src_path):
+                return
+
+            # Re-extract metadata (worker pool)
+            metadata: dict = await run_cpu_job(
+                processor.extract_metadata, src_path
             )
 
             # Re-compute hash
-            file_hash: str = await loop.run_in_executor(
-                None, hasher.compute_file_hash, src_path
+            file_hash: str = await run_cpu_job(
+                hasher.compute_file_hash, src_path
             )
 
             file_size = metadata.get("file_size") or os.path.getsize(src_path)
@@ -536,8 +555,7 @@ class ModelFileWatcher:
 
             # Regenerate thumbnail
             thumb_mode = await get_setting("thumbnail_mode", "wireframe")
-            thumb_filename: str | None = await loop.run_in_executor(
-                None,
+            thumb_filename: str | None = await run_cpu_job(
                 thumbnail.generate_thumbnail,
                 src_path,
                 self.thumbnail_path,
@@ -851,11 +869,14 @@ class ModelFileWatcher:
             )
             tmp_path_str = str(tmp_path)
 
-            metadata: dict = await loop.run_in_executor(
-                None, processor.extract_metadata, tmp_path_str
+            if self._too_large(tmp_path_str):
+                return False
+
+            metadata: dict = await run_cpu_job(
+                processor.extract_metadata, tmp_path_str
             )
-            file_hash: str = await loop.run_in_executor(
-                None, hasher.compute_file_hash, tmp_path_str
+            file_hash: str = await run_cpu_job(
+                hasher.compute_file_hash, tmp_path_str
             )
 
             from pathlib import PurePosixPath
@@ -898,8 +919,7 @@ class ModelFileWatcher:
             model_id = cursor.lastrowid
 
             thumb_mode = await get_setting("thumbnail_mode", "wireframe")
-            thumb_filename: str | None = await loop.run_in_executor(
-                None,
+            thumb_filename: str | None = await run_cpu_job(
                 thumbnail.generate_thumbnail,
                 tmp_path_str,
                 self.thumbnail_path,

@@ -21,6 +21,8 @@ every 50 models during scans/thumbnail regen) or use ``maybe_recycle()``
 which tracks job count automatically.
 """
 
+import asyncio
+import concurrent.futures.process
 import logging
 import os
 import resource
@@ -182,3 +184,38 @@ def shutdown_pool() -> None:
         _pool.shutdown(wait=False)
         logger.info("Process pool shut down")
         _pool = None
+
+
+async def run_cpu_job(func, *args, timeout: float = 300.0):
+    """Run a CPU-bound callable on the shared process pool.
+
+    Encapsulates the ceremony every pool caller needs: timeout
+    enforcement (a stuck worker is recycled so it can't wedge the pool),
+    ``BrokenProcessPool`` recovery, and job-count ticking for automatic
+    recycling. Falls back to the default thread pool when the process
+    pool is not initialised (unit tests).
+
+    Raises ``TimeoutError`` or ``BrokenProcessPool`` to the caller after
+    the pool has been recovered — callers decide how to degrade.
+    """
+    loop = asyncio.get_running_loop()
+    pool = get_pool()
+    if pool is None:
+        return await loop.run_in_executor(None, func, *args)
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(pool, func, *args), timeout=timeout
+        )
+    except TimeoutError:
+        logger.warning(
+            "CPU job %s timed out after %.0fs — recycling pool",
+            getattr(func, "__name__", func), timeout,
+        )
+        recycle_pool()
+        raise
+    except concurrent.futures.process.BrokenProcessPool:
+        recover_pool()
+        raise
+    tick_job()
+    maybe_recycle()
+    return result

@@ -10,6 +10,7 @@ import aiosqlite
 from app.config import settings as app_settings
 from app.database import get_db, get_setting, update_fts_for_model
 from app.services import hasher, processor, thumbnail, zip_handler
+from app.workers import run_cpu_job
 
 logger = logging.getLogger(__name__)
 
@@ -261,19 +262,30 @@ async def _repair_incomplete_models() -> None:
             actual_path = file_path
 
         try:
-            # Re-extract metadata
-            metadata = await loop.run_in_executor(
-                None, processor.extract_metadata, actual_path
+            # Oversized files would blow up trimesh in the worker; skip
+            from app.services.scanner import MAX_FILE_SIZE_MB
+
+            size_mb = os.path.getsize(actual_path) / (1024 * 1024)
+            if size_mb > MAX_FILE_SIZE_MB:
+                logger.warning(
+                    "Repair: file too large (%.0f MB > %d MB): %s",
+                    size_mb, MAX_FILE_SIZE_MB, actual_path,
+                )
+                errors += 1
+                continue
+
+            # Re-extract metadata (worker pool)
+            metadata = await run_cpu_job(
+                processor.extract_metadata, actual_path
             )
 
             # Re-compute file hash
-            file_hash = await loop.run_in_executor(
-                None, hasher.compute_file_hash, actual_path
+            file_hash = await run_cpu_job(
+                hasher.compute_file_hash, actual_path
             )
 
             # Re-generate thumbnail
-            thumb_filename = await loop.run_in_executor(
-                None,
+            thumb_filename = await run_cpu_job(
                 thumbnail.generate_thumbnail,
                 actual_path,
                 thumbnail_path,
