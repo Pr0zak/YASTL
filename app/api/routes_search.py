@@ -62,6 +62,12 @@ async def search_models(
     group_zips: bool = Query(default=False),
     zip_path: str | None = Query(default=None),
     tag_match: str = Query(default="and"),
+    favorites_only: bool = Query(default=False),
+    duplicates_only: bool = Query(default=False),
+    collection: int | None = Query(default=None),
+    sort_by: str = Query(default="relevance"),
+    sort_order: str = Query(default="desc"),
+    status: str = Query(default="active"),
 ):
     """Search models using full-text search with optional filters.
 
@@ -100,7 +106,12 @@ async def search_models(
         params: list = []
 
         # Only show active models by default (exclude missing/deleted)
-        where_clauses.append("m.status = 'active'")
+        if status == "all":
+            where_clauses.append("m.status IN ('active', 'error')")
+        elif status == "error":
+            where_clauses.append("m.status = 'error'")
+        else:
+            where_clauses.append("m.status = 'active'")
 
         # FTS filter: join with the FTS table when a query is provided
         sanitized_q = _sanitize_fts_query(q) if q else ""
@@ -161,6 +172,33 @@ async def search_models(
             where_clauses.append("m.library_id = ?")
             params.append(library_id)
 
+        # Collection membership filter
+        if collection is not None:
+            where_clauses.append(
+                "m.id IN (SELECT cm.model_id FROM collection_models cm "
+                "WHERE cm.collection_id = ?)"
+            )
+            params.append(collection)
+
+        # Favorites filter
+        if favorites_only:
+            where_clauses.append(
+                "m.id IN (SELECT f.model_id FROM favorites f)"
+            )
+
+        # Duplicates filter — only models whose hash appears more than once
+        if duplicates_only:
+            where_clauses.append(
+                """m.file_hash IS NOT NULL AND m.file_hash != ''
+                AND m.file_hash IN (
+                    SELECT file_hash FROM models
+                    WHERE file_hash IS NOT NULL AND file_hash != ''
+                      AND status = 'active'
+                    GROUP BY file_hash
+                    HAVING COUNT(*) > 1
+                )"""
+            )
+
         # Zip path filter
         if zip_path is not None:
             where_clauses.append("m.zip_path = ?")
@@ -216,6 +254,17 @@ async def search_models(
         # When an FTS query is active, rank by BM25 relevance; otherwise
         # fall back to most-recently-updated first.
         # -----------------------------------------------------------------
+        # Explicit sort overrides relevance ranking (used when the
+        # unified frontend fetch carries a user-chosen sort).
+        allowed_sort = {
+            "name", "created_at", "updated_at", "file_size",
+            "vertex_count", "face_count",
+        }
+        direction = "ASC" if sort_order.lower() == "asc" else "DESC"
+        explicit_order = (
+            f"m.{sort_by} {direction}" if sort_by in allowed_sort else None
+        )
+
         if use_fts:
             # FTS5 only populates the hidden `rank` column on the table
             # instance being MATCHed, so rank must come from a MATCHed
@@ -229,7 +278,7 @@ async def search_models(
                     WHERE models_fts MATCH ?
                 ) AS fts ON fts.rowid = m.id
                 {where_sql}
-                ORDER BY fts.rank
+                ORDER BY {explicit_order or 'fts.rank'}
                 LIMIT ? OFFSET ?
             """
             page_params = [sanitized_q] + params + [limit, offset]
@@ -237,7 +286,7 @@ async def search_models(
             query_sql = f"""
                 SELECT m.* FROM models m
                 {where_sql}
-                ORDER BY m.updated_at DESC
+                ORDER BY {explicit_order or 'm.updated_at DESC'}
                 LIMIT ? OFFSET ?
             """
             page_params = params + [limit, offset]

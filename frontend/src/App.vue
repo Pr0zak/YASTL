@@ -465,11 +465,26 @@ async function fetchModels(append = false) {
         } else {
             params.append('group_zips', 'true');
         }
-        params.append('sort_by', filters.sortBy);
-        params.append('sort_order', filters.sortOrder);
-        if (favoritesFirst.value) params.append('favorites_first', 'true');
-
-        const data = await apiGetModels(params);
+        // A search query routes through /api/search with the SAME filter
+        // set — searching no longer drops filters, and filters no longer
+        // drop the search.
+        const q = searchQuery.value.trim();
+        let data;
+        if (q) {
+            // Sort defaults to BM25 relevance for searches; only a
+            // user-changed sort overrides it.
+            if (filters.sortBy !== 'updated_at' || filters.sortOrder !== 'desc') {
+                params.append('sort_by', filters.sortBy);
+                params.append('sort_order', filters.sortOrder);
+            }
+            params.append('q', q);
+            data = await apiSearchModels(params);
+        } else {
+            params.append('sort_by', filters.sortBy);
+            params.append('sort_order', filters.sortOrder);
+            if (favoritesFirst.value) params.append('favorites_first', 'true');
+            data = await apiGetModels(params);
+        }
 
         if (myGen !== fetchGeneration) return; // stale response, discard
         if (append) {
@@ -487,49 +502,9 @@ async function fetchModels(append = false) {
     }
 }
 
+// Kept as an alias: search and listing share one unified fetch now.
 async function searchModels(append = false) {
-    if (!searchQuery.value.trim()) {
-        pagination.offset = 0;
-        return fetchModels();
-    }
-    const myGen = ++fetchGeneration;
-    loading.value = true;
-    try {
-        const params = new URLSearchParams({
-            q: searchQuery.value.trim(),
-            limit: String(pagination.limit),
-            offset: String(pagination.offset),
-        });
-        if (filters.format) params.append('format', filters.format);
-        if (filters.tags.length > 0) {
-            params.append('tags', filters.tags.join(','));
-            if (filters.tagMatch === 'or') params.append('tag_match', 'or');
-        }
-        if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
-        if (filters.library_id) params.append('library_id', String(filters.library_id));
-        // Zip grouping / filtering
-        if (filters.zipPath) {
-            params.append('zip_path', filters.zipPath);
-        } else {
-            params.append('group_zips', 'true');
-        }
-
-        const data = await apiSearchModels(params);
-
-        if (myGen !== fetchGeneration) return; // stale response, discard
-        if (append) {
-            models.value = [...models.value, ...(data.models || [])];
-        } else {
-            models.value = data.models || [];
-        }
-        pagination.total = data.total || 0;
-    } catch (err) {
-        if (myGen !== fetchGeneration) return;
-        showToast('Search failed', 'error');
-        console.error('searchModels error:', err);
-    } finally {
-        if (myGen === fetchGeneration) loading.value = false;
-    }
+    return fetchModels(append);
 }
 
 const debouncedSearch = debounce(() => {
@@ -754,6 +729,7 @@ async function viewModel(model) {
     showFileDetails.value = false;
     showDetail.value = true;
     document.body.classList.add('modal-open');
+    syncUrl(true);
 
     // Fetch full model data — await if we're missing file_format (e.g. related model click),
     // otherwise fire-and-forget to enrich tags/categories in background
@@ -844,6 +820,7 @@ async function openRelatedModel(modelId) {
 function closeDetail() {
     viewSeq++;
     showDetail.value = false;
+    syncUrl(false);
     bedVisible.value = false;
     disposeViewer();
     selectedModel.value = null;
@@ -1432,7 +1409,78 @@ function onKeydown(e) {
 }
 
 /* ---- Lifecycle ---- */
+// ---- URL state sync -------------------------------------------------
+// Search, filters, and the open model serialize to the query string so
+// filtered views are shareable and the back button works.
+
+function stateToParams() {
+    const p = new URLSearchParams();
+    const q = searchQuery.value.trim();
+    if (q) p.set('q', q);
+    if (filters.format) p.set('format', filters.format);
+    if (filters.tags.length) p.set('tags', filters.tags.join(','));
+    if (filters.tagMatch !== 'and') p.set('tag_match', filters.tagMatch);
+    if (filters.categories.length) p.set('categories', filters.categories.join(','));
+    if (filters.library_id) p.set('library', String(filters.library_id));
+    if (filters.collection) p.set('collection', String(filters.collection));
+    if (filters.favoritesOnly) p.set('favorites', '1');
+    if (filters.duplicatesOnly) p.set('duplicates', '1');
+    if (filters.zipPath) p.set('zip', filters.zipPath);
+    if (filters.sortBy !== 'updated_at') p.set('sort', filters.sortBy);
+    if (filters.sortOrder !== 'desc') p.set('order', filters.sortOrder);
+    if (showDetail.value && selectedModel.value) {
+        p.set('model', String(selectedModel.value.id));
+    }
+    return p;
+}
+
+function syncUrl(push = false) {
+    const qs = stateToParams().toString();
+    if (qs === location.search.replace(/^\?/, '')) return;
+    const url = qs ? `?${qs}` : location.pathname;
+    if (push) {
+        history.pushState(null, '', url);
+    } else {
+        history.replaceState(null, '', url);
+    }
+}
+
+function applyUrlState() {
+    const p = new URLSearchParams(location.search);
+    searchQuery.value = p.get('q') || '';
+    filters.format = p.get('format') || '';
+    filters.tags = p.get('tags') ? p.get('tags').split(',') : [];
+    filters.tagMatch = p.get('tag_match') || 'and';
+    filters.categories = p.get('categories') ? p.get('categories').split(',') : [];
+    filters.library_id = p.get('library') ? parseInt(p.get('library')) : null;
+    filters.collection = p.get('collection') ? parseInt(p.get('collection')) : null;
+    filters.favoritesOnly = p.get('favorites') === '1';
+    filters.duplicatesOnly = p.get('duplicates') === '1';
+    filters.zipPath = p.get('zip') || null;
+    filters.sortBy = p.get('sort') || 'updated_at';
+    filters.sortOrder = p.get('order') || 'desc';
+    return p;
+}
+
+async function onPopState() {
+    const p = applyUrlState();
+    pagination.offset = 0;
+    await fetchModels();
+    const modelId = p.get('model') ? parseInt(p.get('model')) : null;
+    if (modelId && selectedModel.value?.id !== modelId) {
+        await viewModel({ id: modelId });
+    } else if (!modelId && showDetail.value) {
+        closeDetail();
+    }
+}
+
+// One history entry per user action that changes the view; syncUrl
+// no-ops when the URL already matches, so restores don't re-push.
+watch(filters, () => syncUrl(true), { deep: true });
+watch(searchQuery, () => syncUrl(false));
+
 onMounted(() => {
+    const initialParams = applyUrlState();
     fetchSettings();
     fetchLibraries();
     fetchModels();
@@ -1446,6 +1494,11 @@ onMounted(() => {
     fetchImportCredentials();
     statusPollTimer = setInterval(fetchSystemStatus, 30000);
     document.addEventListener('keydown', onKeydown);
+    window.addEventListener('popstate', onPopState);
+    const initialModel = initialParams.get('model');
+    if (initialModel) {
+        viewModel({ id: parseInt(initialModel) });
+    }
 });
 
 // Smart collection form helpers

@@ -293,3 +293,38 @@ class TestFtsRankingAndTags:
         assert resp.status_code == 200
         resp = await client.get("/api/search?q=elvish")
         assert resp.json()["total"] == 0
+
+
+class TestUnifiedSearchFilters:
+    async def test_search_respects_favorites_filter(self, client):
+        db_path = client._db_path
+        fav_id = await insert_test_model(
+            db_path, name="dragon knight", file_path="/tmp/dk.stl"
+        )
+        await insert_test_model(
+            db_path, name="dragon peasant", file_path="/tmp/dp.stl"
+        )
+        resp = await client.post(f"/api/models/{fav_id}/favorite")
+        assert resp.status_code in (200, 201)
+
+        resp = await client.get("/api/search?q=dragon&favorites_only=true")
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["models"][0]["id"] == fav_id
+        # Enrichment now includes favorite state in search results
+        assert data["models"][0]["is_favorite"] is True
+
+    async def test_search_explicit_sort_overrides_relevance(self, client):
+        db_path = client._db_path
+        await insert_test_model(
+            db_path, name="alpha dragon", file_path="/tmp/a.stl", file_size=10
+        )
+        await insert_test_model(
+            db_path, name="beta dragon", file_path="/tmp/b.stl", file_size=99
+        )
+
+        resp = await client.get(
+            "/api/search?q=dragon&sort_by=file_size&sort_order=desc"
+        )
+        data = resp.json()
+        assert [m["file_size"] for m in data["models"]] == [99, 10]
