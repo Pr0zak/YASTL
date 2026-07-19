@@ -18,6 +18,8 @@ const props = defineProps({
     viewerClipping: { type: Boolean, default: false },
     viewerClipPos: { type: Number, default: 0.55 },
     viewerOrtho: { type: Boolean, default: false },
+    viewerMeasuring: { type: Boolean, default: false },
+    viewerMeasuredMm: { type: Number, default: null },
     editName: { type: String, default: '' },
     editDesc: { type: String, default: '' },
     editSourceUrl: { type: String, default: '' },
@@ -78,6 +80,7 @@ const emit = defineEmits([
     'toggleClipping',
     'setClipPosition',
     'toggleOrtho',
+    'toggleMeasuring',
     'logPrint',
     'undoPrint',
     'clearAutoTags',
@@ -240,6 +243,11 @@ function formatClass(fmt) {
                                 @click="emit('toggleOrtho')"
                                 :title="viewerOrtho ? 'Orthographic (click for perspective)' : 'Perspective (click for orthographic)'">
                             {{ viewerOrtho ? 'Ortho' : 'Persp' }}
+                        </button>
+                        <button class="btn" :class="{ 'btn-active': viewerMeasuring }"
+                                @click="emit('toggleMeasuring')"
+                                title="Measure: click two points on the model for a distance">
+                            {{ viewerMeasuredMm != null ? (viewerMeasuredMm.toFixed(1) + ' mm') : 'Measure' }}
                         </button>
                         <button class="btn" :class="{ 'btn-active': viewerClipping }"
                                 @click="emit('toggleClipping')"

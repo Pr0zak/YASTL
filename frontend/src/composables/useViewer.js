@@ -25,6 +25,8 @@ export function useViewer() {
     const viewerError = ref(null);
     /** Download/parse progress of the current load, 0..1 (null = unknown). */
     const viewerProgress = ref(null);
+    /** Point-to-point measurement result in mm (null when not measuring). */
+    const measuredDistanceMm = ref(null);
     /** Original model dimensions in mm (set after model load). */
     const modelDimensions = ref(null);
 
@@ -151,6 +153,7 @@ export function useViewer() {
         modelScaleFactor = 0;
         modelDimensions.value = null;
         clipEnabled = false;
+        clearMeasure();
         clearBedOverlay();
         requestRender();
     }
@@ -373,6 +376,11 @@ export function useViewer() {
         // idle; frames are only scheduled on interaction/state changes,
         // and damping keeps requesting frames until it settles.
         controls.addEventListener('change', requestRender);
+
+        // Measurement point-picking (only acts while measuring is enabled).
+        renderer.domElement.addEventListener('pointerdown', onMeasureDown);
+        renderer.domElement.addEventListener('pointerup', onMeasureUp);
+
         requestRender();
     }
 
@@ -760,6 +768,93 @@ export function useViewer() {
         return isOrtho;
     }
 
+    /* ---- Point-to-point measurement ---- */
+    const _raycaster = new THREE.Raycaster();
+    const _pointer = new THREE.Vector2();
+    let measureEnabled = false;
+    let measurePoints = [];
+    let measureGroup = null;
+    let _downXY = null;
+
+    function setMeasuring(on) {
+        measureEnabled = on;
+        if (!on) clearMeasure();
+        return measureEnabled;
+    }
+
+    function clearMeasure() {
+        measurePoints = [];
+        measuredDistanceMm.value = null;
+        if (measureGroup && scene) {
+            scene.remove(measureGroup);
+            disposeObject3D(measureGroup);
+        }
+        measureGroup = null;
+        requestRender();
+    }
+
+    function onMeasureDown(e) {
+        if (measureEnabled) _downXY = [e.clientX, e.clientY];
+    }
+
+    function onMeasureUp(e) {
+        if (!measureEnabled || !_downXY) return;
+        const moved = Math.hypot(e.clientX - _downXY[0], e.clientY - _downXY[1]);
+        _downXY = null;
+        if (moved > 5) return; // an orbit/pan drag, not a pick
+        if (!currentModel || !renderer || !camera) return;
+        const rect = renderer.domElement.getBoundingClientRect();
+        _pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        _pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        _raycaster.setFromCamera(_pointer, camera);
+        const hits = _raycaster.intersectObject(currentModel, true);
+        if (!hits.length) return;
+        addMeasurePoint(hits[0].point.clone());
+    }
+
+    function addMeasurePoint(p) {
+        if (measurePoints.length >= 2) measurePoints = [];
+        measurePoints.push(p);
+        drawMeasure();
+        if (measurePoints.length === 2) {
+            const dScene = measurePoints[0].distanceTo(measurePoints[1]);
+            measuredDistanceMm.value = modelScaleFactor > 0
+                ? dScene / modelScaleFactor
+                : dScene;
+        } else {
+            measuredDistanceMm.value = null;
+        }
+        requestRender();
+    }
+
+    function drawMeasure() {
+        if (measureGroup && scene) {
+            scene.remove(measureGroup);
+            disposeObject3D(measureGroup);
+        }
+        measureGroup = new THREE.Group();
+        const dotGeo = new THREE.SphereGeometry(0.035, 12, 12);
+        for (const p of measurePoints) {
+            const dot = new THREE.Mesh(
+                dotGeo.clone(),
+                new THREE.MeshBasicMaterial({ color: 0x61afef, depthTest: false })
+            );
+            dot.position.copy(p);
+            dot.renderOrder = 999;
+            measureGroup.add(dot);
+        }
+        if (measurePoints.length === 2) {
+            const g = new THREE.BufferGeometry().setFromPoints(measurePoints);
+            const line = new THREE.Line(
+                g,
+                new THREE.LineBasicMaterial({ color: 0x61afef, depthTest: false })
+            );
+            line.renderOrder = 999;
+            measureGroup.add(line);
+        }
+        if (scene) scene.add(measureGroup);
+    }
+
     /* ---- Cross-section clipping plane ---- */
     let clipPlane = null;
     let clipEnabled = false;
@@ -806,6 +901,10 @@ export function useViewer() {
         loadGeneration++;
         renderRequested = false;
         isOrtho = false;
+        measureEnabled = false;
+        measurePoints = [];
+        measureGroup = null;
+        measuredDistanceMm.value = null;
         viewerProgress.value = null;
         // Terminate the parse worker and drop any pending callbacks.
         if (_worker) {
@@ -1044,6 +1143,8 @@ export function useViewer() {
         resetCamera,
         setView,
         toggleOrtho,
+        setMeasuring,
+        measuredDistanceMm,
         setClipping,
         setClipPosition,
         setViewerTheme,

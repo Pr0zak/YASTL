@@ -129,6 +129,21 @@ function toggleViewerOrtho() {
     if (r !== undefined) viewerOrtho.value = r;
 }
 
+const viewerMeasuring = ref(false);
+const viewerMeasuredMm = ref(null);
+let measureWatchStop = null;
+function toggleMeasuring() {
+    viewerMeasuring.value = !viewerMeasuring.value;
+    viewer?.setMeasuring(viewerMeasuring.value);
+    // Mirror the viewer's reactive measured value into a local ref.
+    if (viewer && !measureWatchStop) {
+        measureWatchStop = watch(viewer.measuredDistanceMm, (v) => {
+            viewerMeasuredMm.value = v;
+        });
+    }
+    if (!viewerMeasuring.value) viewerMeasuredMm.value = null;
+}
+
 /* ---- Core reactive state ---- */
 const models = ref([]);
 const selectedModel = ref(null);
@@ -854,6 +869,8 @@ async function viewModel(model) {
     viewerDecimated.value = false;
     viewerClipping.value = false;
     viewerOrtho.value = false;
+    viewerMeasuring.value = false;
+    viewerMeasuredMm.value = null;
     await ensureViewer();
     if (seq !== viewSeq) return;
     initViewer('viewer-container', colorTheme.value);
@@ -2110,6 +2127,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :viewerClipping="viewerClipping"
         :viewerClipPos="viewerClipPos"
         :viewerOrtho="viewerOrtho"
+        :viewerMeasuring="viewerMeasuring"
+        :viewerMeasuredMm="viewerMeasuredMm"
         :editName="editName"
         :editDesc="editDesc"
         :editSourceUrl="editSourceUrl"
@@ -2166,6 +2185,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @toggleClipping="toggleClipping"
         @setClipPosition="onClipPosition"
         @toggleOrtho="toggleViewerOrtho"
+        @toggleMeasuring="toggleMeasuring"
         @logPrint="logPrint"
         @undoPrint="undoPrint"
         @clearAutoTags="clearAutoTags"
