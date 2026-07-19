@@ -261,12 +261,46 @@ class Updater:
                     ),
                 )
                 if result.returncode != 0:
-                    logger.warning(
-                        "pip install had issues (continuing anyway): %s",
-                        result.stderr.strip(),
-                    )
+                    # Restarting on top of a failed install can leave the
+                    # service unable to boot — surface the error instead.
+                    err = (result.stderr or result.stdout).strip()[-500:]
+                    logger.error("pip install failed, aborting update: %s", err)
+                    self._status.last_error = f"pip install failed: {err}"
+                    self._status.updating = False
+                    return self._status
 
                 logger.info("Dependencies reinstalled")
+
+                # Rebuild the Vite frontend: dist/ is not committed, so
+                # without this every applied update serves the previous
+                # build's UI until yastl-update is run manually.
+                frontend_dir = os.path.join(repo, "frontend")
+                if os.path.isfile(os.path.join(frontend_dir, "package.json")):
+                    logger.info("Rebuilding frontend...")
+                    for npm_cmd in (
+                        ["npm", "install", "--no-audit", "--no-fund"],
+                        ["npm", "run", "build"],
+                    ):
+                        result = await loop.run_in_executor(
+                            None,
+                            lambda cmd=npm_cmd: subprocess.run(
+                                cmd,
+                                cwd=frontend_dir,
+                                capture_output=True,
+                                text=True,
+                                timeout=300,
+                            ),
+                        )
+                        if result.returncode != 0:
+                            err = (result.stderr or result.stdout).strip()[-500:]
+                            logger.error(
+                                "Frontend build failed (%s), aborting update: %s",
+                                " ".join(npm_cmd), err,
+                            )
+                            self._status.last_error = f"Frontend build failed: {err}"
+                            self._status.updating = False
+                            return self._status
+                    logger.info("Frontend rebuilt")
 
                 # Schedule restart after response is sent
                 self._status.update_available = False
