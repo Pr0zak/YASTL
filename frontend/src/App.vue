@@ -113,6 +113,12 @@ function onClipPosition(t) {
 }
 function setViewPreset(preset) { viewer?.setView(preset); }
 
+function toastIcon(type) {
+    if (type === 'error') return ICONS.warning;
+    if (type === 'info') return ICONS.activity;
+    return ICONS.check;
+}
+
 const viewerOrtho = ref(false);
 function toggleViewerOrtho() {
     const r = viewer?.toggleOrtho();
@@ -2321,12 +2327,13 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Toast Notifications
          ============================================================ -->
-    <div class="toast-container">
+    <TransitionGroup name="toast" tag="div" class="toast-container">
         <div v-for="toast in toasts" :key="toast.id"
              class="toast" :class="'toast-' + toast.type">
-            {{ toast.message }}
+            <span class="toast-icon" v-html="toastIcon(toast.type)"></span>
+            <span class="toast-msg">{{ toast.message }}</span>
         </div>
-    </div>
+    </TransitionGroup>
 </div>
 </template>
 
