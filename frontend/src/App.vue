@@ -1531,15 +1531,31 @@ function filterByTag(tagName) {
     if (showDetail.value) closeDetail();
 }
 
-function toggleCategoryFilter(catName) {
-    const idx = filters.categories.indexOf(catName);
-    if (idx >= 0) {
-        filters.categories.splice(idx, 1);
+// Collect a category node's name plus all descendant names (rollup).
+function collectCategoryNames(node) {
+    const names = [node.name];
+    for (const child of node.children || []) {
+        names.push(...collectCategoryNames(child));
+    }
+    return names;
+}
+
+function toggleCategoryFilter(cat) {
+    // Accept either a category node (from the sidebar tree) or a bare name.
+    const node = typeof cat === 'string' ? { name: cat, children: [] } : cat;
+    const names = collectCategoryNames(node);
+    const active = filters.categories.includes(node.name);
+    if (active) {
+        // Remove the category and its descendants.
+        filters.categories = filters.categories.filter((n) => !names.includes(n));
     } else {
-        filters.categories.push(catName);
+        // Add the category and its descendants so a parent rolls up children.
+        const set = new Set(filters.categories);
+        names.forEach((n) => set.add(n));
+        filters.categories = [...set];
     }
     pagination.offset = 0;
-    fetchModels();
+    refreshCurrentView();
 }
 
 function removeTagFilter(tagName) {

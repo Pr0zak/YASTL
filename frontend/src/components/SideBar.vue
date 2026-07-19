@@ -189,7 +189,7 @@ const manualCollections = computed(() =>
                     <li>
                         <div class="category-item"
                              :class="{ active: filters.categories.includes(cat.name) }"
-                             @click="emit('toggleCategoryFilter', cat.name)">
+                             @click="emit('toggleCategoryFilter', cat)">
                             <span v-if="cat.children && cat.children.length"
                                   class="category-toggle"
                                   :class="{ expanded: expandedCategories[cat.id] }"
@@ -204,7 +204,7 @@ const manualCollections = computed(() =>
                             <li v-for="child in cat.children" :key="child.id">
                                 <div class="category-item"
                                      :class="{ active: filters.categories.includes(child.name) }"
-                                     @click="emit('toggleCategoryFilter', child.name)">
+                                     @click="emit('toggleCategoryFilter', child)">
                                     <span v-if="child.children && child.children.length"
                                           class="category-toggle"
                                           :class="{ expanded: expandedCategories[child.id] }"
@@ -220,7 +220,7 @@ const manualCollections = computed(() =>
                                     <li v-for="grandchild in child.children" :key="grandchild.id">
                                         <div class="category-item"
                                              :class="{ active: filters.categories.includes(grandchild.name) }"
-                                             @click="emit('toggleCategoryFilter', grandchild.name)">
+                                             @click="emit('toggleCategoryFilter', grandchild)">
                                             <span style="width:16px;display:inline-block"></span>
                                             <span class="category-name">{{ grandchild.name }}</span>
                                         </div>
