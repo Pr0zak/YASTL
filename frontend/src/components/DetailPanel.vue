@@ -5,7 +5,7 @@
  */
 import { computed } from 'vue';
 import { ICONS } from '../icons.js';
-import { formatFileSize, formatNumber, formatDimensions } from '../search.js';
+import { formatFileSize, formatNumber, formatDimensions, formatDate } from '../search.js';
 
 const props = defineProps({
     selectedModel: { type: Object, default: null },
@@ -76,6 +76,8 @@ const emit = defineEmits([
     'toggleClipping',
     'setClipPosition',
     'toggleOrtho',
+    'logPrint',
+    'undoPrint',
 ]);
 
 function viewerThumb(model) {
@@ -422,6 +424,27 @@ function formatClass(fmt) {
 
                         <!-- ==================== MORE TAB ==================== -->
                         <template v-if="detailTab === 'more'">
+                            <!-- Print tracking -->
+                            <div class="info-section">
+                                <div class="info-section-title">Print History</div>
+                                <div class="print-track-row">
+                                    <div class="print-track-stat">
+                                        <strong>{{ selectedModel.print_count || 0 }}</strong>
+                                        print{{ (selectedModel.print_count || 0) === 1 ? '' : 's' }}
+                                        <span v-if="selectedModel.last_printed_at" class="text-muted text-sm">
+                                            · last {{ formatDate(selectedModel.last_printed_at) }}
+                                        </span>
+                                    </div>
+                                    <div class="print-track-actions">
+                                        <button class="btn btn-sm btn-primary" @click="emit('logPrint')">
+                                            <span v-html="ICONS.check"></span> Mark printed
+                                        </button>
+                                        <button v-if="selectedModel.print_count" class="btn btn-sm btn-ghost"
+                                                @click="emit('undoPrint')" title="Undo last print">Undo</button>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Duplicate Warning -->
                             <div v-if="selectedModel.file_hash" class="duplicate-warning" style="display:none">
                                 <span v-html="ICONS.warning"></span>

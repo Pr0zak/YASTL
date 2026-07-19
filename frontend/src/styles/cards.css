@@ -415,3 +415,24 @@
     background: var(--danger);
     box-shadow: 0 0 4px var(--danger);
 }
+
+/* Printed badge on cards */
+.card-printed-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    z-index: 2;
+}
+.card-printed-badge svg {
+    width: 11px;
+    height: 11px;
+}

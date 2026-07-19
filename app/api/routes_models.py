@@ -442,6 +442,54 @@ async def update_model(request: Request, model_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Print tracking
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{model_id}/print")
+async def log_print(request: Request, model_id: int):
+    """Log a print: increment print_count and set last_printed_at to now."""
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        cursor = await db.execute(
+            "UPDATE models SET print_count = COALESCE(print_count, 0) + 1, "
+            "last_printed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (model_id,),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+        await db.commit()
+        cursor = await db.execute(
+            "SELECT print_count, last_printed_at FROM models WHERE id = ?",
+            (model_id,),
+        )
+        row = dict(await cursor.fetchone())
+    return {"print_count": row["print_count"], "last_printed_at": row["last_printed_at"]}
+
+
+@router.delete("/{model_id}/print")
+async def undo_print(request: Request, model_id: int):
+    """Undo the most recent print: decrement print_count (floored at 0)."""
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        cursor = await db.execute(
+            "UPDATE models SET print_count = MAX(COALESCE(print_count, 0) - 1, 0), "
+            "last_printed_at = CASE WHEN COALESCE(print_count, 0) <= 1 "
+            "THEN NULL ELSE last_printed_at END WHERE id = ?",
+            (model_id,),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+        await db.commit()
+        cursor = await db.execute(
+            "SELECT print_count, last_printed_at FROM models WHERE id = ?",
+            (model_id,),
+        )
+        row = dict(await cursor.fetchone())
+    return {"print_count": row["print_count"], "last_printed_at": row["last_printed_at"]}
+
+
+# ---------------------------------------------------------------------------
 # Rename file on disk
 # ---------------------------------------------------------------------------
 

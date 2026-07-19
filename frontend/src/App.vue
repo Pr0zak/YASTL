@@ -50,6 +50,8 @@ import {
     apiGetRelatedModels,
     apiRestartApp,
     apiToggleCollectionPin,
+    apiLogPrint,
+    apiUndoPrint,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -1720,6 +1722,36 @@ function removeSmartRuleCategory(cat) {
     const idx = smartCollectionForm.rules.categories.indexOf(cat);
     if (idx >= 0) smartCollectionForm.rules.categories.splice(idx, 1);
 }
+async function applyPrintResult(data) {
+    if (!selectedModel.value) return;
+    selectedModel.value.print_count = data.print_count;
+    selectedModel.value.last_printed_at = data.last_printed_at;
+    const gridModel = models.value.find((m) => m.id === selectedModel.value.id);
+    if (gridModel) {
+        gridModel.print_count = data.print_count;
+        gridModel.last_printed_at = data.last_printed_at;
+    }
+}
+
+async function logPrint() {
+    if (!selectedModel.value) return;
+    try {
+        applyPrintResult(await apiLogPrint(selectedModel.value.id));
+        showToast('Marked as printed', 'success');
+    } catch {
+        showToast('Failed to log print', 'error');
+    }
+}
+
+async function undoPrint() {
+    if (!selectedModel.value) return;
+    try {
+        applyPrintResult(await apiUndoPrint(selectedModel.value.id));
+    } catch {
+        showToast('Failed to undo print', 'error');
+    }
+}
+
 async function togglePinCollection(col) {
     try {
         await apiToggleCollectionPin(col.id);
@@ -2041,6 +2073,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         @toggleClipping="toggleClipping"
         @setClipPosition="onClipPosition"
         @toggleOrtho="toggleViewerOrtho"
+        @logPrint="logPrint"
+        @undoPrint="undoPrint"
         @regenerateThumbnail="regenerateThumbnail"
     />
 

@@ -136,6 +136,18 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass  # Column already exists or table just created with it
 
+        # Add print-tracking columns
+        if "print_count" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN print_count INTEGER DEFAULT 0"
+                )
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN last_printed_at TIMESTAMP DEFAULT NULL"
+                )
+            except Exception:
+                pass  # Columns already exist or table just created with them
+
         # Add last_scanned_at column to libraries table
         cursor = await db.execute("PRAGMA table_info(libraries)")
         lib_columns = [row["name"] for row in await cursor.fetchall()]

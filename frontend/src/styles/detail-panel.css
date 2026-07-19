@@ -594,3 +594,21 @@
     border-top: 1px solid var(--border);
     margin-top: 12px;
 }
+
+/* Print-history row in the More tab */
+.print-track-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.print-track-stat strong {
+    font-size: 1.1rem;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}
+.print-track-actions {
+    display: flex;
+    gap: 6px;
+}

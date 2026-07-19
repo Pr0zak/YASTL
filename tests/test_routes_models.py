@@ -485,3 +485,29 @@ class TestThumbnailPathResolution:
         resp = await client.delete(f"/api/models/{model_id}")
         assert resp.status_code == 200
         assert not thumb_file.exists()
+
+
+@pytest.mark.asyncio
+class TestPrintTracking:
+    async def test_log_and_undo_print(self, client):
+        db_path = client._db_path
+        mid = await insert_test_model(db_path, name="printable")
+
+        r = await client.post(f"/api/models/{mid}/print")
+        assert r.status_code == 200
+        assert r.json()["print_count"] == 1
+        assert r.json()["last_printed_at"] is not None
+
+        r = await client.post(f"/api/models/{mid}/print")
+        assert r.json()["print_count"] == 2
+
+        r = await client.delete(f"/api/models/{mid}/print")
+        assert r.json()["print_count"] == 1
+
+        r = await client.delete(f"/api/models/{mid}/print")
+        assert r.json()["print_count"] == 0
+        assert r.json()["last_printed_at"] is None
+
+    async def test_print_nonexistent(self, client):
+        r = await client.post("/api/models/999999/print")
+        assert r.status_code == 404

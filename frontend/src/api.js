@@ -569,3 +569,15 @@ export async function apiToggleCollectionPin(id) {
     if (!res.ok) throw new Error('Failed to pin collection');
     return res.json();
 }
+
+export async function apiLogPrint(id) {
+    const res = await fetch(`/api/models/${id}/print`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to log print');
+    return res.json();
+}
+
+export async function apiUndoPrint(id) {
+    const res = await fetch(`/api/models/${id}/print`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to undo print');
+    return res.json();
+}

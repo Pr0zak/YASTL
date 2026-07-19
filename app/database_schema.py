@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS models (
     zip_entry TEXT,
     source_url TEXT,
     error_reason TEXT DEFAULT NULL,
+    print_count INTEGER DEFAULT 0,
+    last_printed_at TIMESTAMP DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
