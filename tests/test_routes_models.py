@@ -267,6 +267,28 @@ class TestDownloadModel:
         assert resp.status_code == 200
         assert "my_model.stl" in resp.headers.get("content-disposition", "")
 
+    async def test_download_with_cosmetic_filename(self, client, create_stl):
+        """The /download/{filename} variant serves the same file.
+
+        Slicer URL schemes (Bambu/Orca/Prusa) sniff the format from the URL
+        path extension, so the frontend appends a cosmetic filename.
+        """
+        db_path = client._db_path
+        scan_dir = client._scan_dir
+
+        stl_path = scan_dir / "cube.stl"
+        create_stl(stl_path)
+
+        model_id = await insert_test_model(
+            db_path, name="cube", file_path=str(stl_path), file_format="stl"
+        )
+
+        plain = await client.get(f"/api/models/{model_id}/download")
+        suffixed = await client.get(f"/api/models/{model_id}/download/anything.stl")
+        assert suffixed.status_code == 200
+        assert suffixed.content == plain.content
+        assert "attachment" in suffixed.headers.get("content-disposition", "")
+
     async def test_download_nonexistent_model(self, client):
         """GET /api/models/999/download should return 404."""
         resp = await client.get("/api/models/999/download")

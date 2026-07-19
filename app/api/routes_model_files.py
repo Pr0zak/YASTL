@@ -104,8 +104,15 @@ async def serve_model_file(request: Request, model_id: int):
 
 
 @router.get("/{model_id}/download")
-async def download_model_file(request: Request, model_id: int):
-    """Download the original 3D model file as an attachment."""
+@router.get("/{model_id}/download/{filename}")
+async def download_model_file(request: Request, model_id: int, filename: str | None = None):
+    """Download the original 3D model file as an attachment.
+
+    The optional trailing ``filename`` segment is cosmetic and ignored:
+    slicer URL schemes (Bambu Studio, OrcaSlicer, PrusaSlicer) detect the
+    file format from the URL path extension, so the frontend appends
+    ``<name>.<ext>`` to the download URL it hands to the slicer.
+    """
     db_path = _get_db_path(request)
 
     async with aiosqlite.connect(db_path) as db:

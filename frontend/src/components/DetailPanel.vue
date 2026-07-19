@@ -6,7 +6,7 @@
 import { ICONS } from '../icons.js';
 import { formatFileSize, formatNumber, formatDimensions } from '../search.js';
 
-defineProps({
+const props = defineProps({
     selectedModel: { type: Object, default: null },
     showDetail: { type: Boolean, default: false },
     viewerLoading: { type: Boolean, default: false },
@@ -74,6 +74,18 @@ const SLICER_LABELS = {
     prusaslicer: 'PrusaSlicer',
 };
 const baseUrl = globalThis.location?.origin || '';
+
+function slicerHref(model) {
+    // Slicers (Bambu/Orca/Prusa) detect the format from the URL path
+    // extension, so the download URL must end in the real file extension.
+    const ext = (model.file_format || '').toLowerCase().replace('.', '');
+    let stem = (model.name || 'model').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'model';
+    if (stem.toLowerCase().endsWith('.' + ext)) {
+        stem = stem.slice(0, -(ext.length + 1));
+    }
+    const fileUrl = `${baseUrl}/api/models/${model.id}/download/${stem}.${ext}`;
+    return (SLICER_PROTOCOLS[props.preferredSlicer] || '') + encodeURIComponent(fileUrl);
+}
 
 function formatClass(fmt) {
     if (!fmt) return '';
@@ -401,7 +413,7 @@ function formatClass(fmt) {
                     <div class="detail-actions-pinned">
                         <a v-if="preferredSlicer !== 'none' && selectedModel.file_format && SLICER_FORMATS.includes(selectedModel.file_format.toLowerCase().replace('.', ''))"
                            class="btn btn-primary"
-                           :href="(SLICER_PROTOCOLS[preferredSlicer] || '') + baseUrl + '/api/models/' + selectedModel.id + '/download'"
+                           :href="slicerHref(selectedModel)"
                            :title="'Open in ' + (SLICER_LABELS[preferredSlicer] || preferredSlicer)">
                             <span v-html="ICONS.slicer"></span>
                             Slicer
