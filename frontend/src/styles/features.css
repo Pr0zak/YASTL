@@ -866,6 +866,15 @@
     border: 1px solid var(--dot-border);
 }
 
+.collection-cover {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+
 .sidebar-item-delete {
     width: 20px;
     height: 20px;

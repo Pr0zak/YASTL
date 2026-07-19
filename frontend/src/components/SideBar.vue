@@ -266,7 +266,11 @@ const manualCollections = computed(() =>
                  @dragenter.prevent="dragOverCollection = col.id"
                  @dragleave="dragOverCollection === col.id && (dragOverCollection = null)"
                  @drop.prevent="onDropCollection(col)">
-                <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
+                <img v-if="col.cover_thumbnail" class="collection-cover"
+                     :src="`/thumbnails/${col.cover_thumbnail}`" alt=""
+                     :style="{ borderColor: col.color || 'var(--border)' }"
+                     @error="(e) => (e.target.style.display = 'none')">
+                <span v-else class="collection-dot" :style="{ background: col.color || '#666' }"></span>
                 <template v-if="editingCollectionId === col.id">
                     <input class="sidebar-edit-input" :value="editCollectionName"
                            @input="emit('update:editCollectionName', $event.target.value)"

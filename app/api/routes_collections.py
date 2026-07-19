@@ -127,9 +127,26 @@ async def list_collections(request: Request):
         )
         rows = await cursor.fetchall()
 
+        # Cover thumbnail per (regular) collection: first member with a
+        # thumbnail, ordered by position.
+        cover: dict[int, str] = {}
+        cursor = await db.execute(
+            """
+            SELECT cm.collection_id AS cid, m.thumbnail_path AS thumb
+            FROM collection_models cm
+            JOIN models m ON m.id = cm.model_id
+            WHERE m.thumbnail_path IS NOT NULL AND m.status = 'active'
+            ORDER BY cm.collection_id, cm.position
+            """
+        )
+        for r in await cursor.fetchall():
+            d = dict(r)
+            cover.setdefault(d["cid"], d["thumb"])
+
         results = []
         for r in rows:
             coll = dict(r)
+            coll["cover_thumbnail"] = cover.get(coll["id"])
             # For smart collections, compute model_count dynamically
             if coll.get("is_smart"):
                 try:
