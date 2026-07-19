@@ -662,3 +662,124 @@ class TestIsSupported:
 
     def test_hidden_file_with_extension(self):
         assert self.handler._is_supported("/path/.hidden.stl") is True
+
+
+# ---------------------------------------------------------------------------
+# Soft-delete behavior (data-loss protection)
+# ---------------------------------------------------------------------------
+
+class TestWatcherSoftDelete:
+    """Delete events must soft-delete (status='missing'), never hard-DELETE.
+
+    A dropped NFS mount makes the polling snapshot report every tracked
+    file as deleted; hard deletes would irreversibly destroy user-curated
+    tags/favorites/collections.
+    """
+
+    def _make_watcher(self, db, tmp_path, root):
+        watcher = ModelFileWatcher(
+            db_path=db,
+            thumbnail_path=str(tmp_path / "thumbs"),
+            supported_extensions={".stl", ".3mf", ".zip"},
+        )
+        watcher._watched_paths = {str(root)}
+        return watcher
+
+    async def _get_status(self, db, model_id):
+        import aiosqlite
+
+        async with aiosqlite.connect(db) as conn:
+            cursor = await conn.execute(
+                "SELECT status FROM models WHERE id = ?", (model_id,)
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+    @pytest.mark.asyncio
+    async def test_on_deleted_marks_missing(self, db, tmp_path):
+        from tests.conftest import insert_test_model
+
+        root = tmp_path / "library"
+        root.mkdir()
+        (root / "other.stl").write_text("keep-root-non-empty")
+        gone = root / "gone.stl"
+
+        model_id = await insert_test_model(db, file_path=str(gone))
+        watcher = self._make_watcher(db, tmp_path, root)
+
+        await watcher._on_deleted(str(gone))
+
+        assert await self._get_status(db, model_id) == "missing"
+
+    @pytest.mark.asyncio
+    async def test_on_deleted_skipped_when_root_empty(self, db, tmp_path):
+        from tests.conftest import insert_test_model
+
+        root = tmp_path / "library"
+        root.mkdir()  # empty: simulates a dropped NFS mountpoint
+
+        model_id = await insert_test_model(db, file_path=str(root / "a.stl"))
+        watcher = self._make_watcher(db, tmp_path, root)
+
+        await watcher._on_deleted(str(root / "a.stl"))
+
+        assert await self._get_status(db, model_id) == "active"
+
+    @pytest.mark.asyncio
+    async def test_on_deleted_skipped_when_root_missing(self, db, tmp_path):
+        from tests.conftest import insert_test_model
+
+        root = tmp_path / "library"  # never created
+        model_id = await insert_test_model(db, file_path=str(root / "a.stl"))
+        watcher = self._make_watcher(db, tmp_path, root)
+
+        await watcher._on_deleted(str(root / "a.stl"))
+
+        assert await self._get_status(db, model_id) == "active"
+
+    @pytest.mark.asyncio
+    async def test_on_created_reactivates_missing(self, db, tmp_path):
+        import aiosqlite
+
+        from tests.conftest import insert_test_model
+
+        root = tmp_path / "library"
+        root.mkdir()
+        back = root / "back.stl"
+        back.write_text("solid x\nendsolid x\n")
+
+        model_id = await insert_test_model(db, file_path=str(back))
+        async with aiosqlite.connect(db) as conn:
+            await conn.execute(
+                "UPDATE models SET status = 'missing' WHERE id = ?", (model_id,)
+            )
+            await conn.commit()
+
+        watcher = self._make_watcher(db, tmp_path, root)
+        await watcher._on_created(str(back))
+
+        assert await self._get_status(db, model_id) == "active"
+
+    @pytest.mark.asyncio
+    async def test_on_zip_deleted_marks_missing(self, db, tmp_path):
+        from tests.conftest import insert_test_model
+
+        root = tmp_path / "library"
+        root.mkdir()
+        (root / "other.stl").write_text("keep-root-non-empty")
+        zip_file = root / "pack.zip"
+
+        id_a = await insert_test_model(
+            db, name="a", file_path=f"{zip_file}::a.stl",
+            zip_path=str(zip_file), zip_entry="a.stl",
+        )
+        id_b = await insert_test_model(
+            db, name="b", file_path=f"{zip_file}::b.stl",
+            zip_path=str(zip_file), zip_entry="b.stl",
+        )
+        watcher = self._make_watcher(db, tmp_path, root)
+
+        await watcher._on_zip_deleted(str(zip_file))
+
+        assert await self._get_status(db, id_a) == "missing"
+        assert await self._get_status(db, id_b) == "missing"

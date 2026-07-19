@@ -312,6 +312,38 @@ class ModelFileWatcher:
                 continue
         return None
 
+    def _library_root_healthy(self, file_path: str) -> bool:
+        """Check the watched library root still looks mounted and populated.
+
+        On NFS, a dropped mount leaves an empty (or missing) mountpoint
+        directory; the polling snapshot then reports every tracked file as
+        deleted. Destructive handling of delete events must be skipped in
+        that state — the scanner will reconcile real deletions later.
+        """
+        root = self._find_library_root(file_path)
+        if root is None:
+            return True  # not under a watched root; nothing to protect
+        try:
+            if not os.path.isdir(root):
+                logger.warning(
+                    "Library root %s is missing — ignoring delete event "
+                    "(possible unmount)", root,
+                )
+                return False
+            if not os.listdir(root):
+                logger.warning(
+                    "Library root %s is empty — ignoring delete event "
+                    "(possible unmount)", root,
+                )
+                return False
+        except OSError as exc:
+            logger.warning(
+                "Library root %s is unreadable (%s) — ignoring delete event",
+                root, exc,
+            )
+            return False
+        return True
+
     # ---- created -------------------------------------------------------
 
     async def _on_created(self, src_path: str) -> None:
@@ -325,12 +357,30 @@ class ModelFileWatcher:
 
         db = await self._get_db()
         try:
-            # Skip if already present
+            # Skip if already present; reactivate if it was marked missing
             cursor = await db.execute(
-                "SELECT id FROM models WHERE file_path = ?", (src_path,)
+                "SELECT id, status FROM models WHERE file_path = ?", (src_path,)
             )
-            if await cursor.fetchone() is not None:
-                logger.debug("File already in database, skipping: %s", src_path)
+            existing = await cursor.fetchone()
+            if existing is not None:
+                ex_id = existing[0] if not isinstance(existing, dict) else existing["id"]
+                ex_status = (
+                    existing[1] if not isinstance(existing, dict)
+                    else existing.get("status")
+                )
+                if ex_status == "missing":
+                    await db.execute(
+                        "UPDATE models SET status = 'active', "
+                        "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (ex_id,),
+                    )
+                    await db.commit()
+                    logger.info(
+                        "Reactivated previously-missing model: id=%d  %s",
+                        ex_id, src_path,
+                    )
+                else:
+                    logger.debug("File already in database, skipping: %s", src_path)
                 return
 
             loop = asyncio.get_running_loop()
@@ -468,6 +518,7 @@ class ModelFileWatcher:
                     dimensions_x = ?,
                     dimensions_y = ?,
                     dimensions_z = ?,
+                    status = 'active',
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
@@ -512,9 +563,18 @@ class ModelFileWatcher:
     # ---- deleted -------------------------------------------------------
 
     async def _on_deleted(self, src_path: str) -> None:
-        """A tracked file was deleted -- remove from DB and clean up thumbnail."""
+        """A tracked file was deleted -- mark it missing (soft delete).
+
+        Never hard-DELETE here: delete events can be false positives from a
+        dropped NFS mount or a transient stat failure, and a hard delete
+        irreversibly destroys tags/favorites/collections. The scanner's
+        reconciliation uses the same soft-delete and can reactivate.
+        """
         if Path(src_path).suffix.lower() == ".zip":
             await self._on_zip_deleted(src_path)
+            return
+
+        if not self._library_root_healthy(src_path):
             return
 
         logger.info("File deleted: %s", src_path)
@@ -522,7 +582,7 @@ class ModelFileWatcher:
         db = await self._get_db()
         try:
             cursor = await db.execute(
-                "SELECT id, thumbnail_path FROM models WHERE file_path = ?",
+                "SELECT id, status FROM models WHERE file_path = ?",
                 (src_path,),
             )
             row = await cursor.fetchone()
@@ -531,30 +591,17 @@ class ModelFileWatcher:
                 return
 
             model_id = row[0] if not isinstance(row, dict) else row["id"]
-            thumb_path = (
-                row[1] if not isinstance(row, dict) else row.get("thumbnail_path")
+            status = row[1] if not isinstance(row, dict) else row.get("status")
+            if status == "missing":
+                return
+
+            await db.execute(
+                "UPDATE models SET status = 'missing', "
+                "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (model_id,),
             )
-
-            # Delete thumbnail file if it exists
-            if thumb_path:
-                full_thumb = Path(self.thumbnail_path) / thumb_path
-                if full_thumb.exists():
-                    try:
-                        full_thumb.unlink()
-                        logger.debug("Removed thumbnail: %s", full_thumb)
-                    except OSError as exc:
-                        logger.warning(
-                            "Could not delete thumbnail %s: %s", full_thumb, exc
-                        )
-
-            # Remove FTS entry
-            await db.execute("DELETE FROM models_fts WHERE rowid = ?", (model_id,))
-
-            # Remove model (cascades to model_categories and model_tags)
-            await db.execute("DELETE FROM models WHERE id = ?", (model_id,))
-
             await db.commit()
-            logger.info("Removed deleted file from DB: id=%d  %s", model_id, src_path)
+            logger.info("Marked model as missing: id=%d  %s", model_id, src_path)
         finally:
             await db.close()
 
@@ -681,47 +728,34 @@ class ModelFileWatcher:
             await self._on_zip_created(zip_path)
 
     async def _on_zip_deleted(self, zip_path: str) -> None:
-        """A zip file was deleted -- remove all models from this zip."""
+        """A zip file was deleted -- mark all its models missing (soft delete).
+
+        Same rationale as _on_deleted: delete events can be false positives
+        on NFS, so rows, thumbnails, and caches are preserved for
+        reactivation instead of being destroyed.
+        """
+        if not self._library_root_healthy(zip_path):
+            return
+
         logger.info("Zip file deleted: %s", zip_path)
 
         db = await self._get_db()
         try:
             cursor = await db.execute(
-                "SELECT id, thumbnail_path FROM models WHERE zip_path = ?",
+                "UPDATE models SET status = 'missing', "
+                "updated_at = CURRENT_TIMESTAMP "
+                "WHERE zip_path = ? AND status != 'missing'",
                 (zip_path,),
             )
-            rows = await cursor.fetchall()
-
-            if not rows:
-                logger.debug("No models in database for zip: %s", zip_path)
-                return
-
-            for row in rows:
-                model_id = row[0] if not isinstance(row, dict) else row["id"]
-                thumb_path = (
-                    row[1] if not isinstance(row, dict) else row.get("thumbnail_path")
-                )
-
-                # Delete thumbnail
-                if thumb_path:
-                    full_thumb = Path(self.thumbnail_path) / thumb_path
-                    if full_thumb.exists():
-                        try:
-                            full_thumb.unlink()
-                        except OSError:
-                            pass
-
-                # Clean up zip cache
-                zip_handler.cleanup_zip_cache(self.thumbnail_path, model_id)
-
-                # Remove FTS entry
-                await db.execute("DELETE FROM models_fts WHERE rowid = ?", (model_id,))
-
-                # Remove model
-                await db.execute("DELETE FROM models WHERE id = ?", (model_id,))
-
+            changed = cursor.rowcount
             await db.commit()
-            logger.info("Removed %d models from deleted zip: %s", len(rows), zip_path)
+            if changed:
+                logger.info(
+                    "Marked %d models missing from deleted zip: %s",
+                    changed, zip_path,
+                )
+            else:
+                logger.debug("No active models in database for zip: %s", zip_path)
         finally:
             await db.close()
 
@@ -786,11 +820,27 @@ class ModelFileWatcher:
         """Process a single model entry inside a zip archive for the watcher."""
         synthetic_path = zip_handler.make_zip_file_path(zip_path, entry_name)
 
-        # Skip if already indexed
+        # Skip if already indexed; reactivate if it was marked missing
         cursor = await db.execute(
-            "SELECT id FROM models WHERE file_path = ?", (synthetic_path,)
+            "SELECT id, status FROM models WHERE file_path = ?", (synthetic_path,)
         )
-        if await cursor.fetchone() is not None:
+        existing = await cursor.fetchone()
+        if existing is not None:
+            ex_id = existing[0] if not isinstance(existing, dict) else existing["id"]
+            ex_status = (
+                existing[1] if not isinstance(existing, dict)
+                else existing.get("status")
+            )
+            if ex_status == "missing":
+                await db.execute(
+                    "UPDATE models SET status = 'active', "
+                    "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (ex_id,),
+                )
+                logger.info(
+                    "Reactivated previously-missing zip entry: id=%d  %s",
+                    ex_id, synthetic_path,
+                )
             return False
 
         # Extract to temp file
