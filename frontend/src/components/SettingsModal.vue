@@ -429,6 +429,23 @@ function timeAgo(dateStr) {
                     </div>
 
                     <template v-if="showAdvanced">
+                        <!-- Backup / Export -->
+                        <div class="settings-advanced-subsection">
+                            <div class="settings-subsection-title">Backup &amp; Export</div>
+                            <div class="settings-section-desc">
+                                Export your curated metadata (tags, categories, collections, print history)
+                                or a full snapshot of the database.
+                            </div>
+                            <div class="settings-btn-row">
+                                <a class="btn btn-secondary" href="/api/backup/manifest" download>
+                                    <span v-html="ICONS.download"></span> Export Manifest (JSON)
+                                </a>
+                                <a class="btn btn-secondary" href="/api/backup/database" download>
+                                    <span v-html="ICONS.database"></span> Backup Database
+                                </a>
+                            </div>
+                        </div>
+
                         <!-- Import Credentials -->
                         <div class="settings-advanced-subsection">
                             <div class="settings-subsection-title">Import Credentials</div>
