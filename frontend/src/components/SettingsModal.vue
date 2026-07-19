@@ -34,6 +34,8 @@ defineProps({
     collectionCardTint: { type: Boolean, default: false },
     preferredSlicer: { type: String, default: 'none' },
     autoTagOnScan: { type: Boolean, default: false },
+    scanIntervalMinutes: { type: String, default: '0' },
+    webhookUrl: { type: String, default: '' },
 });
 
 const emit = defineEmits([
@@ -63,6 +65,9 @@ const emit = defineEmits([
     'toggleCollectionCardTint',
     'setPreferredSlicer',
     'toggleAutoTagOnScan',
+    'setScanInterval',
+    'setWebhookUrl',
+    'testWebhook',
 ]);
 
 function timeAgo(dateStr) {
@@ -310,6 +315,38 @@ function timeAgo(dateStr) {
                     </label>
                     <div class="settings-hint">
                         Automatically adds tags based on filename, format, size, and complexity
+                    </div>
+
+                    <!-- Automation: scheduled scans -->
+                    <div class="settings-dim-row" style="margin-top:12px">
+                        <label class="form-label">Auto-scan interval</label>
+                        <select class="form-input" :value="scanIntervalMinutes"
+                                @change="emit('setScanInterval', $event.target.value)">
+                            <option value="0">Off</option>
+                            <option value="60">Every hour</option>
+                            <option value="360">Every 6 hours</option>
+                            <option value="720">Every 12 hours</option>
+                            <option value="1440">Daily</option>
+                        </select>
+                    </div>
+                    <div class="settings-hint">
+                        Periodically runs an update scan to pick up new/changed files.
+                    </div>
+
+                    <!-- Automation: webhook -->
+                    <div style="margin-top:12px">
+                        <label class="form-label">Webhook URL (Home Assistant, etc.)</label>
+                        <div class="settings-btn-row">
+                            <input type="url" class="form-input" style="flex:1"
+                                   :value="webhookUrl"
+                                   placeholder="https://ha.local/api/webhook/yastl"
+                                   @change="emit('setWebhookUrl', $event.target.value)">
+                            <button class="btn btn-secondary" @click="emit('testWebhook')"
+                                    :disabled="!webhookUrl">Test</button>
+                        </div>
+                        <div class="settings-hint">
+                            POSTs a JSON event (e.g. <code>scan_complete</code>) when scans finish.
+                        </div>
                     </div>
 
                     <div class="settings-btn-row">

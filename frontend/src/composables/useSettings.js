@@ -10,6 +10,7 @@ import {
     apiRemoveLibrary,
     apiGetSettings,
     apiUpdateSettings,
+    apiTestWebhook,
     apiRegenerateThumbnails,
     apiGetRegenStatus,
     apiGeneratePreviews,
@@ -78,6 +79,10 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
 
     // Auto-tag on scan
     const autoTagOnScan = ref(false);
+
+    // Automation: scheduled scans + webhook
+    const scanIntervalMinutes = ref('0');
+    const webhookUrl = ref('');
 
     let regenPollTimer = null;
     let autoTagPollTimer = null;
@@ -158,6 +163,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             preferredSlicer.value = data.preferred_slicer || 'none';
             // Auto-tag on scan
             autoTagOnScan.value = data.auto_tag_on_scan === 'true';
+            // Automation
+            scanIntervalMinutes.value = data.scan_interval_minutes || '0';
+            webhookUrl.value = data.webhook_url || '';
         } catch (err) {
             console.error('fetchSettings error:', err);
         }
@@ -208,6 +216,35 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         } catch (err) {
             showToast('Failed to save slicer setting', 'error');
             console.error('setPreferredSlicer error:', err);
+        }
+    }
+
+    async function setScanInterval(minutes) {
+        const val = String(parseInt(minutes) || 0);
+        scanIntervalMinutes.value = val;
+        try {
+            await apiUpdateSettings({ scan_interval_minutes: val });
+            showToast(val === '0' ? 'Scheduled scans off' : `Auto-scan every ${val} min`, 'info');
+        } catch {
+            showToast('Failed to save scan interval', 'error');
+        }
+    }
+
+    async function setWebhookUrl(url) {
+        webhookUrl.value = url;
+        try {
+            await apiUpdateSettings({ webhook_url: url });
+        } catch {
+            showToast('Failed to save webhook URL', 'error');
+        }
+    }
+
+    async function testWebhook() {
+        try {
+            await apiTestWebhook();
+            showToast('Test webhook delivered', 'success');
+        } catch (err) {
+            showToast(err.message || 'Webhook test failed', 'error');
         }
     }
 
@@ -489,6 +526,11 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         toggleCollectionCardTint,
         setPreferredSlicer,
         toggleAutoTagOnScan,
+        scanIntervalMinutes,
+        webhookUrl,
+        setScanInterval,
+        setWebhookUrl,
+        testWebhook,
         openSettings,
         closeSettings,
     };

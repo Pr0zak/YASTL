@@ -593,3 +593,10 @@ export async function apiGetModelDocs(id) {
     if (!res.ok) throw new Error('Failed to load docs');
     return res.json();
 }
+
+export async function apiTestWebhook() {
+    const res = await fetch('/api/settings/webhook/test', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'Webhook test failed');
+    return json;
+}

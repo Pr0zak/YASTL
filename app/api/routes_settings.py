@@ -59,6 +59,13 @@ NUMERIC_SETTINGS: dict[str, dict] = {
     "bed_width": {"default": "256", "min": 50, "max": 1000},
     "bed_depth": {"default": "256", "min": 50, "max": 1000},
     "bed_height": {"default": "256", "min": 50, "max": 1000},
+    # Auto-scan interval in minutes; 0 disables scheduled scans.
+    "scan_interval_minutes": {"default": "0", "min": 0, "max": 10080},
+}
+
+# Free-form string settings (length-capped)
+STRING_SETTINGS: dict[str, dict] = {
+    "webhook_url": {"default": "", "max_len": 500},
 }
 
 # Module-level regeneration progress state
@@ -106,6 +113,8 @@ async def get_settings():
         result[key] = stored.get(key, schema["default"])
     for key, schema in NUMERIC_SETTINGS.items():
         result[key] = stored.get(key, schema["default"])
+    for key, schema in STRING_SETTINGS.items():
+        result[key] = stored.get(key, schema["default"])
     return result
 
 
@@ -120,11 +129,22 @@ async def update_settings(body: dict):
     for key, value in body.items():
         schema = SETTINGS_SCHEMA.get(key)
         numeric = NUMERIC_SETTINGS.get(key)
-        if schema is None and numeric is None:
+        string = STRING_SETTINGS.get(key)
+        if schema is None and numeric is None and string is None:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unknown setting: {key}",
             )
+        if string is not None:
+            value = str(value or "")
+            if len(value) > string.get("max_len", 500):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Value for {key} is too long.",
+                )
+            await set_setting(key, value)
+            updated[key] = value
+            continue
         if schema is not None:
             if value not in schema["allowed"]:
                 raise HTTPException(
@@ -156,7 +176,23 @@ async def update_settings(body: dict):
         result[key] = stored.get(key, schema["default"])
     for key, schema in NUMERIC_SETTINGS.items():
         result[key] = stored.get(key, schema["default"])
+    for key, schema in STRING_SETTINGS.items():
+        result[key] = stored.get(key, schema["default"])
     return result
+
+
+@router.post("/webhook/test")
+async def test_webhook():
+    """Send a test event to the configured webhook URL."""
+    from app.services.notify import notify_webhook
+
+    ok = await notify_webhook("test", {"message": "YASTL webhook test"})
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail="No webhook URL configured, or delivery failed (see logs).",
+        )
+    return {"detail": "Test webhook delivered"}
 
 
 @router.post("/regenerate-thumbnails")

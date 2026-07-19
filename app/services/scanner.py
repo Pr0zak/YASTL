@@ -623,6 +623,26 @@ class Scanner:
             stats["errors"],
         )
         stats["cancelled"] = cancelled
+
+        # Best-effort webhook notification (Home Assistant, etc.)
+        if not cancelled:
+            try:
+                from app.services.notify import notify_webhook
+
+                await notify_webhook(
+                    "scan_complete",
+                    {
+                        "new": stats["new_files"],
+                        "moved": stats["moved_files"],
+                        "missing": stats["missing_files"],
+                        "reactivated": stats["reactivated_files"],
+                        "errors": stats["errors"],
+                        "total": stats["total_files"],
+                    },
+                )
+            except Exception:  # noqa: BLE001 - never let notify break a scan
+                logger.debug("Webhook notification skipped")
+
         return stats
 
     # ------------------------------------------------------------------

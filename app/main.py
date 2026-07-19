@@ -1,5 +1,6 @@
 """YASTL - Yet Another STL: 3D Model Library"""
 
+import asyncio
 import logging
 import os
 import time
@@ -122,15 +123,51 @@ async def lifespan(app: FastAPI):
     # Initialize update service
     app.state.updater = Updater(app_version="0.1.0")
 
+    # Background loop for scheduled scans (interval from settings)
+    scheduled_task = asyncio.create_task(_scheduled_scan_loop(app))
+
     yield
 
     # Shutdown
     logger.info("Shutting down YASTL")
+    scheduled_task.cancel()
     shutdown_pool()
     try:
         watcher.stop()
     except Exception:
         pass
+
+
+async def _scheduled_scan_loop(app: FastAPI) -> None:
+    """Trigger an update-scan when ``scan_interval_minutes`` says it's due.
+
+    Re-reads the setting each cycle (checked once a minute) so changing the
+    interval takes effect without a restart; 0 disables scheduled scans.
+    """
+    from app.database import get_setting
+
+    last_scan = time.monotonic()
+    while True:
+        try:
+            await asyncio.sleep(60)
+            try:
+                interval = int(await get_setting("scan_interval_minutes", "0") or "0")
+            except (ValueError, TypeError):
+                interval = 0
+            if interval <= 0:
+                last_scan = time.monotonic()  # reset so re-enabling waits a full interval
+                continue
+            scanner = getattr(app.state, "scanner", None)
+            if scanner is None or scanner.is_scanning:
+                continue
+            if time.monotonic() - last_scan >= interval * 60:
+                logger.info("Scheduled scan triggered (every %d min)", interval)
+                last_scan = time.monotonic()
+                await scanner.scan(update_only=True)
+        except asyncio.CancelledError:
+            break
+        except Exception:  # noqa: BLE001 - keep the loop alive
+            logger.exception("Scheduled scan loop error")
 
 
 app = FastAPI(
