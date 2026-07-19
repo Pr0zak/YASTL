@@ -23,6 +23,8 @@ export function useViewer() {
     /* ---- Reactive state exposed to the component ---- */
     const viewerLoading = ref(false);
     const viewerError = ref(null);
+    /** Download/parse progress of the current load, 0..1 (null = unknown). */
+    const viewerProgress = ref(null);
     /** Original model dimensions in mm (set after model load). */
     const modelDimensions = ref(null);
 
@@ -163,32 +165,24 @@ export function useViewer() {
         // Store original dimensions (in model units, typically mm)
         modelDimensions.value = { x: size.x, y: size.y, z: size.z };
 
-        // Center the model on the origin
-        object.position.sub(center);
-
         // Auto-scale to fit within a normalized size
         const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 0) {
-            const targetSize = 4;
-            const scale = targetSize / maxDim;
-            modelScaleFactor = scale;
-            object.scale.multiplyScalar(scale);
-        } else {
-            modelScaleFactor = 1;
-        }
+        const scale = maxDim > 0 ? 4 / maxDim : 1;
+        modelScaleFactor = scale;
 
-        // Re-center XZ after scaling, lift bottom to y=0
-        const scaledBox = new THREE.Box3().setFromObject(object);
-        const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
-        object.position.x -= scaledCenter.x;
-        object.position.z -= scaledCenter.z;
-        object.position.y -= scaledBox.min.y;
+        // Apply scale + position in one shot (object is fresh, at identity),
+        // so we don't need a second setFromObject over every vertex:
+        //   worldV = scale*localV + position
+        // Solve for XZ-centered, bottom on the grid (y=0).
+        object.scale.setScalar(scale);
+        object.position.set(-scale * center.x, -scale * box.min.y, -scale * center.z);
 
         scene.add(object);
         currentModel = object;
 
         // Position camera to see the model
         resetCamera();
+        requestRender();
     }
 
     /* ==================================================================
@@ -367,150 +361,249 @@ export function useViewer() {
 
     /**
      * Load a 3D model from a URL into the current scene.
-     * Clears any previously loaded model first. Uses the appropriate
-     * loader based on the file format.
+     *
+     * Pipeline: fetch the bytes (with progress + a small session cache),
+     * parse them (STL/PLY off the main thread in a Web Worker, others on
+     * the main thread), then add to the scene. Clears any previous model
+     * first and honors the load-generation guard so a superseded load
+     * never touches the scene.
      *
      * @param {string} url - URL to fetch the model file.
-     * @param {string} format - File format string (e.g. "stl", "obj", "gltf", "glb", "ply", "3mf").
+     * @param {string} format - File format ("stl", "obj", "gltf", "glb", "ply", "3mf").
+     * @param {{ onProgress?: (fraction: number) => void, flat?: boolean }} [opts]
      * @returns {Promise<void>}
      */
-    function loadModel(url, format) {
-        // Clear previous model
+    async function loadModel(url, format, opts = {}) {
         clearCurrentModel();
         viewerError.value = null;
 
         const fmt = (format || '').toLowerCase().replace(/^\./, '');
         const gen = ++loadGeneration;
+        viewerProgress.value = 0;
+        const userProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+        const onProgress = (f) => {
+            if (gen === loadGeneration) viewerProgress.value = f;
+            if (userProgress) userProgress(f);
+        };
 
+        try {
+            const buffer = await fetchBuffer(url, onProgress);
+            if (gen !== loadGeneration) return; // superseded during download
+
+            const object = await parseBuffer(buffer, fmt, opts);
+            if (gen !== loadGeneration) {
+                disposeObject3D(object);
+                return;
+            }
+            if (scene) addModelToScene(object);
+            if (gen === loadGeneration) viewerProgress.value = null;
+        } catch (err) {
+            if (gen !== loadGeneration) return; // superseded; swallow
+            viewerProgress.value = null;
+            console.error(`YASTL viewer: failed to load ${fmt} model:`, err);
+            viewerError.value = `Failed to load ${fmt} model`;
+            throw err;
+        }
+    }
+
+    /* ---- fetch + session cache ---- */
+
+    // Small FIFO cache of downloaded buffers so re-opening a model within a
+    // session skips the network. Kept small — meshes can be large.
+    const _bufferCache = new Map();
+    const _BUFFER_CACHE_MAX = 6;
+
+    async function fetchBuffer(url, onProgress) {
+        const cached = _bufferCache.get(url);
+        if (cached) {
+            onProgress(1);
+            return cached;
+        }
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+
+        const total = Number(res.headers.get('content-length')) || 0;
+        let buffer;
+        if (res.body && total > 0) {
+            const reader = res.body.getReader();
+            const chunks = [];
+            let received = 0;
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+                onProgress(Math.min(1, received / total));
+            }
+            const u8 = new Uint8Array(received);
+            let offset = 0;
+            for (const c of chunks) {
+                u8.set(c, offset);
+                offset += c.length;
+            }
+            buffer = u8.buffer;
+        } else {
+            buffer = await res.arrayBuffer();
+            onProgress(1);
+        }
+
+        _bufferCache.set(url, buffer);
+        while (_bufferCache.size > _BUFFER_CACHE_MAX) {
+            _bufferCache.delete(_bufferCache.keys().next().value);
+        }
+        return buffer;
+    }
+
+    /* ---- parse ---- */
+
+    function parseBuffer(buffer, fmt, opts) {
+        switch (fmt) {
+            case 'stl':
+            case 'ply':
+                return parseInWorker(buffer, fmt, opts);
+            case 'glb':
+            case 'gltf':
+                return parseGltf(buffer);
+            case 'obj':
+                return Promise.resolve(parseObj(buffer));
+            case '3mf':
+                return Promise.resolve(parse3mf(buffer));
+            default:
+                console.warn(`YASTL viewer: unknown format "${fmt}", trying STL.`);
+                return parseInWorker(buffer, 'stl', opts);
+        }
+    }
+
+    let _worker = null;
+    let _workerSeq = 0;
+    const _workerPending = new Map();
+
+    function getWorker() {
+        if (!_worker) {
+            _worker = new Worker(new URL('../viewer.worker.js', import.meta.url), {
+                type: 'module',
+            });
+            _worker.onmessage = (e) => {
+                const cb = _workerPending.get(e.data.id);
+                if (cb) {
+                    _workerPending.delete(e.data.id);
+                    cb(e.data);
+                }
+            };
+        }
+        return _worker;
+    }
+
+    function parseInWorker(buffer, fmt, opts) {
         return new Promise((resolve, reject) => {
-            const onError = (err) => {
-                if (gen !== loadGeneration) {
-                    resolve();
+            let worker;
+            try {
+                worker = getWorker();
+            } catch (e) {
+                // Worker unavailable — fall back to main-thread parse.
+                resolve(parseGeometryMainThread(buffer, fmt, opts));
+                return;
+            }
+            const id = ++_workerSeq;
+            _workerPending.set(id, (data) => {
+                if (!data.ok) {
+                    reject(new Error(data.error || 'worker parse failed'));
                     return;
                 }
-                console.error(`YASTL viewer: failed to load ${fmt} model:`, err);
-                viewerError.value = `Failed to load ${fmt} model`;
-                reject(err);
-            };
-            // Loader callbacks are async: by the time a parse finishes the
-            // user may have opened a different model or closed the viewer.
-            const addIfCurrent = (object3d) => {
-                if (gen === loadGeneration && scene) {
-                    addModelToScene(object3d);
+                const geom = new THREE.BufferGeometry();
+                geom.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+                if (data.normals) {
+                    geom.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3));
                 }
-                resolve();
-            };
+                if (data.index) {
+                    geom.setIndex(new THREE.BufferAttribute(data.index, 1));
+                }
+                resolve(meshFromGeometry(geom));
+            });
+            // Copy (no transfer) so the cached buffer stays usable for re-open.
+            worker.postMessage({ id, format: fmt, buffer, smooth: !opts.flat });
+        });
+    }
 
-            switch (fmt) {
-                case 'stl':
-                    new STLLoader().load(
-                        url,
-                        (geometry) => {
-                            geometry.computeVertexNormals();
-                            const mesh = new THREE.Mesh(geometry, DEFAULT_MATERIAL.clone());
-                            mesh.castShadow = true;
-                            mesh.receiveShadow = true;
-                            addIfCurrent(mesh);
-                        },
-                        undefined,
-                        onError
-                    );
-                    break;
+    function meshFromGeometry(geom) {
+        const material = DEFAULT_MATERIAL.clone();
+        // No normals → flat shading (shader derives them) so it still renders.
+        if (!geom.getAttribute('normal')) material.flatShading = true;
+        const mesh = new THREE.Mesh(geom, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        return mesh;
+    }
 
-                case 'obj':
-                    new OBJLoader().load(
-                        url,
-                        (group) => {
-                            group.traverse((child) => {
-                                if (child.isMesh) {
-                                    child.material = DEFAULT_MATERIAL.clone();
-                                    child.castShadow = true;
-                                    child.receiveShadow = true;
-                                }
-                            });
-                            addIfCurrent(group);
-                        },
-                        undefined,
-                        onError
-                    );
-                    break;
+    // Synchronous fallback when the worker can't be created.
+    function parseGeometryMainThread(buffer, fmt, opts) {
+        const geom = fmt === 'ply'
+            ? new PLYLoader().parse(buffer)
+            : new STLLoader().parse(buffer);
+        if (!opts.flat && !geom.getAttribute('normal')) geom.computeVertexNormals();
+        return meshFromGeometry(geom);
+    }
 
-                case 'gltf':
-                case 'glb':
-                    new GLTFLoader().load(
-                        url,
-                        (gltf) => {
-                            // Use model's own materials for glTF
-                            gltf.scene.traverse((child) => {
-                                if (child.isMesh) {
-                                    child.castShadow = true;
-                                    child.receiveShadow = true;
-                                }
-                            });
-                            addIfCurrent(gltf.scene);
-                        },
-                        undefined,
-                        onError
-                    );
-                    break;
+    function parseGltf(buffer) {
+        return new Promise((resolve, reject) => {
+            new GLTFLoader().parse(
+                buffer,
+                '',
+                (gltf) => {
+                    gltf.scene.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    resolve(gltf.scene);
+                },
+                reject
+            );
+        });
+    }
 
-                case 'ply':
-                    new PLYLoader().load(
-                        url,
-                        (geometry) => {
-                            geometry.computeVertexNormals();
-                            const mesh = new THREE.Mesh(geometry, DEFAULT_MATERIAL.clone());
-                            mesh.castShadow = true;
-                            mesh.receiveShadow = true;
-                            addIfCurrent(mesh);
-                        },
-                        undefined,
-                        onError
-                    );
-                    break;
+    function parseObj(buffer) {
+        const group = new OBJLoader().parse(new TextDecoder().decode(buffer));
+        group.traverse((child) => {
+            if (child.isMesh) {
+                child.material = DEFAULT_MATERIAL.clone();
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+        return group;
+    }
 
-                case '3mf':
-                    new ThreeMFLoader().load(
-                        url,
-                        (group) => {
-                            group.traverse((child) => {
-                                if (child.isMesh) {
-                                    if (!child.material || (!child.material.vertexColors && !child.material.map)) {
-                                        child.material = DEFAULT_MATERIAL.clone();
-                                    } else if (child.material.vertexColors && child.geometry) {
-                                        // 3MF files embed slicer filament colors as vertex colors.
-                                        // Dark filament colors (e.g. dark green) are nearly invisible
-                                        // on the dark viewer background — replace with default material.
-                                        const colorAttr = child.geometry.getAttribute('color');
-                                        if (colorAttr && isVertexColorDark(colorAttr)) {
-                                            child.material = DEFAULT_MATERIAL.clone();
-                                        }
-                                    }
-                                    child.material.side = THREE.DoubleSide;
-                                    child.castShadow = true;
-                                    child.receiveShadow = true;
-                                }
-                            });
-                            addIfCurrent(group);
-                        },
-                        undefined,
-                        onError
-                    );
-                    break;
+    function parse3mf(buffer) {
+        const group = new ThreeMFLoader().parse(buffer);
+        group.traverse((child) => {
+            if (child.isMesh) {
+                if (!child.material || (!child.material.vertexColors && !child.material.map)) {
+                    child.material = DEFAULT_MATERIAL.clone();
+                } else if (child.material.vertexColors && child.geometry) {
+                    // 3MF embeds slicer filament colors as vertex colors; dark
+                    // filament is nearly invisible on the dark background.
+                    const colorAttr = child.geometry.getAttribute('color');
+                    if (colorAttr && isVertexColorDark(colorAttr)) {
+                        child.material = DEFAULT_MATERIAL.clone();
+                    }
+                }
+                child.material.side = THREE.DoubleSide;
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+        return group;
+    }
 
-                default:
-                    console.warn(`YASTL viewer: unsupported format "${fmt}". Attempting STL loader as fallback.`);
-                    new STLLoader().load(
-                        url,
-                        (geometry) => {
-                            geometry.computeVertexNormals();
-                            const mesh = new THREE.Mesh(geometry, DEFAULT_MATERIAL.clone());
-                            addIfCurrent(mesh);
-                        },
-                        undefined,
-                        onError
-                    );
-                    break;
+    function disposeObject3D(object) {
+        if (!object) return;
+        object.traverse((child) => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) child.material.forEach(disposeMaterial);
+                else disposeMaterial(child.material);
             }
         });
     }
@@ -552,6 +645,14 @@ export function useViewer() {
     function dispose() {
         loadGeneration++;
         renderRequested = false;
+        viewerProgress.value = null;
+        // Terminate the parse worker and drop any pending callbacks.
+        if (_worker) {
+            _worker.terminate();
+            _worker = null;
+            _workerPending.clear();
+        }
+        _bufferCache.clear();
         // Stop animation
         if (animationId !== null) {
             cancelAnimationFrame(animationId);
@@ -775,6 +876,7 @@ export function useViewer() {
 
     return {
         viewerLoading,
+        viewerProgress,
         modelDimensions,
         initViewer,
         loadModel,
