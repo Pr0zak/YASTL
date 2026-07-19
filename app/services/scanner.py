@@ -1194,42 +1194,56 @@ class Scanner:
         zip_path: str | None = None,
         zip_entry: str | None = None,
         error_collection_cache: dict[str, int] | None = None,
-    ) -> int | None:
-        """Insert a model row with status='error' for a file that failed processing.
+    ) -> int:
+        """Insert or update a model row with status='error' for a failed file.
 
-        Returns the model ID, or None if a record for this path already exists.
+        A row for this path may already exist: _process_file INSERTs the
+        basic row before the heavy processing step, so on timeout/crash the
+        same (uncommitted) row is sitting on this connection with the
+        default status='active'. It must be converted to an error record —
+        returning early here would commit it as a broken 'active' model
+        that every future scan skips.
+
+        Returns the model ID.
         """
-        # Check if already recorded (could be from a previous scan)
         cursor = await db.execute(
             "SELECT id FROM models WHERE file_path = ?", (file_path,)
         )
-        if await cursor.fetchone() is not None:
-            return None
+        existing = await cursor.fetchone()
+        if existing is not None:
+            model_id = (
+                existing[0] if not isinstance(existing, dict) else existing["id"]
+            )
+            await db.execute(
+                "UPDATE models SET status = 'error', error_reason = ?, "
+                "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (error_reason, model_id),
+            )
+        else:
+            name = Path(file_path).stem
+            if not file_format:
+                file_format = Path(file_path).suffix.lower().lstrip(".").upper()
 
-        name = Path(file_path).stem
-        if not file_format:
-            file_format = Path(file_path).suffix.lower().lstrip(".").upper()
-
-        cursor = await db.execute(
-            """
-            INSERT INTO models (
-                name, file_path, file_format, file_size,
-                status, error_reason, library_id,
-                zip_path, zip_entry
-            ) VALUES (?, ?, ?, ?, 'error', ?, ?, ?, ?)
-            """,
-            (
-                name,
-                file_path,
-                file_format,
-                file_size,
-                error_reason,
-                library_id,
-                zip_path,
-                zip_entry,
-            ),
-        )
-        model_id = cursor.lastrowid
+            cursor = await db.execute(
+                """
+                INSERT INTO models (
+                    name, file_path, file_format, file_size,
+                    status, error_reason, library_id,
+                    zip_path, zip_entry
+                ) VALUES (?, ?, ?, ?, 'error', ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    file_path,
+                    file_format,
+                    file_size,
+                    error_reason,
+                    library_id,
+                    zip_path,
+                    zip_entry,
+                ),
+            )
+            model_id = cursor.lastrowid
 
         # Add to "Failed to Process" collection
         if error_collection_cache is not None:

@@ -365,3 +365,61 @@ class TestScannerNewFiles:
         assert len(models_after) == 2
         # Same IDs
         assert {m["id"] for m in models_after} == {m["id"] for m in models_before}
+
+
+class TestInsertErrorModel:
+    """_insert_error_model must convert an existing row to an error record.
+
+    _process_file INSERTs the basic row before heavy processing; on
+    timeout/crash the uncommitted row would otherwise be committed with
+    the default status='active' and skipped by every future scan.
+    """
+
+    @pytest.mark.asyncio
+    async def test_existing_uncommitted_row_converted_to_error(self, scanner_env):
+        scanner, db_path, library_dir, library_id = scanner_env
+        file_path = str(library_dir / "broken.stl")
+
+        db = await aiosqlite.connect(db_path)
+        try:
+            # Simulate _process_file's pre-processing INSERT (uncommitted)
+            await db.execute(
+                "INSERT INTO models (name, file_path, file_format, file_size) "
+                "VALUES ('broken', ?, 'STL', 123)",
+                (file_path,),
+            )
+
+            model_id = await scanner._insert_error_model(
+                db, file_path, "Processing timeout (300s)", library_id
+            )
+            await db.commit()
+
+            cursor = await db.execute(
+                "SELECT status, error_reason FROM models WHERE id = ?", (model_id,)
+            )
+            row = await cursor.fetchone()
+            assert row[0] == "error"
+            assert "timeout" in row[1]
+        finally:
+            await db.close()
+
+    @pytest.mark.asyncio
+    async def test_fresh_error_row_inserted(self, scanner_env):
+        scanner, db_path, library_dir, library_id = scanner_env
+        file_path = str(library_dir / "new_broken.stl")
+
+        db = await aiosqlite.connect(db_path)
+        try:
+            model_id = await scanner._insert_error_model(
+                db, file_path, "Worker process crashed (out of memory)", library_id
+            )
+            await db.commit()
+
+            cursor = await db.execute(
+                "SELECT status, error_reason FROM models WHERE id = ?", (model_id,)
+            )
+            row = await cursor.fetchone()
+            assert row[0] == "error"
+            assert "crashed" in row[1]
+        finally:
+            await db.close()

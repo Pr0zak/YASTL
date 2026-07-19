@@ -308,6 +308,8 @@ async def _repair_incomplete_models() -> None:
                         thumbnail_mode = CASE WHEN ? IS NOT NULL THEN ? ELSE thumbnail_mode END,
                         thumbnail_quality = CASE WHEN ? IS NOT NULL THEN ? ELSE thumbnail_quality END,
                         thumbnail_generated_at = CASE WHEN ? IS NOT NULL THEN CURRENT_TIMESTAMP ELSE thumbnail_generated_at END,
+                        status = 'active',
+                        error_reason = NULL,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?""",
                     (
