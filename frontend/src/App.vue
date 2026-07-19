@@ -3,7 +3,7 @@
  * YASTL - Yet Another STL Library
  * Main Vue 3 Application (Vite SFC)
  */
-import { ref, reactive, computed, onMounted, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue';
 import { debounce } from './search.js';
 import { ICONS } from './icons.js';
 import { useToast } from './composables/useToast.js';
@@ -241,10 +241,15 @@ const selectionComposable = useSelection(
 const {
     selectionMode, selectedModels, showBulkTagModal, bulkTagInput,
     toggleSelectionMode, toggleModelSelection, selectAll, deselectAll,
+    pruneToVisible,
     bulkFavorite, bulkAutoTag, bulkAddTags,
     bulkAddToCollection: _bulkAddToCollection,
     bulkDelete,
 } = selectionComposable;
+
+// Any change to the visible model list (search, filters, collection
+// click) invalidates selections of now-hidden models.
+watch(models, () => pruneToVisible());
 
 function bulkAddToCollection(collectionId) {
     _bulkAddToCollection(collectionId, showAddToCollectionModal);

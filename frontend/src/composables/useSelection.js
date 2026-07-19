@@ -44,11 +44,28 @@ export function useSelection(showToast, fetchModels, models, fetchTags, fetchFav
     }
 
     function selectAll() {
-        models.value.forEach(m => selectedModels.add(m.id));
+        models.value.forEach(m => {
+            // Zip-group cards are drill-in representatives, not individual
+            // models: clicking them expands the group (no way to deselect),
+            // and bulk delete would remove one arbitrary model per zip.
+            if (m.zip_model_count != null && m.zip_model_count > 1) return;
+            selectedModels.add(m.id);
+        });
     }
 
     function deselectAll() {
         selectedModels.clear();
+    }
+
+    /** Drop selected ids that are no longer in the visible model list.
+     *  Without this, bulk actions silently apply to models hidden by a
+     *  filter or search change. */
+    function pruneToVisible() {
+        if (selectedModels.size === 0) return;
+        const visible = new Set(models.value.map(m => m.id));
+        for (const id of [...selectedModels]) {
+            if (!visible.has(id)) selectedModels.delete(id);
+        }
     }
 
     function isSelected(modelId) {
@@ -152,6 +169,7 @@ export function useSelection(showToast, fetchModels, models, fetchTags, fetchFav
         toggleModelSelection,
         selectAll,
         deselectAll,
+        pruneToVisible,
         isSelected,
         bulkFavorite,
         bulkAutoTag,
