@@ -72,12 +72,26 @@ async def create_saved_search(request: Request):
     async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
 
+        # Upsert by name: re-saving an existing name overwrites it rather
+        # than creating a duplicate entry in the sidebar.
         cursor = await db.execute(
-            "INSERT INTO saved_searches (name, query, filters, sort_by, sort_order) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (name.strip(), query, filters_json, sort_by, sort_order),
+            "SELECT id FROM saved_searches WHERE name = ?", (name.strip(),)
         )
-        search_id = cursor.lastrowid
+        existing = await cursor.fetchone()
+        if existing is not None:
+            search_id = existing["id"]
+            await db.execute(
+                "UPDATE saved_searches SET query = ?, filters = ?, "
+                "sort_by = ?, sort_order = ? WHERE id = ?",
+                (query, filters_json, sort_by, sort_order, search_id),
+            )
+        else:
+            cursor = await db.execute(
+                "INSERT INTO saved_searches (name, query, filters, sort_by, sort_order) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (name.strip(), query, filters_json, sort_by, sort_order),
+            )
+            search_id = cursor.lastrowid
         await db.commit()
 
         cursor = await db.execute(

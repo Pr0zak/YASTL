@@ -1239,8 +1239,11 @@ async function saveCurrentSearch() {
             filters: {
                 format: filters.format,
                 tags: filters.tags,
+                tagMatch: filters.tagMatch,
                 categories: filters.categories,
                 favoritesOnly: filters.favoritesOnly,
+                duplicatesOnly: filters.duplicatesOnly,
+                library_id: filters.library_id,
                 collection: filters.collection,
             },
             sort_by: filters.sortBy,
@@ -1260,9 +1263,14 @@ function applySavedSearch(search) {
     const f = search.filters || {};
     filters.format = f.format || '';
     filters.tags = f.tags || [];
+    filters.tagMatch = f.tagMatch || 'and';
     filters.categories = f.categories || [];
     filters.favoritesOnly = f.favoritesOnly || false;
+    filters.duplicatesOnly = f.duplicatesOnly || false;
+    filters.library_id = f.library_id ?? null;
     filters.collection = f.collection || null;
+    // Zip drill-in is a transient view, not part of a saved search.
+    filters.zipPath = null;
     filters.sortBy = search.sort_by || 'updated_at';
     filters.sortOrder = search.sort_order || 'desc';
     pagination.offset = 0;

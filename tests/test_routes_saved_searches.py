@@ -154,3 +154,27 @@ class TestDeleteSavedSearch:
         """DELETE /api/saved-searches/9999 should return 404."""
         resp = await client.delete("/api/saved-searches/9999")
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestSavedSearchUpsert:
+    async def test_resave_same_name_overwrites(self, client):
+        first = await client.post(
+            "/api/saved-searches",
+            json={"name": "My View", "query": "dragon", "filters": {"tags": ["a"]}},
+        )
+        assert first.status_code in (200, 201)
+        first_id = first.json()["id"]
+
+        second = await client.post(
+            "/api/saved-searches",
+            json={"name": "My View", "query": "wyvern", "filters": {"tags": ["b"]}},
+        )
+        assert second.status_code in (200, 201)
+        assert second.json()["id"] == first_id
+        assert second.json()["query"] == "wyvern"
+
+        listing = (await client.get("/api/saved-searches")).json()["saved_searches"]
+        assert len([s for s in listing if s["name"] == "My View"]) == 1
+        saved = next(s for s in listing if s["name"] == "My View")
+        assert saved["filters"]["tags"] == ["b"]
