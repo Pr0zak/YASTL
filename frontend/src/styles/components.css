@@ -597,3 +597,9 @@
     justify-content: flex-end;
     gap: 8px;
 }
+
+/* Auto-generated tag chips are dimmed to distinguish from manual ones */
+.tag-chip.tag-chip-auto {
+    opacity: 0.6;
+    border: 1px dashed var(--border-light);
+}

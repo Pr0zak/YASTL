@@ -45,19 +45,19 @@ async def _setup_models_with_tags_and_categories(db_path: str):
         # m2 (sphere): red, green
         # m3 (cylinder): blue
         await conn.execute(
-            "INSERT INTO model_tags VALUES (?, ?)", (m1, red_id)
+            "INSERT INTO model_tags (model_id, tag_id) VALUES (?, ?)", (m1, red_id)
         )
         await conn.execute(
-            "INSERT INTO model_tags VALUES (?, ?)", (m1, blue_id)
+            "INSERT INTO model_tags (model_id, tag_id) VALUES (?, ?)", (m1, blue_id)
         )
         await conn.execute(
-            "INSERT INTO model_tags VALUES (?, ?)", (m2, red_id)
+            "INSERT INTO model_tags (model_id, tag_id) VALUES (?, ?)", (m2, red_id)
         )
         await conn.execute(
-            "INSERT INTO model_tags VALUES (?, ?)", (m2, green_id)
+            "INSERT INTO model_tags (model_id, tag_id) VALUES (?, ?)", (m2, green_id)
         )
         await conn.execute(
-            "INSERT INTO model_tags VALUES (?, ?)", (m3, blue_id)
+            "INSERT INTO model_tags (model_id, tag_id) VALUES (?, ?)", (m3, blue_id)
         )
 
         # Assign categories:

@@ -55,6 +55,7 @@ import {
     apiGetRelatedTags,
     apiGetModelDocs,
     apiBulkAddToCollection,
+    apiClearAutoTags,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -988,6 +989,19 @@ async function addTag() {
         showToast(`Tag "${tag}" added`);
     } catch (err) {
         showToast(err.message || 'Failed to add tag', 'error');
+    }
+}
+
+async function clearAutoTags() {
+    if (!selectedModel.value) return;
+    try {
+        const data = await apiClearAutoTags(selectedModel.value.id);
+        selectedModel.value = data.model;
+        updateModelInList(data.model);
+        fetchTags();
+        showToast(`Removed ${data.removed} auto tag${data.removed === 1 ? '' : 's'}`, 'success');
+    } catch {
+        showToast('Failed to clear auto tags', 'error');
     }
 }
 
@@ -2154,6 +2168,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @toggleOrtho="toggleViewerOrtho"
         @logPrint="logPrint"
         @undoPrint="undoPrint"
+        @clearAutoTags="clearAutoTags"
         @regenerateThumbnail="regenerateThumbnail"
     />
 

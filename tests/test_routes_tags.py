@@ -201,3 +201,35 @@ class TestRelatedTags:
         mid = await insert_test_model(db_path, name="untagged", file_path="/u.stl")
         resp = await client.get(f"/api/models/{mid}/related-tags")
         assert resp.json()["suggestions"] == []
+
+
+@pytest.mark.asyncio
+class TestTagProvenance:
+    async def test_manual_tag_is_manual(self, client):
+        db_path = client._db_path
+        mid = await insert_test_model(db_path, name="m", file_path="/m.stl")
+        await client.post(f"/api/models/{mid}/tags", json={"tags": ["hand"]})
+        model = (await client.get(f"/api/models/{mid}")).json()
+        assert model["tag_sources"]["hand"] == "manual"
+
+    async def test_clear_auto_keeps_manual(self, client):
+        import aiosqlite
+        db_path = client._db_path
+        mid = await insert_test_model(db_path, name="m", file_path="/m.stl")
+        # manual tag via API
+        await client.post(f"/api/models/{mid}/tags", json={"tags": ["keep"]})
+        # inject an auto tag directly
+        async with aiosqlite.connect(db_path) as conn:
+            cur = await conn.execute("INSERT INTO tags (name) VALUES ('auto1')")
+            tid = cur.lastrowid
+            await conn.execute(
+                "INSERT INTO model_tags (model_id, tag_id, source) VALUES (?, ?, 'auto')",
+                (mid, tid),
+            )
+            await conn.commit()
+
+        resp = await client.delete(f"/api/models/{mid}/tags/auto")
+        assert resp.status_code == 200
+        assert resp.json()["removed"] == 1
+        tags = resp.json()["model"]["tags"]
+        assert "keep" in tags and "auto1" not in tags

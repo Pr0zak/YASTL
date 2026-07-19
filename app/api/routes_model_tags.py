@@ -115,9 +115,12 @@ async def add_tags_to_model(request: Request, model_id: int):
             else:
                 tag_id = dict(tag_row)["id"]
 
-            # Link tag to model (ignore if already linked)
+            # Link tag to model as a manual tag; if it was previously an
+            # auto tag, upgrade it to manual (the user chose it explicitly).
             await db.execute(
-                "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
+                "INSERT INTO model_tags (model_id, tag_id, source) "
+                "VALUES (?, ?, 'manual') "
+                "ON CONFLICT(model_id, tag_id) DO UPDATE SET source = 'manual'",
                 (model_id, tag_id),
             )
             added_tags.append(tag_name)
@@ -129,6 +132,24 @@ async def add_tags_to_model(request: Request, model_id: int):
         model = await _fetch_model_with_relations(db, model_id)
 
     return model
+
+
+@router.delete("/{model_id}/tags/auto")
+async def clear_auto_tags(request: Request, model_id: int):
+    """Remove all auto-generated (source='auto') tags from a model."""
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        cursor = await db.execute(
+            "DELETE FROM model_tags WHERE model_id = ? AND source = 'auto'",
+            (model_id,),
+        )
+        removed = cursor.rowcount
+        await update_fts_for_model(db, model_id)
+        await db.commit()
+        model = await _fetch_model_with_relations(db, model_id)
+    if model is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+    return {"removed": removed, "model": model}
 
 
 # ---------------------------------------------------------------------------

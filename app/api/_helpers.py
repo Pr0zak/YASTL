@@ -122,18 +122,19 @@ async def _fetch_model_with_relations(
 
     model = dict(row)
 
-    # Fetch tags
+    # Fetch tags (with provenance)
     cursor = await db.execute(
         """
-        SELECT t.name FROM tags t
+        SELECT t.name, COALESCE(mt.source, 'manual') AS source FROM tags t
         JOIN model_tags mt ON mt.tag_id = t.id
         WHERE mt.model_id = ?
         ORDER BY t.name
         """,
         (model_id,),
     )
-    tag_rows = await cursor.fetchall()
-    model["tags"] = [dict(r)["name"] for r in tag_rows]
+    tag_rows = [dict(r) for r in await cursor.fetchall()]
+    model["tags"] = [r["name"] for r in tag_rows]
+    model["tag_sources"] = {r["name"]: r["source"] for r in tag_rows}
 
     # Fetch categories
     cursor = await db.execute(
@@ -229,7 +230,8 @@ async def apply_auto_tags(db: aiosqlite.Connection, model_id: int) -> int:
             tag_id = dict(tag_row)["id"]
 
         await db.execute(
-            "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO model_tags (model_id, tag_id, source) "
+            "VALUES (?, ?, 'auto')",
             (model_id, tag_id),
         )
         tags_added += 1

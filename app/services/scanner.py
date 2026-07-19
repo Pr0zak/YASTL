@@ -963,7 +963,7 @@ class Scanner:
             }
             suggestions = suggest_tags(model_dict)
             if suggestions:
-                await self._apply_tags(db, model_id, suggestions)
+                await self._apply_tags(db, model_id, suggestions, source="auto")
                 await update_fts_for_model(db, model_id)
 
         logger.debug("Indexed new model id=%d  %s", model_id, file_path_str)
@@ -1200,7 +1200,7 @@ class Scanner:
                 }
                 suggestions = suggest_tags(model_dict)
                 if suggestions:
-                    await self._apply_tags(db, model_id, suggestions)
+                    await self._apply_tags(db, model_id, suggestions, source="auto")
                     await update_fts_for_model(db, model_id)
 
             logger.debug(
@@ -1333,8 +1333,14 @@ class Scanner:
         db: aiosqlite.Connection,
         model_id: int,
         tags: list[str],
+        source: str = "manual",
     ) -> None:
-        """Insert tags for a model, creating tag records as needed."""
+        """Insert tags for a model, creating tag records as needed.
+
+        ``source`` records provenance ('auto' for heuristic auto-tagger
+        output, 'manual' for scraped/derived tags the user effectively
+        chose to import).
+        """
         for tag_name in tags:
             tag_name = tag_name.strip()
             if not tag_name:
@@ -1349,8 +1355,9 @@ class Scanner:
             if tag_row:
                 tag_id = tag_row[0] if not isinstance(tag_row, dict) else tag_row["id"]
                 await db.execute(
-                    "INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)",
-                    (model_id, tag_id),
+                    "INSERT OR IGNORE INTO model_tags (model_id, tag_id, source) "
+                    "VALUES (?, ?, ?)",
+                    (model_id, tag_id, source),
                 )
 
     @staticmethod

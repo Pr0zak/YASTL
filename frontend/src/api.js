@@ -600,3 +600,9 @@ export async function apiTestWebhook() {
     if (!res.ok) throw new Error(json.detail || 'Webhook test failed');
     return json;
 }
+
+export async function apiClearAutoTags(id) {
+    const res = await fetch(`/api/models/${id}/tags/auto`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to clear auto tags');
+    return res.json();
+}

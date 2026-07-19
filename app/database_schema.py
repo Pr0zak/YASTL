@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS tags (
 CREATE TABLE IF NOT EXISTS model_tags (
     model_id INTEGER REFERENCES models(id) ON DELETE CASCADE,
     tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+    source TEXT DEFAULT 'manual',
     PRIMARY KEY (model_id, tag_id)
 );
 

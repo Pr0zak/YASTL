@@ -80,6 +80,7 @@ const emit = defineEmits([
     'toggleOrtho',
     'logPrint',
     'undoPrint',
+    'clearAutoTags',
 ]);
 
 function viewerThumb(model) {
@@ -99,6 +100,13 @@ const docLinks = computed(() => {
     const readmeName = props.modelDocs?.readme?.name;
     return docs.filter((d) => d.name !== readmeName);
 });
+
+function isAutoTag(tag) {
+    return props.selectedModel?.tag_sources?.[tag] === 'auto';
+}
+const hasAutoTags = computed(() =>
+    Object.values(props.selectedModel?.tag_sources || {}).some((s) => s === 'auto')
+);
 
 // Autocomplete suggestions for the add-tag input: existing tag names not
 // already applied to this model.
@@ -402,13 +410,20 @@ function formatClass(fmt) {
                         <template v-if="detailTab === 'tags'">
                             <div class="info-section">
                                 <div class="tags-list">
-                                    <span v-for="tag in (selectedModel.tags || [])" :key="tag" class="tag-chip">
+                                    <span v-for="tag in (selectedModel.tags || [])" :key="tag"
+                                          class="tag-chip"
+                                          :class="{ 'tag-chip-auto': isAutoTag(tag) }"
+                                          :title="isAutoTag(tag) ? 'Auto-generated tag' : ''">
                                         <button class="tag-filter-btn" @click="emit('filterByTag', tag)" title="Filter by this tag">{{ tag }}</button>
                                         <button class="tag-remove" @click="emit('removeTag', tag)" title="Remove tag">&times;</button>
                                     </span>
                                     <span v-if="!selectedModel.tags || !selectedModel.tags.length"
                                           class="text-muted text-sm">No tags</span>
                                 </div>
+                                <button v-if="hasAutoTags" class="btn btn-sm btn-ghost" style="margin-top:6px"
+                                        @click="emit('clearAutoTags')" title="Remove auto-generated tags">
+                                    Clear auto tags
+                                </button>
                                 <div class="tag-add-row">
                                     <input type="text"
                                            :value="newTagInput"

@@ -136,6 +136,17 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass  # Column already exists or table just created with it
 
+        # Add source column to model_tags (tag provenance: auto vs manual)
+        cursor = await db.execute("PRAGMA table_info(model_tags)")
+        mt_cols = [row["name"] for row in await cursor.fetchall()]
+        if "source" not in mt_cols:
+            try:
+                await db.execute(
+                    "ALTER TABLE model_tags ADD COLUMN source TEXT DEFAULT 'manual'"
+                )
+            except Exception:
+                pass
+
         # Add print-tracking columns
         if "print_count" not in columns:
             try:
