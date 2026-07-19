@@ -17,6 +17,8 @@ defineProps({
     thumbnailMode: { type: String, default: 'solid' },
     regeneratingThumbnails: { type: Boolean, default: false },
     regenProgress: { type: Object, default: () => ({ completed: 0, total: 0 }) },
+    generatingPreviews: { type: Boolean, default: false },
+    previewProgress: { type: Object, default: () => ({ completed: 0, total: 0, generated: 0 }) },
     autoTagging: { type: Boolean, default: false },
     autoTagProgress: { type: Object, default: () => ({ completed: 0, total: 0, tags_added: 0 }) },
     extractingMetadata: { type: Boolean, default: false },
@@ -44,6 +46,7 @@ const emit = defineEmits([
     'scanLibrary',
     'setThumbnailMode',
     'regenerateThumbnails',
+    'generatePreviews',
     'autoTagAll',
     'extractMetadata',
     'cleanupTags',
@@ -335,6 +338,13 @@ function timeAgo(dateStr) {
                             <span v-html="ICONS.wrench"></span>
                             Clean Up Tags
                         </button>
+                        <button class="btn btn-secondary"
+                                @click="emit('generatePreviews')"
+                                :disabled="generatingPreviews"
+                                title="Pre-build decimated 3D previews for large models so they open instantly">
+                            <span v-html="ICONS.cube"></span>
+                            Generate Previews
+                        </button>
                     </div>
 
                     <div v-if="regeneratingThumbnails && regenProgress.total > 0" class="regen-progress" style="margin-top:12px">
@@ -359,6 +369,14 @@ function timeAgo(dateStr) {
                         </div>
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
                             Metadata: {{ metadataProgress.completed }} / {{ metadataProgress.total }} models &middot; {{ metadataProgress.updated }} updated
+                        </span>
+                    </div>
+                    <div v-if="generatingPreviews && previewProgress.total > 0" class="regen-progress" style="margin-top:12px">
+                        <div class="regen-progress-bar">
+                            <div class="regen-progress-fill" :style="{ width: Math.round((previewProgress.completed / previewProgress.total) * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                            Previews: {{ previewProgress.completed }} / {{ previewProgress.total }} large models &middot; {{ previewProgress.generated }} built
                         </span>
                     </div>
                 </div>

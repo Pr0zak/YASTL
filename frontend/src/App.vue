@@ -196,6 +196,7 @@ const {
     thumbnailMode, regeneratingThumbnails, regenProgress,
     autoTagging, autoTagProgress,
     extractingMetadata, metadataProgress,
+    generatingPreviews, previewProgress, generatePreviews,
     bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint, preferredSlicer,
     autoTagOnScan,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
@@ -1922,6 +1923,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :thumbnailMode="thumbnailMode"
         :regeneratingThumbnails="regeneratingThumbnails"
         :regenProgress="regenProgress"
+        :generatingPreviews="generatingPreviews"
+        :previewProgress="previewProgress"
         :autoTagging="autoTagging"
         :autoTagProgress="autoTagProgress"
         :extractingMetadata="extractingMetadata"
@@ -1946,6 +1949,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @scanLibrary="scanLibrary"
         @setThumbnailMode="setThumbnailMode"
         @regenerateThumbnails="regenerateThumbnails"
+        @generatePreviews="generatePreviews"
         @autoTagAll="autoTagAll"
         @extractMetadata="extractMetadata"
         @cleanupTags="cleanupTags"

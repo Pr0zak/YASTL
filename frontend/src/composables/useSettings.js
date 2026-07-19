@@ -12,6 +12,8 @@ import {
     apiUpdateSettings,
     apiRegenerateThumbnails,
     apiGetRegenStatus,
+    apiGeneratePreviews,
+    apiGetGeneratePreviewsStatus,
     apiAutoTagAll,
     apiGetAutoTagStatus,
     apiExtractMetadata,
@@ -49,6 +51,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     const autoTagProgress = reactive({ running: false, total: 0, completed: 0, tags_added: 0 });
     const extractingMetadata = ref(false);
     const metadataProgress = reactive({ running: false, total: 0, completed: 0, updated: 0 });
+    const generatingPreviews = ref(false);
+    const previewProgress = reactive({ running: false, total: 0, completed: 0, generated: 0 });
 
     // Print bed config
     const bedConfig = reactive({
@@ -78,6 +82,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     let regenPollTimer = null;
     let autoTagPollTimer = null;
     let metadataPollTimer = null;
+    let previewPollTimer = null;
 
     async function fetchLibraries() {
         try {
@@ -303,6 +308,46 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         }, 2000);
     }
 
+    async function generatePreviews() {
+        if (!await showConfirm({
+            title: 'Generate 3D Previews',
+            message: 'Pre-build decimated previews for large models so they open '
+                + 'instantly? Runs in background.',
+            action: 'Generate',
+        })) return;
+        generatingPreviews.value = true;
+        try {
+            await apiGeneratePreviews();
+            showToast('Preview generation started', 'info');
+            startPreviewPolling();
+        } catch (err) {
+            showToast(err.message || 'Failed to start preview generation', 'error');
+            console.error('generatePreviews error:', err);
+            generatingPreviews.value = false;
+        }
+    }
+
+    function startPreviewPolling() {
+        if (previewPollTimer) clearInterval(previewPollTimer);
+        previewPollTimer = setInterval(async () => {
+            try {
+                const data = await apiGetGeneratePreviewsStatus();
+                previewProgress.running = data.running;
+                previewProgress.total = data.total;
+                previewProgress.completed = data.completed;
+                previewProgress.generated = data.generated;
+                if (!data.running) {
+                    clearInterval(previewPollTimer);
+                    previewPollTimer = null;
+                    generatingPreviews.value = false;
+                    showToast('Preview generation complete');
+                }
+            } catch (err) {
+                console.error('previewPoll error:', err);
+            }
+        }, 2000);
+    }
+
     async function autoTagAll() {
         if (!await showConfirm({
             title: 'Auto-Tag All Models',
@@ -413,6 +458,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         thumbnailMode,
         regeneratingThumbnails,
         regenProgress,
+        generatingPreviews,
+        previewProgress,
+        generatePreviews,
         autoTagging,
         autoTagProgress,
         extractingMetadata,
