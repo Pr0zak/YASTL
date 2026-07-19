@@ -10,8 +10,9 @@ from app.config import settings as app_settings
 from app.database import get_all_settings, get_db, get_setting, set_setting, update_fts_for_model
 from app.services import thumbnail
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
+from app.services.preview import build_preview_glb
 from app.api._helpers import apply_auto_tags
-from app.workers import get_pool, log_memory, tick_job, maybe_recycle
+from app.workers import get_pool, log_memory, tick_job, maybe_recycle, run_cpu_job
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,18 @@ _metadata_progress: dict = {
     "completed": 0,
     "updated": 0,
 }
+
+# Module-level GLB preview-generation progress state
+_preview_progress: dict = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+    "generated": 0,
+}
+
+# Only pre-generate previews for meshes big enough that the viewer would
+# otherwise decimate them on first open.
+_PREVIEW_FACE_THRESHOLD = 200_000
 
 
 @router.get("")
@@ -175,6 +188,85 @@ async def regenerate_thumbnails_status():
         "total": _regen_progress["total"],
         "completed": _regen_progress["completed"],
     }
+
+
+@router.post("/generate-previews")
+async def generate_previews(request: Request, background_tasks: BackgroundTasks):
+    """Pre-build decimated GLB previews for large models.
+
+    Warms preview_cache/ so the first open of a big model is instant
+    instead of paying the decimation cost on demand. Runs in the
+    background over models above the face threshold.
+    """
+    if _preview_progress["running"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Preview generation is already in progress",
+        )
+    background_tasks.add_task(_generate_all_previews)
+    return {"detail": "Preview generation started in background"}
+
+
+@router.get("/generate-previews/status")
+async def generate_previews_status():
+    """Return the current progress of preview generation."""
+    return {
+        "running": _preview_progress["running"],
+        "total": _preview_progress["total"],
+        "completed": _preview_progress["completed"],
+        "generated": _preview_progress["generated"],
+    }
+
+
+async def _generate_all_previews() -> None:
+    """Build decimated GLB previews for every large active model missing one."""
+    import os
+
+    from app.api._helpers import _resolve_model_file
+
+    cache_dir = os.path.join(
+        str(app_settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache"
+    )
+    os.makedirs(cache_dir, exist_ok=True)
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, file_path, zip_path, zip_entry FROM models "
+            "WHERE status = 'active' AND face_count IS NOT NULL "
+            "AND face_count > ? ORDER BY face_count DESC",
+            (_PREVIEW_FACE_THRESHOLD,),
+        )
+        rows = [dict(r) for r in await cursor.fetchall()]
+
+    _preview_progress.update(
+        running=True, total=len(rows), completed=0, generated=0
+    )
+    logger.info("Preview generation: %d large models", len(rows))
+
+    try:
+        for row in rows:
+            model_id = row["id"]
+            cache_path = os.path.join(cache_dir, f"{model_id}.glb")
+            resolved = _resolve_model_file(row)
+            try:
+                if resolved and not (
+                    os.path.exists(cache_path)
+                    and os.path.getmtime(cache_path) >= os.path.getmtime(resolved)
+                ):
+                    glb = await run_cpu_job(build_preview_glb, resolved)
+                    with open(cache_path, "wb") as f:
+                        f.write(glb)
+                    _preview_progress["generated"] += 1
+            except Exception as e:  # noqa: BLE001 - skip and continue
+                logger.warning("Preview generation failed for model %d: %s", model_id, e)
+            finally:
+                _preview_progress["completed"] += 1
+    finally:
+        _preview_progress["running"] = False
+        logger.info(
+            "Preview generation done: %d generated / %d models",
+            _preview_progress["generated"], _preview_progress["total"],
+        )
 
 
 async def _regenerate_all_thumbnails(

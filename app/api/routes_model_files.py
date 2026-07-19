@@ -1,18 +1,18 @@
 """API routes for serving 3D model files, downloads, GLB conversion, and thumbnails."""
 
 import asyncio
-import gc
 import logging
 import os
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 import aiosqlite
-import trimesh
 
 from app.config import settings
 from app.database import get_setting
 from app.services import thumbnail
+from app.services.preview import build_preview_glb
+from app.workers import run_cpu_job
 from app.api._helpers import open_db, _get_db_path, _resolve_model_file, resolve_thumbnail, MIME_TYPES
 
 logger = logging.getLogger(__name__)
@@ -202,55 +202,11 @@ async def serve_model_glb(request: Request, model_id: int):
                 filename=f"{os.path.splitext(model['name'])[0]}.glb",
             )
 
-    # Convert using trimesh in a thread pool to avoid blocking
-    def _convert():
-        loaded = None
-
-        try:
-            loaded = trimesh.load(file_path, force=None)
-        except Exception as e:
-            logger.debug("trimesh.load failed for %s: %s", file_path, e)
-
-        # For STEP/STP files, fall back to the dedicated converter
-        if loaded is None or (
-            isinstance(loaded, trimesh.Scene) and len(loaded.geometry) == 0
-        ):
-            from app.services.step_converter import is_step_file, load_step
-
-            if is_step_file(file_path):
-                logger.debug("Trying STEP converter for %s", file_path)
-                mesh = load_step(file_path)
-                if mesh is not None:
-                    loaded = mesh
-
-        if loaded is None:
-            raise ValueError(f"Cannot load file for GLB conversion: {file_path}")
-
-        try:
-            if isinstance(loaded, trimesh.Trimesh):
-                return loaded.export(file_type="glb")
-            elif isinstance(loaded, trimesh.Scene):
-                try:
-                    return loaded.export(file_type="glb")
-                except Exception:
-                    # Scene GLB export failed; concatenate into a single mesh
-                    concatenated = trimesh.load(file_path, force="mesh")
-                    result = concatenated.export(file_type="glb")
-                    del concatenated
-                    return result
-            else:
-                raise ValueError(
-                    f"Cannot convert to GLB: unsupported type {type(loaded).__name__}"
-                )
-        finally:
-            if loaded is not None:
-                if hasattr(loaded, '_cache'):
-                    loaded._cache.clear()
-                del loaded
-            gc.collect()
-
+    # Build a decimated preview GLB in the worker pool (OOM-protected, off
+    # the event loop). Large meshes are simplified so the client parse is
+    # trivial and the viewer never blocks; small meshes pass through.
     try:
-        glb_data = await asyncio.to_thread(_convert)
+        glb_data = await run_cpu_job(build_preview_glb, file_path)
     except Exception as e:
         logger.warning(
             "GLB conversion failed for model %d (%s): %s", model_id, file_path, e
