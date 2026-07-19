@@ -581,3 +581,9 @@ export async function apiUndoPrint(id) {
     if (!res.ok) throw new Error('Failed to undo print');
     return res.json();
 }
+
+export async function apiGetRelatedTags(id) {
+    const res = await fetch(`/api/models/${id}/related-tags`);
+    if (!res.ok) throw new Error('Failed to load related tags');
+    return res.json();
+}

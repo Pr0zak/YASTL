@@ -52,6 +52,7 @@ import {
     apiToggleCollectionPin,
     apiLogPrint,
     apiUndoPrint,
+    apiGetRelatedTags,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -143,6 +144,14 @@ const newTagInput = ref('');
 const tagSuggestions = ref([]);
 const tagSuggestionsLoading = ref(false);
 const relatedModels = ref([]);
+const relatedTags = ref([]);
+
+function fetchRelatedTags(modelId, seq) {
+    apiGetRelatedTags(modelId).then(data => {
+        if (seq !== undefined && seq !== viewSeq) return;
+        relatedTags.value = data.suggestions || [];
+    }).catch(() => { relatedTags.value = []; });
+}
 const sidebarOpen = ref(window.innerWidth > 768);
 
 // Editable field state
@@ -786,6 +795,7 @@ async function viewModel(model) {
     isEditingSourceUrl.value = false;
     tagSuggestions.value = [];
     relatedModels.value = [];
+    relatedTags.value = [];
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
@@ -811,6 +821,9 @@ async function viewModel(model) {
         if (seq !== viewSeq) return;
         relatedModels.value = data.related || [];
     }).catch(() => {});
+
+    // Fetch co-occurring tag suggestions in background
+    fetchRelatedTags(selectedModel.value.id, seq);
 
     await nextTick();
     if (seq !== viewSeq) return;
@@ -960,6 +973,7 @@ async function addTag() {
         updateModelInList(updated);
         newTagInput.value = '';
         fetchTags();
+        fetchRelatedTags(updated.id);
         showToast(`Tag "${tag}" added`);
     } catch (err) {
         showToast(err.message || 'Failed to add tag', 'error');
@@ -975,6 +989,7 @@ async function removeTag(tagName) {
         );
         updateModelInList(selectedModel.value);
         fetchTags();
+        fetchRelatedTags(selectedModel.value.id);
     } catch (err) {
         showToast('Failed to remove tag', 'error');
     }
@@ -2032,6 +2047,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :isEditingDesc="isEditingDesc"
         :isEditingSourceUrl="isEditingSourceUrl"
         :tagSuggestions="tagSuggestions"
+        :relatedTags="relatedTags"
         :tagSuggestionsLoading="tagSuggestionsLoading"
         :newTagInput="newTagInput"
         :allTags="allTags"

@@ -34,6 +34,45 @@ async def suggest_tags_for_model(request: Request, model_id: int):
     return {"model_id": model_id, "suggestions": suggestions}
 
 
+@router.get("/{model_id}/related-tags")
+async def related_tags(request: Request, model_id: int, limit: int = 8):
+    """Tags that frequently co-occur with this model's tags on other models.
+
+    Powers "Often tagged with" suggestions: for models sharing any of this
+    model's tags, count the OTHER tags and rank them, excluding tags this
+    model already has.
+    """
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        cursor = await db.execute(
+            "SELECT tag_id FROM model_tags WHERE model_id = ?", (model_id,)
+        )
+        own = [r["tag_id"] for r in await cursor.fetchall()]
+        if not own:
+            return {"model_id": model_id, "suggestions": []}
+
+        ph = ", ".join("?" for _ in own)
+        cursor = await db.execute(
+            f"""
+            SELECT t.name, COUNT(*) AS cnt
+            FROM model_tags mt_self
+            JOIN model_tags mt_other
+              ON mt_other.model_id = mt_self.model_id
+             AND mt_other.tag_id != mt_self.tag_id
+            JOIN tags t ON t.id = mt_other.tag_id
+            WHERE mt_self.tag_id IN ({ph})
+              AND mt_other.tag_id NOT IN ({ph})
+              AND mt_self.model_id != ?
+            GROUP BY mt_other.tag_id
+            ORDER BY cnt DESC, t.name
+            LIMIT ?
+            """,
+            [*own, *own, model_id, limit],
+        )
+        suggestions = [r["name"] for r in await cursor.fetchall()]
+    return {"model_id": model_id, "suggestions": suggestions}
+
+
 # ---------------------------------------------------------------------------
 # Add tags to a model
 # ---------------------------------------------------------------------------

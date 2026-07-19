@@ -173,3 +173,31 @@ class TestTagMergeCleanup:
         assert resp.json()["removed"] == 1
         names = {t["name"] for t in (await client.get("/api/tags")).json()["tags"]}
         assert "orphan" not in names and "used" in names
+
+
+@pytest.mark.asyncio
+class TestRelatedTags:
+    async def test_co_occurrence(self, client):
+        db_path = client._db_path
+        m1 = await insert_test_model(db_path, name="a", file_path="/a.stl")
+        m2 = await insert_test_model(db_path, name="b", file_path="/b.stl")
+        target = await insert_test_model(db_path, name="t", file_path="/t.stl")
+
+        # m1: dragon+scaly ; m2: dragon+scaly+mini ; target: dragon
+        await client.post(f"/api/models/{m1}/tags", json={"tags": ["dragon", "scaly"]})
+        await client.post(f"/api/models/{m2}/tags", json={"tags": ["dragon", "scaly", "mini"]})
+        await client.post(f"/api/models/{target}/tags", json={"tags": ["dragon"]})
+
+        resp = await client.get(f"/api/models/{target}/related-tags")
+        assert resp.status_code == 200
+        sugg = resp.json()["suggestions"]
+        # scaly co-occurs with dragon twice, mini once; dragon excluded (own)
+        assert sugg[0] == "scaly"
+        assert "mini" in sugg
+        assert "dragon" not in sugg
+
+    async def test_no_own_tags(self, client):
+        db_path = client._db_path
+        mid = await insert_test_model(db_path, name="untagged", file_path="/u.stl")
+        resp = await client.get(f"/api/models/{mid}/related-tags")
+        assert resp.json()["suggestions"] == []

@@ -26,6 +26,7 @@ const props = defineProps({
     isEditingSourceUrl: { type: Boolean, default: false },
     tagSuggestions: { type: Array, default: () => [] },
     tagSuggestionsLoading: { type: Boolean, default: false },
+    relatedTags: { type: Array, default: () => [] },
     newTagInput: { type: String, default: '' },
     allTags: { type: Array, default: () => [] },
     allCategories: { type: Array, default: () => [] },
@@ -414,6 +415,16 @@ function formatClass(fmt) {
                                     </button>
                                     <div v-if="tagSuggestions.length > 0" class="tag-suggestions" style="margin-top:6px">
                                         <span v-for="s in tagSuggestions" :key="s" class="tag-chip tag-suggestion"
+                                              @click="emit('applyTagSuggestion', s)" style="cursor:pointer">
+                                            + {{ s }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <!-- Co-occurrence suggestions -->
+                                <div v-if="relatedTags.length" style="margin-top:12px">
+                                    <div class="info-section-title" style="margin-bottom:6px">Often tagged with</div>
+                                    <div class="tag-suggestions">
+                                        <span v-for="s in relatedTags" :key="s" class="tag-chip tag-suggestion"
                                               @click="emit('applyTagSuggestion', s)" style="cursor:pointer">
                                             + {{ s }}
                                         </span>
