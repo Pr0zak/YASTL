@@ -168,6 +168,21 @@ async def _fetch_model_with_relations(
     col_rows = await cursor.fetchall()
     model["collections"] = [dict(r) for r in col_rows]
 
+    # Variants — other active models sharing this model's variant group.
+    model["variants"] = []
+    group_id = model.get("variant_group_id")
+    if group_id is not None:
+        cursor = await db.execute(
+            """
+            SELECT id, name, file_format, thumbnail_path
+            FROM models
+            WHERE variant_group_id = ? AND id != ? AND status = 'active'
+            ORDER BY name COLLATE NOCASE
+            """,
+            (group_id, model_id),
+        )
+        model["variants"] = [dict(r) for r in await cursor.fetchall()]
+
     return model
 
 

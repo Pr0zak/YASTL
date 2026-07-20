@@ -582,6 +582,34 @@ export async function apiUndoPrint(id) {
     return res.json();
 }
 
+/* ==================================================================
+   Variant pairing
+   ================================================================== */
+
+export async function apiGetVariantCandidates(id, query) {
+    const q = encodeURIComponent(query || '');
+    const res = await fetch(`/api/models/${id}/variant-candidates?q=${q}`);
+    if (!res.ok) throw new Error('Failed to load variant candidates');
+    return res.json();
+}
+
+export async function apiLinkVariant(id, variantId) {
+    const res = await fetch(`/api/models/${id}/variants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variant_id: variantId }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'Failed to link variant');
+    return json;
+}
+
+export async function apiUnlinkVariant(id, variantId) {
+    const res = await fetch(`/api/models/${id}/variants/${variantId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to unlink variant');
+    return res.json();
+}
+
 export async function apiGetRelatedTags(id) {
     const res = await fetch(`/api/models/${id}/related-tags`);
     if (!res.ok) throw new Error('Failed to load related tags');

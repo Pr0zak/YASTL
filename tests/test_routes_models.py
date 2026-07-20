@@ -569,3 +569,65 @@ class TestLicense:
         # clear
         r = await client.put(f"/api/models/{mid}", json={"license": ""})
         assert r.json()["license"] is None
+
+
+@pytest.mark.asyncio
+class TestVariantPairing:
+    async def test_link_creates_group_and_is_symmetric(self, client):
+        db_path = client._db_path
+        a = await insert_test_model(db_path, name="dragon-supported", file_path="/tmp/a.stl")
+        b = await insert_test_model(db_path, name="dragon-unsupported", file_path="/tmp/b.stl")
+
+        r = await client.post(f"/api/models/{a}/variants", json={"variant_id": b})
+        assert r.status_code == 200
+        variants = r.json()["variants"]
+        assert [v["id"] for v in variants] == [b]
+
+        # Symmetric: b sees a
+        r = await client.get(f"/api/models/{b}")
+        assert [v["id"] for v in r.json()["variants"]] == [a]
+
+    async def test_link_is_transitive_via_merge(self, client):
+        db_path = client._db_path
+        a = await insert_test_model(db_path, name="a", file_path="/tmp/a.stl")
+        b = await insert_test_model(db_path, name="b", file_path="/tmp/b.stl")
+        c = await insert_test_model(db_path, name="c", file_path="/tmp/c.stl")
+
+        await client.post(f"/api/models/{a}/variants", json={"variant_id": b})
+        await client.post(f"/api/models/{b}/variants", json={"variant_id": c})
+
+        r = await client.get(f"/api/models/{a}")
+        assert sorted(v["id"] for v in r.json()["variants"]) == sorted([b, c])
+
+    async def test_cannot_link_self(self, client):
+        db_path = client._db_path
+        a = await insert_test_model(db_path, name="a", file_path="/tmp/a.stl")
+        r = await client.post(f"/api/models/{a}/variants", json={"variant_id": a})
+        assert r.status_code == 400
+
+    async def test_unlink_and_singleton_collapse(self, client):
+        db_path = client._db_path
+        a = await insert_test_model(db_path, name="a", file_path="/tmp/a.stl")
+        b = await insert_test_model(db_path, name="b", file_path="/tmp/b.stl")
+        await client.post(f"/api/models/{a}/variants", json={"variant_id": b})
+
+        # Unlink b from a's group; group drops to one member and collapses.
+        r = await client.delete(f"/api/models/{a}/variants/{b}")
+        assert r.status_code == 200
+        assert r.json()["variants"] == []
+        r = await client.get(f"/api/models/{a}")
+        assert r.json()["variant_group_id"] is None
+        r = await client.get(f"/api/models/{b}")
+        assert r.json()["variant_group_id"] is None
+
+    async def test_candidates_excludes_self_and_group(self, client):
+        db_path = client._db_path
+        a = await insert_test_model(db_path, name="widget-a", file_path="/tmp/a.stl")
+        b = await insert_test_model(db_path, name="widget-b", file_path="/tmp/b.stl")
+        c = await insert_test_model(db_path, name="widget-c", file_path="/tmp/c.stl")
+        await client.post(f"/api/models/{a}/variants", json={"variant_id": b})
+
+        r = await client.get(f"/api/models/{a}/variant-candidates?q=widget")
+        ids = [x["id"] for x in r.json()["candidates"]]
+        assert a not in ids and b not in ids  # self + grouped excluded
+        assert c in ids

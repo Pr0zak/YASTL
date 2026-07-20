@@ -619,6 +619,97 @@
     white-space: nowrap;
 }
 
+/* ---- Variants ---- */
+.variant-item {
+    position: relative;
+}
+
+.variant-unlink {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: none;
+    background: var(--overlay-bg);
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--transition), background var(--transition);
+}
+
+.variant-item:hover .variant-unlink {
+    opacity: 1;
+}
+
+.variant-unlink:hover {
+    background: var(--danger);
+    color: #fff;
+}
+
+.variant-picker {
+    margin-top: 8px;
+}
+
+.variant-search-input {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.variant-candidates {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.variant-candidate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-align: left;
+    color: var(--text-primary);
+    transition: background var(--transition);
+}
+
+.variant-candidate:hover {
+    background: var(--bg-hover);
+}
+
+.variant-candidate-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    flex-shrink: 0;
+}
+
+.variant-candidate-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+}
+
 /* ---- Detail actions ---- */
 .detail-actions {
     display: flex;

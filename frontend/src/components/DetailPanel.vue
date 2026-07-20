@@ -45,6 +45,10 @@ const props = defineProps({
     allCategories: { type: Array, default: () => [] },
     collections: { type: Array, default: () => [] },
     relatedModels: { type: Array, default: () => [] },
+    variantCandidates: { type: Array, default: () => [] },
+    variantPickerOpen: { type: Boolean, default: false },
+    variantQuery: { type: String, default: '' },
+    variantSearching: { type: Boolean, default: false },
     detailTab: { type: String, default: 'info' },
     showFileDetails: { type: Boolean, default: false },
     bedConfig: { type: Object, default: () => ({ enabled: false, width: 256, depth: 256, height: 256, shape: 'rectangular' }) },
@@ -87,6 +91,12 @@ const emit = defineEmits([
     'toggleBed',
     'regenerateThumbnail',
     'openRelatedModel',
+    'openVariant',
+    'linkVariant',
+    'unlinkVariant',
+    'searchVariants',
+    'update:variantPickerOpen',
+    'update:variantQuery',
     'filterByTag',
     'loadFullResolution',
     'navigate',
@@ -571,6 +581,61 @@ function formatClass(fmt) {
                                         </button>
                                         <button v-if="selectedModel.print_count" class="btn btn-sm btn-ghost"
                                                 @click="emit('undoPrint')" title="Undo last print">Undo</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Variants -->
+                            <div class="info-section">
+                                <div class="info-section-title" style="display:flex;align-items:center;justify-content:space-between">
+                                    Variants
+                                    <button class="btn-icon" style="width:20px;height:20px"
+                                            @click="emit('update:variantPickerOpen', !variantPickerOpen)"
+                                            :title="variantPickerOpen ? 'Close' : 'Link a variant'">
+                                        <span v-html="variantPickerOpen ? ICONS.close : ICONS.plus"></span>
+                                    </button>
+                                </div>
+
+                                <!-- Linked variants -->
+                                <div v-if="selectedModel.variants && selectedModel.variants.length"
+                                     class="related-models-grid">
+                                    <div v-for="v in selectedModel.variants" :key="v.id"
+                                         class="related-model-item variant-item"
+                                         @click="emit('openVariant', v.id)" :title="v.name">
+                                        <button class="variant-unlink" title="Unlink variant"
+                                                @click.stop="emit('unlinkVariant', v.id)">&times;</button>
+                                        <img v-if="v.thumbnail_path" :src="'/thumbnails/' + v.thumbnail_path"
+                                             class="related-model-thumb" loading="lazy" alt=""
+                                             @error="$event.target.style.display='none'; $event.target.nextElementSibling && ($event.target.nextElementSibling.style.display='flex')">
+                                        <div :style="v.thumbnail_path ? {display:'none'} : {}"
+                                             class="related-model-thumb related-model-thumb-placeholder">
+                                            <span v-html="ICONS.cube"></span>
+                                        </div>
+                                        <div class="related-model-name">{{ v.name }}</div>
+                                    </div>
+                                </div>
+                                <div v-else-if="!variantPickerOpen" class="text-muted text-sm">
+                                    No variants linked. Use + to link a related model.
+                                </div>
+
+                                <!-- Link picker -->
+                                <div v-if="variantPickerOpen" class="variant-picker">
+                                    <input type="text" class="variant-search-input"
+                                           :value="variantQuery" placeholder="Search models to link…"
+                                           @input="emit('update:variantQuery', $event.target.value); emit('searchVariants', $event.target.value)">
+                                    <div v-if="variantSearching" class="text-muted text-sm" style="padding:6px 2px">Searching…</div>
+                                    <div v-else-if="variantCandidates.length" class="variant-candidates">
+                                        <button v-for="c in variantCandidates" :key="c.id"
+                                                class="variant-candidate" @click="emit('linkVariant', c.id)">
+                                            <img v-if="c.thumbnail_path" :src="'/thumbnails/' + c.thumbnail_path"
+                                                 class="variant-candidate-thumb" loading="lazy" alt=""
+                                                 @error="$event.target.style.display='none'">
+                                            <span class="variant-candidate-name">{{ c.name }}</span>
+                                            <span class="format-badge" :class="formatClass(c.file_format)">{{ c.file_format }}</span>
+                                        </button>
+                                    </div>
+                                    <div v-else-if="variantQuery" class="text-muted text-sm" style="padding:6px 2px">
+                                        No matching models.
                                     </div>
                                 </div>
                             </div>

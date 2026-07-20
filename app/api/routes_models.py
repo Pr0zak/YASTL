@@ -568,6 +568,149 @@ async def undo_print(request: Request, model_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Variant pairing — link related models (supported/unsupported, scales, remixes)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{model_id}/variant-candidates")
+async def variant_candidates(
+    request: Request,
+    model_id: int,
+    q: str = Query("", description="Name substring to search"),
+    limit: int = Query(10, ge=1, le=50),
+):
+    """Active models a user could link as a variant: name matches ``q`` and the
+    model isn't the target itself nor already in its variant group."""
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT variant_group_id FROM models WHERE id = ?", (model_id,)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+        group_id = row["variant_group_id"]
+
+        sql = [
+            "SELECT id, name, file_format, thumbnail_path FROM models",
+            "WHERE status = 'active' AND id != ?",
+        ]
+        params: list = [model_id]
+        if q.strip():
+            sql.append("AND name LIKE ? COLLATE NOCASE")
+            params.append(f"%{q.strip()}%")
+        # Exclude models already in this model's group
+        if group_id is not None:
+            sql.append("AND (variant_group_id IS NULL OR variant_group_id != ?)")
+            params.append(group_id)
+        sql.append("ORDER BY name COLLATE NOCASE LIMIT ?")
+        params.append(limit)
+
+        cursor = await db.execute(" ".join(sql), params)
+        rows = [dict(r) for r in await cursor.fetchall()]
+    return {"candidates": rows}
+
+
+@router.post("/{model_id}/variants")
+async def link_variant(request: Request, model_id: int):
+    """Link ``variant_id`` (JSON body) to ``model_id`` as variants of each other.
+
+    Models sharing a ``variant_group_id`` are variants. Linking merges the two
+    models' groups: if neither has one a fresh group is created; if both already
+    belong to different groups the groups are merged.
+    """
+    body = await request.json()
+    variant_id = body.get("variant_id")
+    if variant_id is None:
+        raise HTTPException(status_code=400, detail="variant_id is required")
+    if variant_id == model_id:
+        raise HTTPException(status_code=400, detail="Cannot link a model to itself")
+
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT id, variant_group_id FROM models WHERE id IN (?, ?)",
+            (model_id, variant_id),
+        )
+        rows = {r["id"]: r["variant_group_id"] for r in await cursor.fetchall()}
+        if model_id not in rows or variant_id not in rows:
+            raise HTTPException(status_code=404, detail="Model or variant not found")
+
+        ga, gb = rows[model_id], rows[variant_id]
+        if ga is not None and ga == gb:
+            pass  # already linked
+        elif ga is not None and gb is not None:
+            # Merge: fold gb's members into ga
+            await db.execute(
+                "UPDATE models SET variant_group_id = ? WHERE variant_group_id = ?",
+                (ga, gb),
+            )
+        elif ga is not None:
+            await db.execute(
+                "UPDATE models SET variant_group_id = ? WHERE id = ?", (ga, variant_id)
+            )
+        elif gb is not None:
+            await db.execute(
+                "UPDATE models SET variant_group_id = ? WHERE id = ?", (gb, model_id)
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT COALESCE(MAX(variant_group_id), 0) + 1 AS g FROM models"
+            )
+            new_group = (await cursor.fetchone())["g"]
+            await db.execute(
+                "UPDATE models SET variant_group_id = ? WHERE id IN (?, ?)",
+                (new_group, model_id, variant_id),
+            )
+        await db.commit()
+
+        model = await _fetch_model_with_relations(db, model_id)
+    return model
+
+
+@router.delete("/{model_id}/variants/{variant_id}")
+async def unlink_variant(request: Request, model_id: int, variant_id: int):
+    """Remove ``variant_id`` from ``model_id``'s variant group. If the group is
+    left with a single member, that member is un-grouped too (a group of one is
+    meaningless)."""
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT variant_group_id FROM models WHERE id = ?", (model_id,)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+        group_id = row["variant_group_id"]
+
+        if group_id is not None:
+            # Detach the named variant if it really shares this group.
+            await db.execute(
+                "UPDATE models SET variant_group_id = NULL WHERE id = ? AND variant_group_id = ?",
+                (variant_id, group_id),
+            )
+            # Collapse a now-singleton group.
+            cursor = await db.execute(
+                "SELECT id FROM models WHERE variant_group_id = ?", (group_id,)
+            )
+            remaining = [r["id"] for r in await cursor.fetchall()]
+            if len(remaining) <= 1:
+                await db.execute(
+                    "UPDATE models SET variant_group_id = NULL WHERE variant_group_id = ?",
+                    (group_id,),
+                )
+            await db.commit()
+
+        model = await _fetch_model_with_relations(db, model_id)
+    return model
+
+
+# ---------------------------------------------------------------------------
 # Rename file on disk
 # ---------------------------------------------------------------------------
 

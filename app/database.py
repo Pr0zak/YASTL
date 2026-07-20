@@ -168,6 +168,16 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass
 
+        # Add variant grouping column — models sharing a variant_group_id are
+        # variants of each other (supported/unsupported, scales, remixes).
+        if "variant_group_id" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN variant_group_id INTEGER DEFAULT NULL"
+                )
+            except Exception:
+                pass
+
         # Add last_scanned_at column to libraries table
         cursor = await db.execute("PRAGMA table_info(libraries)")
         lib_columns = [row["name"] for row in await cursor.fetchall()]

@@ -56,6 +56,9 @@ import {
     apiGetModelDocs,
     apiBulkAddToCollection,
     apiClearAutoTags,
+    apiGetVariantCandidates,
+    apiLinkVariant,
+    apiUnlinkVariant,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -164,6 +167,11 @@ const tagSuggestionsLoading = ref(false);
 const relatedModels = ref([]);
 const relatedTags = ref([]);
 const modelDocs = ref(null);
+// Variant pairing picker state
+const variantPickerOpen = ref(false);
+const variantQuery = ref('');
+const variantCandidates = ref([]);
+const variantSearching = ref(false);
 
 function fetchRelatedTags(modelId, seq) {
     apiGetRelatedTags(modelId).then(data => {
@@ -821,6 +829,9 @@ async function viewModel(model) {
     relatedModels.value = [];
     relatedTags.value = [];
     modelDocs.value = null;
+    variantPickerOpen.value = false;
+    variantQuery.value = '';
+    variantCandidates.value = [];
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
@@ -979,6 +990,61 @@ async function openRelatedModel(modelId) {
     viewerLoading.value = false;
     const fakeModel = { id: modelId };
     await viewModel(fakeModel);
+}
+
+// Variant pairing — open, search candidates, link, unlink.
+function openVariant(modelId) {
+    openRelatedModel(modelId);
+}
+
+const debouncedVariantSearch = debounce(async (query) => {
+    if (!selectedModel.value) return;
+    const targetId = selectedModel.value.id;
+    try {
+        const data = await apiGetVariantCandidates(targetId, query);
+        if (selectedModel.value && selectedModel.value.id === targetId) {
+            variantCandidates.value = data.candidates || [];
+        }
+    } catch {
+        variantCandidates.value = [];
+    } finally {
+        variantSearching.value = false;
+    }
+}, 300);
+
+function searchVariants(query) {
+    variantSearching.value = true;
+    if (!query.trim()) {
+        variantCandidates.value = [];
+        variantSearching.value = false;
+        return;
+    }
+    debouncedVariantSearch(query);
+}
+
+async function linkVariant(variantId) {
+    if (!selectedModel.value) return;
+    try {
+        const updated = await apiLinkVariant(selectedModel.value.id, variantId);
+        selectedModel.value = enrichWithSmartCollections(updated);
+        variantQuery.value = '';
+        variantCandidates.value = [];
+        variantPickerOpen.value = false;
+        showToast('Variant linked', 'success');
+    } catch (e) {
+        showToast(e.message || 'Failed to link variant', 'error');
+    }
+}
+
+async function unlinkVariant(variantId) {
+    if (!selectedModel.value) return;
+    try {
+        const updated = await apiUnlinkVariant(selectedModel.value.id, variantId);
+        selectedModel.value = enrichWithSmartCollections(updated);
+        showToast('Variant unlinked', 'success');
+    } catch (e) {
+        showToast(e.message || 'Failed to unlink variant', 'error');
+    }
 }
 
 function closeDetail() {
@@ -2167,6 +2233,10 @@ const { pickNextCollectionColor } = collectionsComposable;
         :allCategories="allCategories"
         :collections="collections"
         :relatedModels="relatedModels"
+        :variantCandidates="variantCandidates"
+        :variantPickerOpen="variantPickerOpen"
+        :variantQuery="variantQuery"
+        :variantSearching="variantSearching"
         :detailTab="detailTab"
         :showFileDetails="showFileDetails"
         :bedConfig="bedConfig"
@@ -2205,6 +2275,12 @@ const { pickNextCollectionColor } = collectionsComposable;
         @deleteModel="deleteModel"
         @toggleBed="toggleBed"
         @openRelatedModel="openRelatedModel"
+        @openVariant="openVariant"
+        @linkVariant="linkVariant"
+        @unlinkVariant="unlinkVariant"
+        @searchVariants="searchVariants"
+        @update:variantPickerOpen="variantPickerOpen = $event"
+        @update:variantQuery="variantQuery = $event"
         @filterByTag="filterByTag"
         @loadFullResolution="loadFullResolution"
         @navigate="navigateModel"

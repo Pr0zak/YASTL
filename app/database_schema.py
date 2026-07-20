@@ -143,6 +143,7 @@ _POST_MIGRATION_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_models_status_created ON models(status, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_models_status_name ON models(status, name)",
     "CREATE INDEX IF NOT EXISTS idx_models_status_size ON models(status, file_size)",
+    "CREATE INDEX IF NOT EXISTS idx_models_variant_group ON models(variant_group_id)",
 ]
 
 MIGRATION_SQL = """
