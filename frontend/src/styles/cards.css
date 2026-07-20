@@ -416,10 +416,11 @@
     box-shadow: 0 0 4px var(--danger);
 }
 
-/* Printed badge on cards */
+/* Printed badge on cards — bottom-left, clear of the favorite/select controls
+   (which share the top-left corner) and balanced against the zip-group badge. */
 .card-printed-badge {
     position: absolute;
-    top: 8px;
+    bottom: 8px;
     left: 8px;
     display: inline-flex;
     align-items: center;
