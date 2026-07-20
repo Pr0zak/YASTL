@@ -41,6 +41,13 @@ export function useViewer() {
     let resizeObserver = null;
     let gridHelper = null;
 
+    /* ---- Orientation gizmo (small axis triad drawn in the corner) ---- */
+    let gizmoScene = null;
+    let gizmoCamera = null;
+    const GIZMO_SIZE = 84; // px square in the bottom-left of the viewport
+    const _gizmoOffset = new THREE.Vector3();
+    const _rendererSize = new THREE.Vector2();
+
     /** Scale factor applied to the model (mm → scene units). */
     let modelScaleFactor = 0;
     /** Group holding all bed overlay meshes. */
@@ -263,6 +270,79 @@ export function useViewer() {
      * @param {string} containerId - The id of the DOM element to render into.
      * @param {'default'|'light'} [theme='default'] - Color theme for the scene.
      */
+    /**
+     * Build a small canvas-texture sprite label (e.g. "X") in the given color,
+     * placed at `pos`. Sprites always face the camera so the letter stays legible.
+     */
+    function makeAxisLabel(text, color, pos) {
+        const c = document.createElement('canvas');
+        c.width = 64;
+        c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = color;
+        ctx.font = 'bold 48px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 32, 34);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+        sprite.position.copy(pos);
+        sprite.scale.set(0.6, 0.6, 0.6);
+        return sprite;
+    }
+
+    /**
+     * Create the orientation-gizmo scene: a colored axis triad (X red, Y green,
+     * Z blue) with letter labels, rendered in the viewport corner and synced to
+     * the main camera's orientation each frame.
+     */
+    function buildGizmo() {
+        gizmoScene = new THREE.Scene();
+        const axes = new THREE.AxesHelper(1.3);
+        // AxesHelper is unlit; make sure it ignores depth so labels/lines read cleanly.
+        axes.material.depthTest = false;
+        axes.material.toneMapped = false;
+        gizmoScene.add(axes);
+        gizmoScene.add(makeAxisLabel('X', '#e06c75', new THREE.Vector3(1.7, 0, 0)));
+        gizmoScene.add(makeAxisLabel('Y', '#98c379', new THREE.Vector3(0, 1.7, 0)));
+        gizmoScene.add(makeAxisLabel('Z', '#61afef', new THREE.Vector3(0, 0, 1.7)));
+        gizmoCamera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);
+        gizmoCamera.position.set(0, 0, 5);
+    }
+
+    /**
+     * Draw the gizmo in the bottom-left corner, oriented to match the main view.
+     * Called after the main scene render while autoClear is disabled.
+     */
+    function renderGizmo() {
+        if (!gizmoScene || !camera || !controls) return;
+        // Point the gizmo camera along the same direction as the main camera
+        // (relative to its orbit target), at a fixed distance from the origin.
+        _gizmoOffset.copy(camera.position).sub(controls.target);
+        if (_gizmoOffset.lengthSq() === 0) return;
+        _gizmoOffset.setLength(5);
+        gizmoCamera.position.copy(_gizmoOffset);
+        gizmoCamera.up.copy(camera.up);
+        gizmoCamera.lookAt(0, 0, 0);
+
+        renderer.getSize(_rendererSize);
+        // Top-left corner (WebGL viewport origin is bottom-left, so y is measured
+        // from the top). Clear of the bottom toolbar, which spans the full width
+        // on mobile.
+        const gx = 8;
+        const gy = Math.max(8, _rendererSize.y - GIZMO_SIZE - 8);
+        renderer.autoClear = false;
+        renderer.clearDepth();
+        renderer.setScissorTest(true);
+        renderer.setViewport(gx, gy, GIZMO_SIZE, GIZMO_SIZE);
+        renderer.setScissor(gx, gy, GIZMO_SIZE, GIZMO_SIZE);
+        renderer.render(gizmoScene, gizmoCamera);
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, _rendererSize.x, _rendererSize.y);
+        renderer.autoClear = true;
+    }
+
     function initViewer(containerId, theme) {
         if (renderer) {
             // Re-entry without an intervening dispose (e.g. double-click
@@ -351,6 +431,9 @@ export function useViewer() {
         gridHelper.material.transparent = true;
         scene.add(gridHelper);
 
+        // ---- Orientation gizmo ----
+        buildGizmo();
+
         // ---- Resize handling ----
         resizeObserver = new ResizeObserver(() => {
             if (!container || !renderer || !camera) return;
@@ -398,6 +481,7 @@ export function useViewer() {
         if (!renderer || !scene || !camera) return;
         const moving = controls ? controls.update() : false;
         renderer.render(scene, camera);
+        renderGizmo();
         if (moving) requestRender();
     }
 
@@ -942,6 +1026,20 @@ export function useViewer() {
             });
             scene.clear();
             scene = null;
+        }
+
+        // Dispose gizmo scene (axis lines + sprite label textures)
+        if (gizmoScene) {
+            gizmoScene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    if (object.material.map) object.material.map.dispose();
+                    object.material.dispose();
+                }
+            });
+            gizmoScene.clear();
+            gizmoScene = null;
+            gizmoCamera = null;
         }
 
         // Dispose controls
