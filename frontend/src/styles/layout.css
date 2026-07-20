@@ -372,6 +372,28 @@
     text-align: center;
 }
 
+/* Namespaced tag rows: tint the namespace prefix with its stable color. */
+.sidebar-tag-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.sidebar-tag-ns {
+    color: var(--tag-ns-color, var(--text-muted));
+    font-weight: 600;
+}
+
+.sidebar-tag-ns::after {
+    content: ':';
+    opacity: 0.55;
+}
+
+.sidebar-item.active .sidebar-tag-ns {
+    color: inherit;
+}
+
 .sidebar-search {
     padding: 4px 8px 6px;
 }

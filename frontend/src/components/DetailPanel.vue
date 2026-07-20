@@ -6,6 +6,7 @@
 import { computed, ref, watch } from 'vue';
 import { ICONS } from '../icons.js';
 import { formatFileSize, formatNumber, formatDimensions, formatDate } from '../search.js';
+import { parseTag, tagColorStyle } from '../tags.js';
 
 // On touch devices the 3D canvas grabs drags for orbit, which fights scrolling
 // the detail sheet. Keep the viewer inert until the user taps to interact, so
@@ -475,9 +476,11 @@ function formatClass(fmt) {
                                 <div class="tags-list">
                                     <span v-for="tag in (selectedModel.tags || [])" :key="tag"
                                           class="tag-chip"
-                                          :class="{ 'tag-chip-auto': isAutoTag(tag) }"
+                                          :class="{ 'tag-chip-auto': isAutoTag(tag), 'tag-chip-ns': parseTag(tag).namespace }"
+                                          :style="tagColorStyle(tag)"
                                           :title="isAutoTag(tag) ? 'Auto-generated tag' : ''">
-                                        <button class="tag-filter-btn" @click="emit('filterByTag', tag)" title="Filter by this tag">{{ tag }}</button>
+                                        <button class="tag-filter-btn" @click="emit('filterByTag', tag)" title="Filter by this tag"><span
+                                              v-if="parseTag(tag).namespace" class="tag-chip-ns-label">{{ parseTag(tag).namespace }}</span>{{ parseTag(tag).value }}</button>
                                         <button class="tag-remove" @click="emit('removeTag', tag)" title="Remove tag">&times;</button>
                                     </span>
                                     <span v-if="!selectedModel.tags || !selectedModel.tags.length"

@@ -4,6 +4,7 @@
  */
 import { ref, computed } from 'vue';
 import { ICONS } from '../icons.js';
+import { parseTag, tagColorStyle } from '../tags.js';
 
 const TAG_PAGE_SIZE = 30;
 const tagSearch = ref('');
@@ -159,8 +160,10 @@ const manualCollections = computed(() =>
                     <div v-for="tag in visibleTags" :key="tag.id"
                          class="sidebar-item"
                          :class="{ active: filters.tags.includes(tag.name) }"
+                         :style="tagColorStyle(tag.name)"
                          @click="emit('toggleTagFilter', tag.name)">
-                        <span>{{ tag.name }}</span>
+                        <span class="sidebar-tag-label"><span v-if="parseTag(tag.name).namespace"
+                              class="sidebar-tag-ns">{{ parseTag(tag.name).namespace }}</span>{{ parseTag(tag.name).value }}</span>
                         <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
                     </div>
                     <div v-if="tagSearch && filteredTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">

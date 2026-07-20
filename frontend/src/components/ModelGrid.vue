@@ -4,6 +4,7 @@
  */
 import { ICONS } from '../icons.js';
 import { formatFileSize, formatDate } from '../search.js';
+import TagChip from './TagChip.vue';
 
 const props = defineProps({
     models: { type: Array, default: () => [] },
@@ -177,8 +178,8 @@ function cardStyle(model) {
                               class="collection-chip" :style="col.color ? { borderColor: col.color, color: col.color } : {}">{{ col.name }}</span>
                     </div>
                     <div class="card-tags" v-if="model.tags && model.tags.length">
-                        <span v-for="t in model.tags.slice(0, 3)" :key="t" class="tag-chip tag-chip-clickable"
-                              @click.stop="emit('filterByTag', t)" title="Filter by this tag">{{ t }}</span>
+                        <TagChip v-for="t in model.tags.slice(0, 3)" :key="t" :name="t" clickable
+                                 @click="emit('filterByTag', t)" title="Filter by this tag" />
                         <span v-if="model.tags.length > 3" class="tag-chip" style="opacity:0.7">
                             +{{ model.tags.length - 3 }}
                         </span>
@@ -236,8 +237,8 @@ function cardStyle(model) {
                     <td class="col-size">{{ formatFileSize(model.file_size) }}</td>
                     <td class="col-date">{{ formatDate(model.updated_at || model.created_at) }}</td>
                     <td class="col-tags">
-                        <span v-for="t in (model.tags || []).slice(0, 2)" :key="t"
-                              class="tag-chip" style="margin-right:4px">{{ t }}</span>
+                        <TagChip v-for="t in (model.tags || []).slice(0, 2)" :key="t" :name="t"
+                                 style="margin-right:4px" />
                         <span v-if="(model.tags || []).length > 2" class="text-muted text-sm">
                             +{{ model.tags.length - 2 }}
                         </span>

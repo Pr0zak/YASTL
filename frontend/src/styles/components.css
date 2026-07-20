@@ -603,3 +603,28 @@
     opacity: 0.6;
     border: 1px dashed var(--border-light);
 }
+
+/* Namespaced tags (namespace:value) — the namespace prefix is tinted with a
+   stable per-namespace color so related tags read as a group. Falls back to
+   the accent when the CSS variable isn't set (plain tags never get here). */
+.tag-chip.tag-chip-ns {
+    background: color-mix(in srgb, var(--tag-ns-color, var(--accent)) 14%, transparent);
+    border-color: color-mix(in srgb, var(--tag-ns-color, var(--accent)) 35%, transparent);
+    color: var(--text-primary);
+}
+
+.tag-chip.tag-chip-ns:hover {
+    background: color-mix(in srgb, var(--tag-ns-color, var(--accent)) 24%, transparent);
+}
+
+.tag-chip-ns-label {
+    color: var(--tag-ns-color, var(--accent));
+    font-weight: 600;
+    opacity: 0.95;
+}
+
+.tag-chip-ns-label::after {
+    content: ':';
+    opacity: 0.6;
+    margin: 0 1px 0 0;
+}
