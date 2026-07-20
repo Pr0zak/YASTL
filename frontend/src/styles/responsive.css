@@ -93,6 +93,8 @@
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     .breadcrumb-nav::-webkit-scrollbar {
@@ -106,6 +108,15 @@
 
     .breadcrumb-count {
         display: none;
+    }
+
+    /* Actions keep their size; the breadcrumb trail yields space and scrolls. */
+    .breadcrumb-actions {
+        flex-shrink: 0;
+    }
+
+    .breadcrumb-actions .sort-select {
+        max-width: 130px;
     }
 
     /* --- Detail modal: bottom sheet style --- */
@@ -130,6 +141,57 @@
 
     #viewer-container {
         height: 260px;
+    }
+
+    /* Viewer toolbar: too many controls to center on a phone — pin it across
+       the bottom and let it scroll horizontally so every button is reachable. */
+    .viewer-toolbar {
+        left: 8px;
+        right: 8px;
+        transform: none;
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .viewer-toolbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .viewer-toolbar .btn,
+    .viewer-toolbar .viewer-view-select {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    /* Bulk selection bar: stack the count above the actions, and let the
+       action buttons scroll horizontally instead of overflowing the viewport. */
+    .selection-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px 12px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+
+    .selection-bar .selection-actions {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 2px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .selection-bar .selection-actions::-webkit-scrollbar {
+        display: none;
+    }
+
+    .selection-bar .selection-actions .btn {
+        flex-shrink: 0;
+        white-space: nowrap;
     }
 
     /* Table: hide less important columns */

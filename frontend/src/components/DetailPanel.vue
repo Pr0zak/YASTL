@@ -3,9 +3,16 @@
  * DetailPanel - Model detail overlay with 3D viewer and tabbed info panel.
  * Tabs: Info (description, source, file summary, categories), Tags, More (collections, duplicates).
  */
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { ICONS } from '../icons.js';
 import { formatFileSize, formatNumber, formatDimensions, formatDate } from '../search.js';
+
+// On touch devices the 3D canvas grabs drags for orbit, which fights scrolling
+// the detail sheet. Keep the viewer inert until the user taps to interact, so
+// the sheet scrolls normally over the model. Desktop (fine pointer) is always live.
+const isCoarsePointer = typeof window !== 'undefined'
+    && (window.matchMedia?.('(pointer: coarse)')?.matches || 'ontouchstart' in window);
+const viewerInteractive = ref(!isCoarsePointer);
 
 const props = defineProps({
     selectedModel: { type: Object, default: null },
@@ -91,6 +98,11 @@ const emit = defineEmits([
     'undoPrint',
     'clearAutoTags',
 ]);
+
+// Re-arm the tap-to-interact gate each time a different model opens on touch.
+watch(() => props.selectedModel?.id, () => {
+    if (isCoarsePointer) viewerInteractive.value = false;
+});
 
 function viewerThumb(model) {
     if (model && model.thumbnail_path) return `/thumbnails/${model.thumbnail_path}`;
@@ -210,7 +222,14 @@ function formatClass(fmt) {
             <div class="detail-content">
                 <!-- 3D Viewer -->
                 <div class="detail-viewer">
-                    <div id="viewer-container">
+                    <div id="viewer-container" :class="{ 'viewer-inert': !viewerInteractive }">
+                        <!-- Tap-to-interact gate: on touch, keep the canvas inert so the
+                             sheet scrolls; tapping activates orbit for this model. -->
+                        <button v-if="!viewerInteractive && !viewerLoading && selectedModel.status !== 'error'"
+                                class="viewer-tap-gate" @click="viewerInteractive = true">
+                            <span v-html="ICONS.cube"></span>
+                            <span>Tap to interact</span>
+                        </button>
                         <!-- Thumbnail underlay so opening feels instant while 3D loads -->
                         <img v-if="viewerLoading && selectedModel.status !== 'error'"
                              :src="viewerThumb(selectedModel)" class="viewer-thumb-underlay" alt=""
