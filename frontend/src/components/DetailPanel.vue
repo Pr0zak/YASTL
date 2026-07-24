@@ -174,29 +174,46 @@ const tagAutocomplete = computed(() => {
 });
 
 const SLICER_FORMATS = ['stl', '3mf', 'obj'];
-const SLICER_PROTOCOLS = {
-    bambustudio: 'bambustudio://open?file=',
+// Only OrcaSlicer and Cura accept a self-hosted URL via their URL scheme.
+// PrusaSlicer & Bambu Studio hard-code a printables.com / makerworld.com
+// whitelist and silently reject other hosts; SuperSlicer has no scheme — so
+// those fall back to a plain download the user opens in their slicer.
+const SCHEME_SLICERS = {
     orcaslicer: 'orcaslicer://open?file=',
-    prusaslicer: 'prusaslicer://open?file=',
+    cura: 'cura://open?file=',
 };
 const SLICER_LABELS = {
     bambustudio: 'Bambu Studio',
     orcaslicer: 'OrcaSlicer',
     prusaslicer: 'PrusaSlicer',
+    cura: 'Cura',
+    superslicer: 'SuperSlicer',
 };
 const baseUrl = globalThis.location?.origin || '';
 
-function slicerHref(model) {
-    // Slicers (Bambu/Orca/Prusa) detect the format from the URL path
-    // extension, so the download URL must end in the real file extension.
+function _slicerDownloadUrl(model) {
+    // The URL must end in the real extension so the slicer/OS recognises it.
     const ext = (model.file_format || '').toLowerCase().replace('.', '');
     let stem = (model.name || 'model').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'model';
     if (stem.toLowerCase().endsWith('.' + ext)) {
         stem = stem.slice(0, -(ext.length + 1));
     }
-    const fileUrl = `${baseUrl}/api/models/${model.id}/download/${stem}.${ext}`;
-    return (SLICER_PROTOCOLS[props.preferredSlicer] || '') + encodeURIComponent(fileUrl);
+    return `${baseUrl}/api/models/${model.id}/download/${stem}.${ext}`;
 }
+
+const slicerAction = computed(() => {
+    const slicer = props.preferredSlicer;
+    const model = props.selectedModel;
+    if (slicer === 'none' || !model) return null;
+    const ext = (model.file_format || '').toLowerCase().replace('.', '');
+    if (!SLICER_FORMATS.includes(ext)) return null;
+    const url = _slicerDownloadUrl(model);
+    const label = SLICER_LABELS[slicer] || slicer;
+    if (SCHEME_SLICERS[slicer]) {
+        return { mode: 'scheme', href: SCHEME_SLICERS[slicer] + encodeURIComponent(url), label, verb: 'Open in' };
+    }
+    return { mode: 'download', href: url, label, verb: 'Download for' };
+});
 
 function formatClass(fmt) {
     if (!fmt) return '';
@@ -782,12 +799,13 @@ function formatClass(fmt) {
 
                     <!-- Pinned actions bar -->
                     <div class="detail-actions-pinned">
-                        <a v-if="preferredSlicer !== 'none' && selectedModel.file_format && SLICER_FORMATS.includes(selectedModel.file_format.toLowerCase().replace('.', ''))"
+                        <a v-if="slicerAction"
                            class="btn btn-primary"
-                           :href="slicerHref(selectedModel)"
-                           :title="'Open in ' + (SLICER_LABELS[preferredSlicer] || preferredSlicer)">
+                           :href="slicerAction.href"
+                           :download="slicerAction.mode === 'download' ? '' : undefined"
+                           :title="slicerAction.verb + ' ' + slicerAction.label">
                             <span v-html="ICONS.slicer"></span>
-                            Slicer
+                            {{ slicerAction.mode === 'scheme' ? 'Open in slicer' : 'Download for slicer' }}
                         </a>
                         <a class="btn btn-secondary"
                            :href="'/api/models/' + selectedModel.id + '/download'"

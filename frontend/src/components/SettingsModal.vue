@@ -245,12 +245,16 @@ function timeAgo(dateStr) {
                                 :value="preferredSlicer"
                                 @change="emit('setPreferredSlicer', $event.target.value)">
                             <option value="none">None</option>
-                            <option value="bambustudio">Bambu Studio</option>
                             <option value="orcaslicer">OrcaSlicer</option>
+                            <option value="cura">UltiMaker Cura</option>
+                            <option value="bambustudio">Bambu Studio</option>
                             <option value="prusaslicer">PrusaSlicer</option>
+                            <option value="superslicer">SuperSlicer</option>
                         </select>
                         <div class="settings-hint" style="margin-top:4px">
-                            Adds an "Open in Slicer" button to the model detail panel for STL, 3MF, and OBJ files.
+                            Adds a slicer button to the detail panel (STL, 3MF, OBJ).
+                            <strong>OrcaSlicer</strong> and <strong>Cura</strong> open in one click via their URL scheme;
+                            Prusa/Bambu/SuperSlicer download the file to open manually (their schemes reject self-hosted URLs).
                         </div>
                     </div>
 

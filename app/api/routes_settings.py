@@ -45,7 +45,8 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "default": "false",
     },
     "preferred_slicer": {
-        "allowed": ["none", "bambustudio", "orcaslicer", "prusaslicer"],
+        "allowed": ["none", "bambustudio", "orcaslicer", "prusaslicer",
+                    "cura", "superslicer"],
         "default": "none",
     },
     "auto_tag_on_scan": {
