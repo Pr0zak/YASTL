@@ -18,6 +18,7 @@ import ModelGrid from './components/ModelGrid.vue';
 import DetailPanel from './components/DetailPanel.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import StatsModal from './components/StatsModal.vue';
+import FilamentModal from './components/FilamentModal.vue';
 import DuplicatesModal from './components/DuplicatesModal.vue';
 import ImportModal from './components/ImportModal.vue';
 import CollectionModal from './components/CollectionModal.vue';
@@ -59,6 +60,10 @@ import {
     apiGetVariantCandidates,
     apiLinkVariant,
     apiUnlinkVariant,
+    apiListFilaments,
+    apiCreateFilament,
+    apiUpdateFilament,
+    apiDeleteFilament,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -707,6 +712,52 @@ function closeStats() {
     showStats.value = false;
     if (!showDetail.value && !showSettings.value) {
         document.body.classList.remove('modal-open');
+    }
+}
+
+/* ---- Filament inventory (print pipeline) ---- */
+const showFilament = ref(false);
+const filaments = ref([]);
+const filamentSaving = ref(false);
+
+async function refreshFilaments() {
+    const { ok, data } = await apiListFilaments();
+    if (ok) filaments.value = data.filaments || [];
+}
+async function openFilament() {
+    showFilament.value = true;
+    document.body.classList.add('modal-open');
+    await refreshFilaments();
+}
+function closeFilament() {
+    showFilament.value = false;
+    if (!showDetail.value && !showSettings.value) {
+        document.body.classList.remove('modal-open');
+    }
+}
+async function saveFilament({ id, data }) {
+    filamentSaving.value = true;
+    try {
+        const res = id
+            ? await apiUpdateFilament(id, data)
+            : await apiCreateFilament(data);
+        if (res.ok) {
+            await refreshFilaments();
+            showToast(id ? 'Filament updated' : 'Filament added');
+        } else {
+            showToast(res.data.detail || 'Failed to save filament', 'error');
+        }
+    } finally {
+        filamentSaving.value = false;
+    }
+}
+async function deleteFilamentRow(id) {
+    const res = await apiDeleteFilament(id);
+    if (res.ok) {
+        await refreshFilaments();
+        showToast('Filament removed');
+    } else {
+        showToast('Failed to remove filament', 'error');
     }
 }
 
@@ -1737,6 +1788,8 @@ function onKeydown(e) {
             showSaveSearchModal.value = false;
         } else if (showStats.value) {
             closeStats();
+        } else if (showFilament.value) {
+            closeFilament();
         } else if (showSettings.value) {
             closeSettings();
         } else if (showDetail.value) {
@@ -1995,6 +2048,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @openImportModal="openImportModal"
         @toggleSelectionMode="toggleSelectionMode"
         @openStats="openStats"
+        @openFilament="openFilament"
         @searchInput="onSearchInput"
         @clearSearch="clearSearch"
         @quickScan="quickScan"
@@ -2388,6 +2442,15 @@ const { pickNextCollectionColor } = collectionsComposable;
         :systemStatus="systemStatus"
         @close="closeStats"
         @restartApp="restartApp"
+    />
+
+    <FilamentModal
+        :showFilament="showFilament"
+        :filaments="filaments"
+        :saving="filamentSaving"
+        @close="closeFilament"
+        @save="saveFilament"
+        @delete="deleteFilamentRow"
     />
 
     <DuplicatesModal

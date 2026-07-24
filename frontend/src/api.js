@@ -157,6 +157,42 @@ export async function apiRemoveLibrary(id) {
 }
 
 /* ==================================================================
+   Filament inventory
+   ================================================================== */
+
+export async function apiListFilaments() {
+    const res = await fetch('/api/filaments');
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiCreateFilament(payload) {
+    const res = await fetch('/api/filaments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiUpdateFilament(id, payload) {
+    const res = await fetch(`/api/filaments/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiDeleteFilament(id) {
+    const res = await fetch(`/api/filaments/${id}`, { method: 'DELETE' });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+/* ==================================================================
    Scan
    ================================================================== */
 

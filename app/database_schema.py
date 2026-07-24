@@ -112,6 +112,25 @@ CREATE TABLE IF NOT EXISTS saved_searches (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Filament spool inventory (print pipeline). Referenced by print_log.filament_id.
+CREATE TABLE IF NOT EXISTS filaments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand TEXT DEFAULT '',
+    material TEXT DEFAULT '',          -- PLA/PETG/ABS/TPU/resin…
+    color_name TEXT DEFAULT '',
+    color_hex TEXT DEFAULT '',         -- swatch in UI, e.g. #1a9e8f
+    diameter REAL DEFAULT 1.75,
+    spool_weight_g REAL,               -- full spool net weight (g)
+    remaining_g REAL,                  -- decremented as prints log usage
+    cost REAL,
+    vendor TEXT DEFAULT '',
+    purchased_at TIMESTAMP,
+    notes TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',      -- active/empty/archived
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_models_file_path ON models(file_path);
 CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);

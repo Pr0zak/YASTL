@@ -23,6 +23,7 @@ const emit = defineEmits([
     'openImportModal',
     'toggleSelectionMode',
     'openStats',
+    'openFilament',
     'searchInput',
     'clearSearch',
     'quickScan',
@@ -112,6 +113,7 @@ function onSearchInput(e) {
                     :title="scanStatus.scanning ? 'Scan in progress...' : 'Check for new files'">
                 <span v-html="ICONS.refresh"></span>
             </button>
+            <button class="btn-icon" @click="emit('openFilament')" title="Filament Inventory" v-html="ICONS.spool"></button>
             <button class="btn-icon" @click="emit('openImportModal')" title="Import Models">
                 <span v-html="ICONS.upload"></span>
             </button>
