@@ -46,6 +46,7 @@ const props = defineProps({
     collections: { type: Array, default: () => [] },
     printHistory: { type: Array, default: () => [] },
     filaments: { type: Array, default: () => [] },
+    modelPlates: { type: Array, default: () => [] },
     aiEnabled: { type: Boolean, default: false },
     aiTagging: { type: Boolean, default: false },
     relatedModels: { type: Array, default: () => [] },
@@ -608,6 +609,23 @@ function formatClass(fmt) {
                                        class="doc-file-link">
                                         <span v-html="ICONS.folder"></span> {{ f.name }}
                                     </a>
+                                </div>
+                            </div>
+
+                            <!-- Multi-plate 3MF (Bambu/Orca project) -->
+                            <div v-if="modelPlates.length > 1" class="info-section">
+                                <div class="info-section-title">Plates ({{ modelPlates.length }})</div>
+                                <div class="plate-grid">
+                                    <div v-for="pl in modelPlates" :key="pl.index" class="plate-cell">
+                                        <img v-if="pl.has_thumbnail"
+                                             :src="`/api/models/${selectedModel.id}/plates/${pl.index}/thumbnail`"
+                                             class="plate-thumb" alt="" loading="lazy">
+                                        <div v-else class="plate-thumb plate-thumb-empty"></div>
+                                        <div class="plate-label" :title="pl.name || ('Plate ' + (pl.index + 1))">
+                                            {{ pl.name || ('Plate ' + (pl.index + 1)) }}
+                                            <span v-if="pl.object_ids && pl.object_ids.length" class="text-muted">· {{ pl.object_ids.length }} obj</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 

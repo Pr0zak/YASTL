@@ -859,6 +859,17 @@ class Scanner:
         skip_thumbnail = False
 
         if file_format.upper() == "3MF":
+            # Multi-plate Bambu/Orca detection (cheap zip peek, no trimesh).
+            try:
+                from app.services.threemf_plates import inspect_3mf
+                info = await loop.run_in_executor(None, inspect_3mf, file_path_str)
+                if info["kind"] == "bambu_project":
+                    await db.execute(
+                        "UPDATE models SET plate_count = ?, plate_meta = ? WHERE id = ?",
+                        (info["plate_count"], json.dumps(info["plates"]), model_id),
+                    )
+            except Exception:  # noqa: BLE001 — plate detection is best-effort
+                pass
             extracted_thumb = await loop.run_in_executor(
                 get_pool(),
                 thumbnail.extract_3mf_thumbnail,

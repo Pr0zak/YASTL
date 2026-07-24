@@ -178,6 +178,23 @@ async def init_db(db_path: str | Path | None = None) -> None:
             except Exception:
                 pass
 
+        # Multi-plate Bambu/Orca 3MF: plate_count (>1 = multi-plate) and a
+        # compact JSON summary of the plates.
+        if "plate_count" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN plate_count INTEGER DEFAULT NULL"
+                )
+            except Exception:
+                pass
+        if "plate_meta" not in columns:
+            try:
+                await db.execute(
+                    "ALTER TABLE models ADD COLUMN plate_meta TEXT DEFAULT NULL"
+                )
+            except Exception:
+                pass
+
         # Add last_scanned_at column to libraries table
         cursor = await db.execute("PRAGMA table_info(libraries)")
         lib_columns = [row["name"] for row in await cursor.fetchall()]

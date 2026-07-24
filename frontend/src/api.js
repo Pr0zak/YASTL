@@ -15,6 +15,12 @@ export async function apiGetModels(params) {
     return res.json();
 }
 
+export async function apiGetModelPlates(id) {
+    const res = await fetch(`/api/models/${id}/plates`);
+    if (!res.ok) return { plate_count: 1, plates: [] };
+    return res.json();
+}
+
 export async function apiGetModel(id) {
     const res = await fetch(`/api/models/${id}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

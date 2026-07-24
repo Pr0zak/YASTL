@@ -1460,3 +1460,30 @@ textarea.import-textarea {
 .queue-reorder .btn-icon { width: 22px; height: 18px; }
 .queue-remove { flex-shrink: 0; opacity: 0.6; }
 .queue-remove:hover { opacity: 1; }
+
+/* ============================================================
+   Multi-plate 3MF: plate grid in the detail More tab
+   ============================================================ */
+.plate-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 10px;
+}
+.plate-cell { text-align: center; min-width: 0; }
+.plate-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    display: block;
+}
+.plate-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

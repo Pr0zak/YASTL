@@ -5,7 +5,7 @@ import logging
 import os
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 import aiosqlite
 
 from app.config import settings
@@ -490,3 +490,54 @@ async def serve_model_doc(request: Request, model_id: int, name: str):
 
     from fastapi.responses import Response
     return Response(content=data, media_type=media)
+
+
+# ---------------------------------------------------------------------------
+# Multi-plate Bambu/Orca 3MF: plate listing + per-plate embedded preview
+# ---------------------------------------------------------------------------
+async def _model_row(request: Request, model_id: int) -> dict:
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id, file_path, name, zip_path, zip_entry FROM models WHERE id = ?",
+            (model_id,),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+    return dict(row)
+
+
+@router.get("/{model_id}/plates")
+async def list_model_plates(request: Request, model_id: int):
+    """List the build plates of a multi-plate Bambu/Orca 3MF (else one plate)."""
+    from app.services.threemf_plates import inspect_3mf
+
+    model = await _model_row(request, model_id)
+    resolved = _resolve_model_file(model)
+    if resolved is None or not resolved.lower().endswith(".3mf"):
+        return {"kind": "plain", "plate_count": 1, "plates": []}
+    info = inspect_3mf(resolved)
+    for i, plate in enumerate(info["plates"]):
+        plate["index"] = i
+        plate["has_thumbnail"] = bool(plate.get("thumbnail"))
+    return info
+
+
+@router.get("/{model_id}/plates/{plate_index}/thumbnail")
+async def serve_plate_thumbnail(request: Request, model_id: int, plate_index: int):
+    """Serve a plate's embedded preview PNG (Bambu's own slicer render)."""
+    from app.services.threemf_plates import inspect_3mf, read_plate_thumbnail
+
+    model = await _model_row(request, model_id)
+    resolved = _resolve_model_file(model)
+    if resolved is None or not resolved.lower().endswith(".3mf"):
+        raise HTTPException(status_code=404, detail="Not a 3MF file")
+    info = inspect_3mf(resolved)
+    if plate_index < 0 or plate_index >= len(info["plates"]):
+        raise HTTPException(status_code=404, detail="Plate not found")
+    data, ctype = read_plate_thumbnail(resolved, info["plates"][plate_index])
+    if data is None:
+        raise HTTPException(status_code=404, detail="No embedded preview for this plate")
+    return Response(content=data, media_type=ctype)

@@ -143,6 +143,11 @@ function cardStyle(model) {
                       :title="'Printed ' + model.print_count + ' time' + (model.print_count === 1 ? '' : 's')">
                     <span v-html="ICONS.check"></span>{{ model.print_count > 1 ? ' ' + model.print_count : '' }}
                 </span>
+                <!-- Multi-plate 3MF badge -->
+                <span v-if="!isZipGroup(model) && model.plate_count > 1" class="card-plate-badge"
+                      :title="model.plate_count + ' build plates (Bambu/Orca project)'">
+                    {{ model.plate_count }} plates
+                </span>
                 <button v-if="!selectionMode && !isZipGroup(model)" class="card-fav-btn" :class="{ active: model.is_favorite }"
                         @click.stop="emit('toggleFavorite', model, $event)" title="Toggle favorite">
                     <span v-html="model.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>

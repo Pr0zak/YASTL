@@ -28,6 +28,7 @@ import SelectionBar from './components/SelectionBar.vue';
 import {
     apiGetModels,
     apiGetModel,
+    apiGetModelPlates,
     apiUpdateModel,
     apiDeleteModel,
     apiRenameModelFile,
@@ -980,12 +981,14 @@ async function viewModel(model) {
     variantQuery.value = '';
     variantCandidates.value = [];
     printHistory.value = [];
+    modelPlates.value = [];
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
     document.body.classList.add('modal-open');
     syncUrl(true);
     loadPrintHistory(model.id);
+    loadModelPlates(model);
 
     // Fetch full model data — await if we're missing file_format (e.g. related model click),
     // otherwise fire-and-forget to enrich tags/categories in background
@@ -2074,6 +2077,16 @@ async function applyPrintResult(data) {
 
 const printHistory = ref([]);
 const printInventory = ref([]);
+const modelPlates = ref([]);
+
+async function loadModelPlates(model) {
+    modelPlates.value = [];
+    const is3mf = (model.file_format || '').toLowerCase() === '3mf';
+    if ((model.plate_count || 0) > 1 || is3mf) {
+        const data = await apiGetModelPlates(model.id);
+        modelPlates.value = data.plates || [];
+    }
+}
 
 async function loadPrintHistory(modelId) {
     if (!modelId) { printHistory.value = []; return; }
@@ -2453,6 +2466,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :collections="collections"
         :printHistory="printHistory"
         :filaments="filaments"
+        :modelPlates="modelPlates"
         :aiEnabled="ai.enabled"
         :aiTagging="aiTagging"
         :relatedModels="relatedModels"
