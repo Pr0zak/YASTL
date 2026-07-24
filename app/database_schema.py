@@ -131,6 +131,24 @@ CREATE TABLE IF NOT EXISTS filaments (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Finished-prints log: one row per print event (print pipeline). The
+-- models.print_count / last_printed_at columns are kept as a denormalized
+-- summary. filament_id links to the spool used (optional).
+CREATE TABLE IF NOT EXISTS print_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id INTEGER REFERENCES models(id) ON DELETE CASCADE,
+    printed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    quantity INTEGER DEFAULT 1,
+    filament_id INTEGER REFERENCES filaments(id) ON DELETE SET NULL,
+    grams_used REAL,                   -- total grams for this entry
+    print_time_min INTEGER,
+    location TEXT DEFAULT '',           -- where the printed object lives
+    status TEXT DEFAULT 'kept',         -- kept/gifted/sold/failed/scrapped
+    notes TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_print_log_model ON print_log(model_id);
+CREATE INDEX IF NOT EXISTS idx_print_log_location ON print_log(location);
+
 CREATE INDEX IF NOT EXISTS idx_models_file_path ON models(file_path);
 CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);

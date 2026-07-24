@@ -526,16 +526,55 @@ async def update_model(request: Request, model_id: int):
 
 @router.post("/{model_id}/print")
 async def log_print(request: Request, model_id: int):
-    """Log a print: increment print_count and set last_printed_at to now."""
+    """Log a print event.
+
+    Inserts a ``print_log`` row and bumps the denormalized ``print_count`` /
+    ``last_printed_at`` summary on the model. Optional JSON body:
+    ``{quantity, filament_id, grams_used, print_time_min, location, status,
+    notes}``. If ``filament_id`` + ``grams_used`` are given, the spool's
+    ``remaining_g`` is decremented (floored at 0).
+    """
     db_path = _get_db_path(request)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — an empty/absent body is valid
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+
+    try:
+        quantity = max(1, int(body.get("quantity") or 1))
+    except (TypeError, ValueError):
+        quantity = 1
+    filament_id = body.get("filament_id")
+    grams_used = body.get("grams_used")
+    print_time_min = body.get("print_time_min")
+    location = (body.get("location") or "").strip()
+    status = body.get("status") or "kept"
+    notes = (body.get("notes") or "").strip()
+
     async with open_db(db_path) as db:
-        cursor = await db.execute(
-            "UPDATE models SET print_count = COALESCE(print_count, 0) + 1, "
-            "last_printed_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (model_id,),
-        )
-        if cursor.rowcount == 0:
+        cursor = await db.execute("SELECT id FROM models WHERE id = ?", (model_id,))
+        if await cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+        await db.execute(
+            "INSERT INTO print_log (model_id, quantity, filament_id, grams_used, "
+            "print_time_min, location, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (model_id, quantity, filament_id, grams_used, print_time_min,
+             location, status, notes),
+        )
+        await db.execute(
+            "UPDATE models SET print_count = COALESCE(print_count, 0) + ?, "
+            "last_printed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (quantity, model_id),
+        )
+        if filament_id and grams_used:
+            await db.execute(
+                "UPDATE filaments SET remaining_g = "
+                "MAX(0, COALESCE(remaining_g, 0) - ?) WHERE id = ?",
+                (grams_used, filament_id),
+            )
         await db.commit()
         cursor = await db.execute(
             "SELECT print_count, last_printed_at FROM models WHERE id = ?",
@@ -547,17 +586,45 @@ async def log_print(request: Request, model_id: int):
 
 @router.delete("/{model_id}/print")
 async def undo_print(request: Request, model_id: int):
-    """Undo the most recent print: decrement print_count (floored at 0)."""
+    """Undo the most recent print: delete the latest ``print_log`` row (re-crediting
+    any filament used) and decrement the summary counter by that row's quantity.
+    Falls back to a plain counter decrement for models whose prints predate the
+    ``print_log`` table."""
     db_path = _get_db_path(request)
     async with open_db(db_path) as db:
+        cursor = await db.execute("SELECT id FROM models WHERE id = ?", (model_id,))
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
         cursor = await db.execute(
-            "UPDATE models SET print_count = MAX(COALESCE(print_count, 0) - 1, 0), "
-            "last_printed_at = CASE WHEN COALESCE(print_count, 0) <= 1 "
-            "THEN NULL ELSE last_printed_at END WHERE id = ?",
+            "SELECT id, quantity, filament_id, grams_used FROM print_log "
+            "WHERE model_id = ? ORDER BY printed_at DESC, id DESC LIMIT 1",
             (model_id,),
         )
-        if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+        latest = await cursor.fetchone()
+
+        if latest is not None:
+            r = dict(latest)
+            await db.execute("DELETE FROM print_log WHERE id = ?", (r["id"],))
+            await db.execute(
+                "UPDATE models SET print_count = MAX(COALESCE(print_count, 0) - ?, 0), "
+                "last_printed_at = (SELECT MAX(printed_at) FROM print_log "
+                "WHERE model_id = ?) WHERE id = ?",
+                (r["quantity"] or 1, model_id, model_id),
+            )
+            if r["filament_id"] and r["grams_used"]:
+                await db.execute(
+                    "UPDATE filaments SET remaining_g = "
+                    "COALESCE(remaining_g, 0) + ? WHERE id = ?",
+                    (r["grams_used"], r["filament_id"]),
+                )
+        else:
+            await db.execute(
+                "UPDATE models SET print_count = MAX(COALESCE(print_count, 0) - 1, 0), "
+                "last_printed_at = CASE WHEN COALESCE(print_count, 0) <= 1 "
+                "THEN NULL ELSE last_printed_at END WHERE id = ?",
+                (model_id,),
+            )
         await db.commit()
         cursor = await db.execute(
             "SELECT print_count, last_printed_at FROM models WHERE id = ?",

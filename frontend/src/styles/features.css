@@ -1299,3 +1299,65 @@ textarea.import-textarea {
 @media (max-width: 560px) {
     .filament-form-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Print history (detail panel More tab)
+   ============================================================ */
+.print-log-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin: 8px 0 4px;
+}
+.print-log-form .form-input { flex: 1; min-width: 90px; }
+.print-log-form .print-log-qty { flex: 0 0 60px; min-width: 60px; }
+.print-log-form .print-log-grams { flex: 0 0 70px; min-width: 70px; }
+
+.print-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+.print-history-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    padding: 4px 2px;
+    border-bottom: 1px solid var(--border);
+}
+.print-history-row:last-child { border-bottom: none; }
+.print-history-date { color: var(--text-muted); flex-shrink: 0; }
+.print-history-qty { font-weight: 600; color: var(--text-primary); }
+.print-history-swatch {
+    width: 14px;
+    height: 14px;
+    border-width: 1px;
+    flex-shrink: 0;
+}
+.print-history-fil { color: var(--text-secondary); }
+.print-history-loc {
+    background: var(--bg-input);
+    border-radius: 3px;
+    padding: 0 6px;
+    color: var(--text-secondary);
+}
+.print-history-status {
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+}
+.print-history-del {
+    margin-left: auto;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+.print-history-del:hover { opacity: 1; }

@@ -9,6 +9,7 @@ defineProps({
     stats: { type: Object, default: null },
     statsLoading: { type: Boolean, default: false },
     systemStatus: { type: Object, default: () => ({ health: 'unknown', scanner: { status: 'unknown' }, watcher: { status: 'unknown' }, database: { status: 'unknown' }, thumbnails: { status: 'unknown' } }) },
+    printInventory: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['close', 'restartApp']);
@@ -231,6 +232,24 @@ function tagOpacity(count, tags) {
                                      :style="{ width: barWidth(lib.count, stats.libraries[0]?.count) }"></div>
                             </div>
                             <span class="stats-bar-value">{{ lib.count }} <span class="text-muted">({{ formatSize(lib.total_size) }})</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Prints by location (print pipeline) -->
+                <div class="settings-section" v-if="printInventory.length > 0">
+                    <div class="settings-section-title">Prints by location</div>
+                    <div class="stats-bar-list">
+                        <div v-for="loc in printInventory" :key="loc.location" class="stats-bar-row">
+                            <span class="stats-bar-label stats-bar-label-wide" :title="loc.models.join(', ')">{{ loc.location }}</span>
+                            <div class="stats-bar-track">
+                                <div class="stats-bar-fill stats-bar-accent"
+                                     :style="{ width: barWidth(loc.total_quantity, printInventory[0]?.total_quantity) }"></div>
+                            </div>
+                            <span class="stats-bar-value">
+                                {{ loc.total_quantity }}
+                                <span class="text-muted">({{ loc.distinct_models }} model{{ loc.distinct_models === 1 ? '' : 's' }})</span>
+                            </span>
                         </div>
                     </div>
                 </div>

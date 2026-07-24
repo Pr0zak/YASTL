@@ -606,8 +606,13 @@ export async function apiToggleCollectionPin(id) {
     return res.json();
 }
 
-export async function apiLogPrint(id) {
-    const res = await fetch(`/api/models/${id}/print`, { method: 'POST' });
+export async function apiLogPrint(id, details = null) {
+    const opts = { method: 'POST' };
+    if (details && Object.keys(details).length) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(details);
+    }
+    const res = await fetch(`/api/models/${id}/print`, opts);
     if (!res.ok) throw new Error('Failed to log print');
     return res.json();
 }
@@ -616,6 +621,24 @@ export async function apiUndoPrint(id) {
     const res = await fetch(`/api/models/${id}/print`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to undo print');
     return res.json();
+}
+
+export async function apiListPrints(modelId) {
+    const res = await fetch(`/api/prints?model_id=${modelId}`);
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiDeletePrint(printId) {
+    const res = await fetch(`/api/prints/${printId}`, { method: 'DELETE' });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiGetPrintInventory() {
+    const res = await fetch('/api/prints/inventory');
+    const json = await res.json();
+    return { ok: res.ok, data: json };
 }
 
 /* ==================================================================

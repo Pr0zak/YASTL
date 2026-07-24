@@ -3,7 +3,7 @@
  * DetailPanel - Model detail overlay with 3D viewer and tabbed info panel.
  * Tabs: Info (description, source, file summary, categories), Tags, More (collections, duplicates).
  */
-import { computed, ref, watch } from 'vue';
+import { computed, ref, reactive, watch } from 'vue';
 import { ICONS } from '../icons.js';
 import { formatFileSize, formatNumber, formatDimensions, formatDate } from '../search.js';
 import { parseTag, tagColorStyle } from '../tags.js';
@@ -44,6 +44,8 @@ const props = defineProps({
     allTags: { type: Array, default: () => [] },
     allCategories: { type: Array, default: () => [] },
     collections: { type: Array, default: () => [] },
+    printHistory: { type: Array, default: () => [] },
+    filaments: { type: Array, default: () => [] },
     relatedModels: { type: Array, default: () => [] },
     variantCandidates: { type: Array, default: () => [] },
     variantPickerOpen: { type: Boolean, default: false },
@@ -107,6 +109,7 @@ const emit = defineEmits([
     'toggleMeasuring',
     'logPrint',
     'undoPrint',
+    'deletePrint',
     'clearAutoTags',
 ]);
 
@@ -114,6 +117,21 @@ const emit = defineEmits([
 watch(() => props.selectedModel?.id, () => {
     if (isCoarsePointer) viewerInteractive.value = false;
 });
+
+// Log-with-details form state (Print History)
+const showPrintForm = ref(false);
+const printForm = reactive({ quantity: 1, location: '', filament_id: null, grams_used: null });
+function resetPrintForm() {
+    showPrintForm.value = false;
+    printForm.quantity = 1;
+    printForm.location = '';
+    printForm.filament_id = null;
+    printForm.grams_used = null;
+}
+function submitPrintForm() {
+    emit('logPrint', { ...printForm });
+    resetPrintForm();
+}
 
 function viewerThumb(model) {
     if (model && model.thumbnail_path) return `/thumbnails/${model.thumbnail_path}`;
@@ -576,11 +594,46 @@ function formatClass(fmt) {
                                         </span>
                                     </div>
                                     <div class="print-track-actions">
-                                        <button class="btn btn-sm btn-primary" @click="emit('logPrint')">
+                                        <button class="btn btn-sm btn-primary" @click="emit('logPrint', null)">
                                             <span v-html="ICONS.check"></span> Mark printed
                                         </button>
+                                        <button class="btn btn-sm btn-ghost" @click="showPrintForm = !showPrintForm"
+                                                :title="showPrintForm ? 'Hide details' : 'Log with details'">Details…</button>
                                         <button v-if="selectedModel.print_count" class="btn btn-sm btn-ghost"
                                                 @click="emit('undoPrint')" title="Undo last print">Undo</button>
+                                    </div>
+                                </div>
+
+                                <!-- Log-with-details form -->
+                                <div v-if="showPrintForm" class="print-log-form">
+                                    <input class="form-input print-log-qty" type="number" min="1"
+                                           v-model.number="printForm.quantity" placeholder="Qty" title="Quantity">
+                                    <input class="form-input" v-model="printForm.location" placeholder="Location (e.g. Bin A3)">
+                                    <select class="form-input" v-model="printForm.filament_id" title="Filament">
+                                        <option :value="null">No filament</option>
+                                        <option v-for="f in filaments" :key="f.id" :value="f.id">
+                                            {{ [f.brand, f.material, f.color_name].filter(Boolean).join(' ') || ('Spool #' + f.id) }}
+                                        </option>
+                                    </select>
+                                    <input class="form-input print-log-grams" type="number" min="0"
+                                           v-model.number="printForm.grams_used" placeholder="g" title="Grams used">
+                                    <button class="btn btn-sm btn-primary" @click="submitPrintForm">Log</button>
+                                </div>
+
+                                <!-- History list -->
+                                <div v-if="printHistory && printHistory.length" class="print-history-list">
+                                    <div v-for="p in printHistory" :key="p.id" class="print-history-row">
+                                        <span class="print-history-date">{{ formatDate(p.printed_at) }}</span>
+                                        <span v-if="p.quantity > 1" class="print-history-qty">×{{ p.quantity }}</span>
+                                        <span v-if="p.filament_color_hex" class="filament-swatch print-history-swatch"
+                                              :style="{ background: p.filament_color_hex }"></span>
+                                        <span v-if="p.filament_brand || p.filament_material" class="print-history-fil">
+                                            {{ [p.filament_brand, p.filament_material].filter(Boolean).join(' ') }}
+                                        </span>
+                                        <span v-if="p.location" class="print-history-loc">{{ p.location }}</span>
+                                        <span v-if="p.status && p.status !== 'kept'" class="print-history-status">{{ p.status }}</span>
+                                        <button class="btn-icon print-history-del" @click="emit('deletePrint', p.id)"
+                                                title="Delete entry">&times;</button>
                                     </div>
                                 </div>
                             </div>

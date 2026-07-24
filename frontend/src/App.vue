@@ -53,6 +53,9 @@ import {
     apiToggleCollectionPin,
     apiLogPrint,
     apiUndoPrint,
+    apiListPrints,
+    apiDeletePrint,
+    apiGetPrintInventory,
     apiGetRelatedTags,
     apiGetModelDocs,
     apiBulkAddToCollection,
@@ -698,6 +701,9 @@ async function openStats() {
     document.body.classList.add('modal-open');
     statsLoading.value = true;
     fetchSystemStatus();
+    apiGetPrintInventory()
+        .then(({ ok, data }) => { printInventory.value = ok ? (data.locations || []) : []; })
+        .catch(() => { printInventory.value = []; });
     try {
         statsData.value = await apiGetStats();
     } catch (err) {
@@ -896,11 +902,13 @@ async function viewModel(model) {
     variantPickerOpen.value = false;
     variantQuery.value = '';
     variantCandidates.value = [];
+    printHistory.value = [];
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
     document.body.classList.add('modal-open');
     syncUrl(true);
+    loadPrintHistory(model.id);
 
     // Fetch full model data — await if we're missing file_format (e.g. related model click),
     // otherwise fire-and-forget to enrich tags/categories in background
@@ -1908,6 +1916,7 @@ onMounted(() => {
     fetchFavoritesCount();
     fetchSavedSearches();
     fetchImportCredentials();
+    refreshFilaments();
     statusPollTimer = setInterval(fetchSystemStatus, 30000);
     document.addEventListener('keydown', onKeydown);
     window.addEventListener('popstate', onPopState);
@@ -1965,10 +1974,21 @@ async function applyPrintResult(data) {
     }
 }
 
-async function logPrint() {
+const printHistory = ref([]);
+const printInventory = ref([]);
+
+async function loadPrintHistory(modelId) {
+    if (!modelId) { printHistory.value = []; return; }
+    const { ok, data } = await apiListPrints(modelId);
+    printHistory.value = ok ? (data.prints || []) : [];
+}
+
+async function logPrint(details = null) {
     if (!selectedModel.value) return;
     try {
-        applyPrintResult(await apiLogPrint(selectedModel.value.id));
+        applyPrintResult(await apiLogPrint(selectedModel.value.id, details));
+        await loadPrintHistory(selectedModel.value.id);
+        if (details && details.filament_id) await refreshFilaments();
         showToast('Marked as printed', 'success');
     } catch {
         showToast('Failed to log print', 'error');
@@ -1979,9 +1999,28 @@ async function undoPrint() {
     if (!selectedModel.value) return;
     try {
         applyPrintResult(await apiUndoPrint(selectedModel.value.id));
+        await loadPrintHistory(selectedModel.value.id);
+        await refreshFilaments();
     } catch {
         showToast('Failed to undo print', 'error');
     }
+}
+
+async function deletePrintEntry(printId) {
+    if (!selectedModel.value) return;
+    const { ok } = await apiDeletePrint(printId);
+    if (!ok) { showToast('Failed to delete print', 'error'); return; }
+    try {
+        const fresh = await apiGetModel(selectedModel.value.id);
+        if (fresh) {
+            applyPrintResult({
+                print_count: fresh.print_count,
+                last_printed_at: fresh.last_printed_at,
+            });
+        }
+    } catch { /* ignore refetch failure */ }
+    await loadPrintHistory(selectedModel.value.id);
+    await refreshFilaments();
 }
 
 // Drag-and-drop model cards onto sidebar collections
@@ -2307,6 +2346,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :allTags="allTags"
         :allCategories="allCategories"
         :collections="collections"
+        :printHistory="printHistory"
+        :filaments="filaments"
         :relatedModels="relatedModels"
         :variantCandidates="variantCandidates"
         :variantPickerOpen="variantPickerOpen"
@@ -2366,6 +2407,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @toggleMeasuring="toggleMeasuring"
         @logPrint="logPrint"
         @undoPrint="undoPrint"
+        @deletePrint="deletePrintEntry"
         @clearAutoTags="clearAutoTags"
         @regenerateThumbnail="regenerateThumbnail"
     />
@@ -2440,6 +2482,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :stats="statsData"
         :statsLoading="statsLoading"
         :systemStatus="systemStatus"
+        :printInventory="printInventory"
         @close="closeStats"
         @restartApp="restartApp"
     />
