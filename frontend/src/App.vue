@@ -60,6 +60,7 @@ import {
     apiGetModelDocs,
     apiBulkAddToCollection,
     apiClearAutoTags,
+    apiAiTagModel,
     apiGetVariantCandidates,
     apiLinkVariant,
     apiUnlinkVariant,
@@ -291,6 +292,7 @@ const {
     scanIntervalMinutes, webhookUrl, setScanInterval, setWebhookUrl, testWebhook,
     ai, aiTesting, aiTestResult, saveAiSettings, testAiConnection,
     buildingEmbeddings, embedProgress, buildEmbeddings,
+    aiTaggingAll, aiTagProgress, aiAutoTagAll,
     bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint, preferredSlicer,
     autoTagOnScan,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
@@ -1173,6 +1175,25 @@ async function clearAutoTags() {
         showToast(`Removed ${data.removed} auto tag${data.removed === 1 ? '' : 's'}`, 'success');
     } catch {
         showToast('Failed to clear auto tags', 'error');
+    }
+}
+
+const aiTagging = ref(false);
+async function aiTagModel() {
+    if (!selectedModel.value) return;
+    aiTagging.value = true;
+    try {
+        const data = await apiAiTagModel(selectedModel.value.id);
+        selectedModel.value = data.model;
+        updateModelInList(data.model);
+        fetchTags();
+        const n = data.result?.tags_added || 0;
+        showToast(n ? `AI added ${n} tag${n === 1 ? '' : 's'}` : 'AI found no new tags',
+                  n ? 'success' : 'info');
+    } catch (err) {
+        showToast(err.message || 'AI tagging failed', 'error');
+    } finally {
+        aiTagging.value = false;
     }
 }
 
@@ -2366,6 +2387,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :collections="collections"
         :printHistory="printHistory"
         :filaments="filaments"
+        :aiEnabled="ai.enabled"
+        :aiTagging="aiTagging"
         :relatedModels="relatedModels"
         :variantCandidates="variantCandidates"
         :variantPickerOpen="variantPickerOpen"
@@ -2426,6 +2449,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @logPrint="logPrint"
         @undoPrint="undoPrint"
         @deletePrint="deletePrintEntry"
+        @aiTagModel="aiTagModel"
         @clearAutoTags="clearAutoTags"
         @regenerateThumbnail="regenerateThumbnail"
     />
@@ -2451,6 +2475,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :aiTestResult="aiTestResult"
         :buildingEmbeddings="buildingEmbeddings"
         :embedProgress="embedProgress"
+        :aiTaggingAll="aiTaggingAll"
+        :aiTagProgress="aiTagProgress"
         :autoTagging="autoTagging"
         :autoTagProgress="autoTagProgress"
         :extractingMetadata="extractingMetadata"
@@ -2482,6 +2508,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @saveAiSettings="saveAiSettings"
         @testAi="testAiConnection"
         @buildEmbeddings="buildEmbeddings"
+        @aiAutoTagAll="aiAutoTagAll"
         @autoTagAll="autoTagAll"
         @extractMetadata="extractMetadata"
         @cleanupTags="cleanupTags"

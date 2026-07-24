@@ -46,6 +46,8 @@ const props = defineProps({
     collections: { type: Array, default: () => [] },
     printHistory: { type: Array, default: () => [] },
     filaments: { type: Array, default: () => [] },
+    aiEnabled: { type: Boolean, default: false },
+    aiTagging: { type: Boolean, default: false },
     relatedModels: { type: Array, default: () => [] },
     variantCandidates: { type: Array, default: () => [] },
     variantPickerOpen: { type: Boolean, default: false },
@@ -111,6 +113,7 @@ const emit = defineEmits([
     'undoPrint',
     'deletePrint',
     'clearAutoTags',
+    'aiTagModel',
 ]);
 
 // Re-arm the tap-to-interact gate each time a different model opens on touch.
@@ -152,10 +155,12 @@ const docLinks = computed(() => {
 });
 
 function isAutoTag(tag) {
-    return props.selectedModel?.tag_sources?.[tag] === 'auto';
+    // Any machine-generated source (heuristic 'auto' or vision 'ai').
+    const s = props.selectedModel?.tag_sources?.[tag];
+    return !!s && s !== 'manual';
 }
 const hasAutoTags = computed(() =>
-    Object.values(props.selectedModel?.tag_sources || {}).some((s) => s === 'auto')
+    Object.values(props.selectedModel?.tag_sources || {}).some((s) => s && s !== 'manual')
 );
 
 // Autocomplete suggestions for the add-tag input: existing tag names not
@@ -534,6 +539,12 @@ function formatClass(fmt) {
                                 <div style="margin-top:8px">
                                     <button class="btn btn-sm btn-ghost" @click="emit('fetchTagSuggestions')" :disabled="tagSuggestionsLoading">
                                         Suggest Tags
+                                    </button>
+                                    <button v-if="aiEnabled" class="btn btn-sm btn-ghost" style="margin-left:6px"
+                                            @click="emit('aiTagModel')" :disabled="aiTagging"
+                                            title="Suggest tags from the thumbnail with AI">
+                                        <span v-html="ICONS.zap"></span>
+                                        {{ aiTagging ? 'AI tagging…' : 'AI suggest tags' }}
                                     </button>
                                     <div v-if="tagSuggestions.length > 0" class="tag-suggestions" style="margin-top:6px">
                                         <span v-for="s in tagSuggestions" :key="s" class="tag-chip tag-suggestion"

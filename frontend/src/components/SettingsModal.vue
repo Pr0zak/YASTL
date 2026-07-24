@@ -41,6 +41,8 @@ defineProps({
     aiTestResult: { type: Object, default: null },
     buildingEmbeddings: { type: Boolean, default: false },
     embedProgress: { type: Object, default: () => ({ running: false, total: 0, completed: 0, in_memory: 0 }) },
+    aiTaggingAll: { type: Boolean, default: false },
+    aiTagProgress: { type: Object, default: () => ({ running: false, total: 0, completed: 0, tags_added: 0 }) },
 });
 
 const emit = defineEmits([
@@ -76,6 +78,7 @@ const emit = defineEmits([
     'saveAiSettings',
     'testAi',
     'buildEmbeddings',
+    'aiAutoTagAll',
 ]);
 
 function timeAgo(dateStr) {
@@ -523,6 +526,28 @@ function timeAgo(dateStr) {
                         </div>
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
                             Embeddings: {{ embedProgress.completed }} / {{ embedProgress.total }}
+                        </span>
+                    </div>
+
+                    <div class="settings-subsection-title" style="margin-top:18px">Auto-tagging</div>
+                    <div class="settings-hint" style="margin-bottom:8px">
+                        Sends each thumbnail to the vision model for tag + description suggestions
+                        (honours the vocabulary mode above). You can also use "AI suggest tags" on a
+                        single model in its detail panel.
+                    </div>
+                    <button class="btn btn-secondary" @click="emit('aiAutoTagAll')"
+                            :disabled="aiTaggingAll || !ai.enabled">
+                        <span v-html="ICONS.zap"></span>
+                        {{ aiTaggingAll ? 'Tagging…' : 'AI auto-tag all models' }}
+                    </button>
+                    <div v-if="aiTaggingAll && aiTagProgress.total > 0" class="regen-progress" style="margin-top:10px">
+                        <div class="regen-progress-bar">
+                            <div class="regen-progress-fill"
+                                 :style="{ width: Math.round((aiTagProgress.completed / aiTagProgress.total) * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                            Tagged: {{ aiTagProgress.completed }} / {{ aiTagProgress.total }}
+                            · {{ aiTagProgress.tags_added }} tags added
                         </span>
                     </div>
                 </div>

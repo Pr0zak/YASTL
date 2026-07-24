@@ -152,6 +152,18 @@ _embed_progress: dict = {
     "error": None,
 }
 
+# Module-level AI vision auto-tag progress state (AI Phase 2)
+_ai_tag_progress: dict = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+    "tags_added": 0,
+    "error": None,
+}
+
+# Rough per-model vision cost estimate (USD) for the monthly cap guard.
+_AI_TAG_COST_EST = 0.0015
+
 # Only pre-generate previews for meshes big enough that the viewer would
 # otherwise decimate them on first open.
 _PREVIEW_FACE_THRESHOLD = 200_000
@@ -801,3 +813,94 @@ async def _embed_backfill() -> None:
     finally:
         _embed_progress["running"] = False
         logger.info("Embedding backfill done: %d embedded", _embed_progress["embedded"])
+
+
+# ---------------------------------------------------------------------------
+# AI vision auto-tagging (Phase 2)
+# ---------------------------------------------------------------------------
+@router.post("/ai/auto-tag-all")
+async def start_ai_auto_tag(background_tasks: BackgroundTasks):
+    """Vision-tag every active model from its thumbnail (background job)."""
+    from app.services import ai_client
+
+    cfg = await ai_client.get_ai_config()
+    if not cfg["enabled"] or not cfg["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="AI is not configured (enable AI and set an API key).",
+        )
+    if _ai_tag_progress["running"]:
+        raise HTTPException(status_code=409, detail="AI auto-tag already running")
+    background_tasks.add_task(_ai_auto_tag_all)
+    return {"detail": "AI auto-tag started", "running": True}
+
+
+@router.get("/ai/auto-tag-all/status")
+async def ai_auto_tag_status():
+    return dict(_ai_tag_progress)
+
+
+async def _ai_auto_tag_all() -> None:
+    from app.services import ai_client, ai_tagger
+
+    _ai_tag_progress.update(running=True, total=0, completed=0, tags_added=0, error=None)
+    try:
+        cfg = await ai_client.get_ai_config()
+        vocab_mode = cfg["vocab_mode"]
+
+        # Optional monthly cost cap: bound how many models we process.
+        cap = float(await get_setting("ai_monthly_cost_cap_usd", "0") or 0)
+        max_models = int(cap / _AI_TAG_COST_EST) if cap > 0 else None
+
+        async with get_db() as db:
+            cursor = await db.execute(
+                "SELECT id, name, file_path, thumbnail_path, description "
+                "FROM models WHERE status = 'active' AND thumbnail_path IS NOT NULL"
+            )
+            models = [dict(r) for r in await cursor.fetchall()]
+            cursor = await db.execute("SELECT name FROM tags")
+            vocab = [r["name"] for r in await cursor.fetchall()]
+
+        if max_models is not None and len(models) > max_models:
+            logger.info(
+                "AI auto-tag capped to %d models (cost cap $%.2f)", max_models, cap
+            )
+            models = models[:max_models]
+
+        _ai_tag_progress["total"] = len(models)
+        if not models:
+            return
+
+        sem = asyncio.Semaphore(6)
+
+        async def _suggest(model):
+            async with sem:
+                try:
+                    return model, await ai_tagger.suggest_vision_tags(
+                        model, vocab, vocab_mode
+                    )
+                except (ai_client.AINotConfigured, ai_client.AIError) as e:
+                    return model, {"_error": str(e)}
+
+        CHUNK = 24
+        for i in range(0, len(models), CHUNK):
+            chunk = models[i:i + CHUNK]
+            results = await asyncio.gather(*[_suggest(m) for m in chunk])
+            async with get_db() as db:
+                for model, suggestion in results:
+                    if not suggestion or "_error" in suggestion:
+                        continue
+                    res = await ai_tagger.store_ai_tags(db, model, suggestion)
+                    _ai_tag_progress["tags_added"] += res["tags_added"]
+                await db.commit()
+            _ai_tag_progress["completed"] += len(chunk)
+            await asyncio.sleep(0)
+    except Exception as e:  # noqa: BLE001
+        _ai_tag_progress["error"] = str(e)
+        logger.exception("AI auto-tag failed")
+    finally:
+        _ai_tag_progress["running"] = False
+        logger.info(
+            "AI auto-tag done: %d models, %d tags added",
+            _ai_tag_progress["completed"], _ai_tag_progress["tags_added"],
+        )

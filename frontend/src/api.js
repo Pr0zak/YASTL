@@ -378,6 +378,28 @@ export async function apiGetEmbedBackfillStatus() {
     return res.json();
 }
 
+export async function apiAiTagModel(id) {
+    const res = await fetch(`/api/models/${id}/ai-tag`, { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'AI tagging failed');
+    return json; // { result, model }
+}
+
+export async function apiAiAutoTagAll() {
+    const res = await fetch('/api/settings/ai/auto-tag-all', { method: 'POST' });
+    if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.detail || 'Failed to start AI auto-tag');
+    }
+    return res.json();
+}
+
+export async function apiGetAiAutoTagStatus() {
+    const res = await fetch('/api/settings/ai/auto-tag-all/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
 export async function apiRegenerateThumbnail(id) {
     const res = await fetch(`/api/models/${id}/regenerate-thumbnail`, { method: 'POST' });
     const json = await res.json();

@@ -3,6 +3,7 @@
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+import aiosqlite
 
 from app.api._helpers import _get_db_path, _fetch_model_with_relations, open_db
 from app.database import update_fts_for_model
@@ -136,11 +137,11 @@ async def add_tags_to_model(request: Request, model_id: int):
 
 @router.delete("/{model_id}/tags/auto")
 async def clear_auto_tags(request: Request, model_id: int):
-    """Remove all auto-generated (source='auto') tags from a model."""
+    """Remove all machine-generated (source='auto' or 'ai') tags from a model."""
     db_path = _get_db_path(request)
     async with open_db(db_path) as db:
         cursor = await db.execute(
-            "DELETE FROM model_tags WHERE model_id = ? AND source = 'auto'",
+            "DELETE FROM model_tags WHERE model_id = ? AND source IN ('auto', 'ai')",
             (model_id,),
         )
         removed = cursor.rowcount
@@ -150,6 +151,48 @@ async def clear_auto_tags(request: Request, model_id: int):
     if model is None:
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
     return {"removed": removed, "model": model}
+
+
+# ---------------------------------------------------------------------------
+# AI vision auto-tagging for a single model (on demand)
+# ---------------------------------------------------------------------------
+@router.post("/{model_id}/ai-tag")
+async def ai_tag_model(request: Request, model_id: int):
+    """Suggest tags + a description for one model from its thumbnail (source='ai')."""
+    from app.services import ai_client, ai_tagger
+
+    cfg = await ai_client.get_ai_config()
+    if not cfg["enabled"] or not cfg["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="AI is not configured (enable AI and set an API key).",
+        )
+    db_path = _get_db_path(request)
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM models WHERE id = ?", (model_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+        model = dict(row)
+
+        cursor = await db.execute("SELECT name FROM tags")
+        vocab = [r["name"] for r in await cursor.fetchall()]
+
+        try:
+            suggestion = await ai_tagger.suggest_vision_tags(model, vocab, cfg["vocab_mode"])
+        except ai_client.AINotConfigured as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except ai_client.AIError as e:
+            raise HTTPException(status_code=502, detail=f"AI error: {e}")
+
+        if suggestion is None:
+            raise HTTPException(status_code=400, detail="Model has no thumbnail to analyze")
+
+        result = await ai_tagger.store_ai_tags(db, model, suggestion)
+        await db.commit()
+        updated = await _fetch_model_with_relations(db, model_id)
+    return {"result": result, "model": updated}
 
 
 # ---------------------------------------------------------------------------

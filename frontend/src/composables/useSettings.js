@@ -14,6 +14,8 @@ import {
     apiTestAi,
     apiEmbedBackfill,
     apiGetEmbedBackfillStatus,
+    apiAiAutoTagAll,
+    apiGetAiAutoTagStatus,
     apiRegenerateThumbnails,
     apiGetRegenStatus,
     apiGeneratePreviews,
@@ -104,6 +106,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     const buildingEmbeddings = ref(false);
     const embedProgress = reactive({ running: false, total: 0, completed: 0, embedded: 0, in_memory: 0 });
     let embedPollTimer = null;
+    const aiTaggingAll = ref(false);
+    const aiTagProgress = reactive({ running: false, total: 0, completed: 0, tags_added: 0 });
+    let aiTagPollTimer = null;
 
     let regenPollTimer = null;
     let autoTagPollTimer = null;
@@ -348,6 +353,41 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         } catch (err) {
             showToast(err.message || 'Failed to build embeddings', 'error');
             buildingEmbeddings.value = false;
+        }
+    }
+
+    async function aiAutoTagAll() {
+        if (!await showConfirm({
+            title: 'AI auto-tag all models',
+            message: 'Send every thumbnail to the vision model for tag suggestions? Uses your API key (roughly a few cents per 100 models). Runs in background.',
+            action: 'Auto-tag',
+        })) return;
+        aiTaggingAll.value = true;
+        try {
+            await apiAiAutoTagAll();
+            showToast('AI auto-tagging started…', 'info');
+            if (aiTagPollTimer) clearInterval(aiTagPollTimer);
+            aiTagPollTimer = setInterval(async () => {
+                try {
+                    const data = await apiGetAiAutoTagStatus();
+                    aiTagProgress.running = data.running;
+                    aiTagProgress.total = data.total;
+                    aiTagProgress.completed = data.completed;
+                    aiTagProgress.tags_added = data.tags_added;
+                    if (!data.running) {
+                        clearInterval(aiTagPollTimer);
+                        aiTagPollTimer = null;
+                        aiTaggingAll.value = false;
+                        fetchModelsFn && fetchModelsFn();
+                        fetchTagsFn && fetchTagsFn();
+                        if (data.error) showToast('AI auto-tag error: ' + data.error, 'error');
+                        else showToast(`AI auto-tag done — ${data.tags_added} tags added`, 'success');
+                    }
+                } catch { /* keep polling */ }
+            }, 2000);
+        } catch (err) {
+            showToast(err.message || 'Failed to start AI auto-tag', 'error');
+            aiTaggingAll.value = false;
         }
     }
 
@@ -643,6 +683,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         embedProgress,
         buildEmbeddings,
         refreshEmbedStatus,
+        aiTaggingAll,
+        aiTagProgress,
+        aiAutoTagAll,
         openSettings,
         closeSettings,
     };
