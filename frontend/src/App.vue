@@ -159,6 +159,13 @@ function toggleMeasuring() {
 const models = ref([]);
 const selectedModel = ref(null);
 const searchQuery = ref('');
+// Semantic (AI) search toggle — 'keyword' or 'semantic' (sends mode=hybrid).
+const searchMode = ref(localStorage.getItem('yastl_search_mode') || 'keyword');
+function toggleSearchMode() {
+    searchMode.value = searchMode.value === 'semantic' ? 'keyword' : 'semantic';
+    localStorage.setItem('yastl_search_mode', searchMode.value);
+    if (searchQuery.value.trim()) fetchModels();
+}
 const viewMode = ref('grid');
 const gridDensity = ref(localStorage.getItem('yastl_grid_density') || 'comfortable');
 function toggleGridDensity() {
@@ -283,6 +290,7 @@ const {
     generatingPreviews, previewProgress, generatePreviews,
     scanIntervalMinutes, webhookUrl, setScanInterval, setWebhookUrl, testWebhook,
     ai, aiTesting, aiTestResult, saveAiSettings, testAiConnection,
+    buildingEmbeddings, embedProgress, buildEmbeddings,
     bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint, preferredSlicer,
     autoTagOnScan,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
@@ -590,6 +598,9 @@ async function fetchModels(append = false) {
                 params.append('sort_order', filters.sortOrder);
             }
             params.append('q', q);
+            if (searchMode.value === 'semantic' && ai.enabled) {
+                params.append('mode', 'hybrid');
+            }
             data = await apiSearchModels(params);
         } else {
             params.append('sort_by', filters.sortBy);
@@ -2115,6 +2126,12 @@ const { pickNextCollectionColor } = collectionsComposable;
         </div>
         <!-- Right side: result count + actions -->
         <div class="breadcrumb-actions">
+            <button v-if="ai.enabled && searchQuery.trim()" class="btn btn-sm"
+                    :class="searchMode === 'semantic' ? 'btn-primary' : 'btn-ghost'"
+                    @click="toggleSearchMode"
+                    :title="searchMode === 'semantic' ? 'Semantic (AI) search on — click for keyword' : 'Keyword search — click for semantic (AI) search'">
+                <span v-html="ICONS.zap"></span> Semantic
+            </button>
             <button class="btn btn-sm btn-ghost" v-if="searchQuery || filters.tags.length || filters.categories.length || filters.favoritesOnly"
                     @click="showSaveSearchModal = true" title="Save this search">
                 <span v-html="ICONS.bookmark"></span> Save
@@ -2432,6 +2449,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :ai="ai"
         :aiTesting="aiTesting"
         :aiTestResult="aiTestResult"
+        :buildingEmbeddings="buildingEmbeddings"
+        :embedProgress="embedProgress"
         :autoTagging="autoTagging"
         :autoTagProgress="autoTagProgress"
         :extractingMetadata="extractingMetadata"
@@ -2462,6 +2481,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @testWebhook="testWebhook"
         @saveAiSettings="saveAiSettings"
         @testAi="testAiConnection"
+        @buildEmbeddings="buildEmbeddings"
         @autoTagAll="autoTagAll"
         @extractMetadata="extractMetadata"
         @cleanupTags="cleanupTags"

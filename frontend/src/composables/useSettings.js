@@ -12,6 +12,8 @@ import {
     apiUpdateSettings,
     apiTestWebhook,
     apiTestAi,
+    apiEmbedBackfill,
+    apiGetEmbedBackfillStatus,
     apiRegenerateThumbnails,
     apiGetRegenStatus,
     apiGeneratePreviews,
@@ -99,6 +101,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     });
     const aiTesting = ref(false);
     const aiTestResult = ref(null); // { ok, detail } | null
+    const buildingEmbeddings = ref(false);
+    const embedProgress = reactive({ running: false, total: 0, completed: 0, embedded: 0, in_memory: 0 });
+    let embedPollTimer = null;
 
     let regenPollTimer = null;
     let autoTagPollTimer = null;
@@ -309,6 +314,40 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             aiTestResult.value = { ok: false, detail: err.message || 'Test failed' };
         } finally {
             aiTesting.value = false;
+        }
+    }
+
+    async function refreshEmbedStatus() {
+        try {
+            const data = await apiGetEmbedBackfillStatus();
+            embedProgress.running = data.running;
+            embedProgress.total = data.total;
+            embedProgress.completed = data.completed;
+            embedProgress.embedded = data.embedded;
+            embedProgress.in_memory = data.in_memory;
+            return data;
+        } catch { return null; }
+    }
+
+    async function buildEmbeddings() {
+        buildingEmbeddings.value = true;
+        try {
+            await apiEmbedBackfill();
+            showToast('Building embeddings…', 'info');
+            if (embedPollTimer) clearInterval(embedPollTimer);
+            embedPollTimer = setInterval(async () => {
+                const data = await refreshEmbedStatus();
+                if (data && !data.running) {
+                    clearInterval(embedPollTimer);
+                    embedPollTimer = null;
+                    buildingEmbeddings.value = false;
+                    if (data.error) showToast('Embedding backfill error: ' + data.error, 'error');
+                    else showToast(`Embeddings ready (${data.in_memory} models)`, 'success');
+                }
+            }, 1500);
+        } catch (err) {
+            showToast(err.message || 'Failed to build embeddings', 'error');
+            buildingEmbeddings.value = false;
         }
     }
 
@@ -600,6 +639,10 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         aiTestResult,
         saveAiSettings,
         testAiConnection,
+        buildingEmbeddings,
+        embedProgress,
+        buildEmbeddings,
+        refreshEmbedStatus,
         openSettings,
         closeSettings,
     };

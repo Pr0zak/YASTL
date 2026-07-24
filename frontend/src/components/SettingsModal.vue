@@ -39,6 +39,8 @@ defineProps({
     ai: { type: Object, default: () => ({}) },
     aiTesting: { type: Boolean, default: false },
     aiTestResult: { type: Object, default: null },
+    buildingEmbeddings: { type: Boolean, default: false },
+    embedProgress: { type: Object, default: () => ({ running: false, total: 0, completed: 0, in_memory: 0 }) },
 });
 
 const emit = defineEmits([
@@ -73,6 +75,7 @@ const emit = defineEmits([
     'testWebhook',
     'saveAiSettings',
     'testAi',
+    'buildEmbeddings',
 ]);
 
 function timeAgo(dateStr) {
@@ -499,6 +502,27 @@ function timeAgo(dateStr) {
                         <span v-if="aiTestResult" class="ai-test-result"
                               :class="aiTestResult.ok ? 'ok' : 'err'">
                             {{ aiTestResult.ok ? '✓ ' : '✗ ' }}{{ aiTestResult.detail }}
+                        </span>
+                    </div>
+
+                    <div class="settings-subsection-title" style="margin-top:18px">Semantic search</div>
+                    <div class="settings-hint" style="margin-bottom:8px">
+                        Builds embeddings so search matches meaning — e.g. "articulated dragon"
+                        finds <code>dragon_v2_final.stl</code>. Re-run after adding models.
+                        <strong>{{ embedProgress.in_memory || 0 }}</strong> models indexed.
+                    </div>
+                    <button class="btn btn-secondary" @click="emit('buildEmbeddings')"
+                            :disabled="buildingEmbeddings || !ai.enabled">
+                        <span v-html="ICONS.refresh"></span>
+                        {{ buildingEmbeddings ? 'Building…' : 'Build embeddings' }}
+                    </button>
+                    <div v-if="buildingEmbeddings && embedProgress.total > 0" class="regen-progress" style="margin-top:10px">
+                        <div class="regen-progress-bar">
+                            <div class="regen-progress-fill"
+                                 :style="{ width: Math.round((embedProgress.completed / embedProgress.total) * 100) + '%' }"></div>
+                        </div>
+                        <span class="text-muted text-sm" style="margin-top:4px;display:block">
+                            Embeddings: {{ embedProgress.completed }} / {{ embedProgress.total }}
                         </span>
                     </div>
                 </div>

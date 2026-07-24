@@ -363,6 +363,21 @@ export async function apiGetGeneratePreviewsStatus() {
     return res.json();
 }
 
+export async function apiEmbedBackfill() {
+    const res = await fetch('/api/settings/ai/embed-backfill', { method: 'POST' });
+    if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.detail || 'Failed to start embedding backfill');
+    }
+    return res.json();
+}
+
+export async function apiGetEmbedBackfillStatus() {
+    const res = await fetch('/api/settings/ai/embed-backfill/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
 export async function apiRegenerateThumbnail(id) {
     const res = await fetch(`/api/models/${id}/regenerate-thumbnail`, { method: 'POST' });
     const json = await res.json();

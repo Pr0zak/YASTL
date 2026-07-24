@@ -81,6 +81,17 @@ async def lifespan(app: FastAPI):
     await init_db(settings.MODEL_LIBRARY_DB)
     app.state.db_path = settings.MODEL_LIBRARY_DB
 
+    # Load semantic-search embeddings into memory (AI Phase 1). Best-effort:
+    # a failure here must never block startup.
+    try:
+        from app.database import get_db
+        from app.services import embeddings
+
+        async with get_db() as db:
+            await embeddings.load_matrix_from_db(db)
+    except Exception:
+        logging.getLogger("yastl").exception("Failed to load embeddings at startup")
+
     # Start process pool for CPU-bound work (thumbnails, metadata, hashing).
     # Single worker: avoids OOM on CT333 (4GB) while still freeing the event
     # loop core — CPU work runs on core 1, asyncio on core 0.

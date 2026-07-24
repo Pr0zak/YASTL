@@ -143,6 +143,15 @@ _preview_progress: dict = {
     "generated": 0,
 }
 
+# Module-level embedding-backfill progress state (AI Phase 1)
+_embed_progress: dict = {
+    "running": False,
+    "total": 0,
+    "completed": 0,
+    "embedded": 0,
+    "error": None,
+}
+
 # Only pre-generate previews for meshes big enough that the viewer would
 # otherwise decimate them on first open.
 _PREVIEW_FACE_THRESHOLD = 200_000
@@ -700,3 +709,95 @@ async def _extract_metadata_all_models() -> None:
         _metadata_progress["total"],
         _metadata_progress["updated"],
     )
+
+
+# ---------------------------------------------------------------------------
+# AI embedding backfill (Phase 1: semantic search)
+# ---------------------------------------------------------------------------
+@router.post("/ai/embed-backfill")
+async def start_embed_backfill(background_tasks: BackgroundTasks):
+    """Embed all active models with missing or stale embeddings (background)."""
+    from app.services import ai_client
+
+    cfg = await ai_client.get_ai_config()
+    if not cfg["enabled"] or not cfg["embed_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="AI embeddings not configured (enable AI and set an embeddings key).",
+        )
+    if _embed_progress["running"]:
+        raise HTTPException(status_code=409, detail="Embedding backfill already running")
+    background_tasks.add_task(_embed_backfill)
+    return {"detail": "Embedding backfill started", "running": True}
+
+
+@router.get("/ai/embed-backfill/status")
+async def embed_backfill_status():
+    from app.services import embeddings
+
+    return {**_embed_progress, "in_memory": embeddings.count()}
+
+
+async def _embed_backfill() -> None:
+    from app.services import ai_client, embeddings
+
+    _embed_progress.update(running=True, total=0, completed=0, embedded=0, error=None)
+    try:
+        cfg = await ai_client.get_ai_config()
+        embed_model = cfg["embed_model"]
+
+        async with get_db() as db:
+            cursor = await db.execute(
+                """
+                SELECT m.id, m.name, m.description, m.file_path, m.zip_entry,
+                       (SELECT GROUP_CONCAT(t.name, char(31))
+                        FROM tags t JOIN model_tags mt ON mt.tag_id = t.id
+                        WHERE mt.model_id = m.id) AS tags,
+                       e.source_hash AS existing_hash
+                FROM models m
+                LEFT JOIN model_embeddings e ON e.model_id = m.id
+                WHERE m.status = 'active'
+                """
+            )
+            rows = [dict(r) for r in await cursor.fetchall()]
+
+        pending = []  # (model_id, text, source_hash)
+        for r in rows:
+            tags = (r["tags"] or "").split("\x1f") if r["tags"] else []
+            text = embeddings.compose_text(r, tags)
+            h = embeddings.source_hash(text, embed_model)
+            if h != r["existing_hash"]:
+                pending.append((r["id"], text, h))
+
+        _embed_progress["total"] = len(pending)
+        if not pending:
+            return
+
+        BATCH = 128
+        for i in range(0, len(pending), BATCH):
+            batch = pending[i:i + BATCH]
+            vectors = await ai_client.embed_texts([t for _, t, _ in batch])
+            async with get_db() as db:
+                for (mid, _text, h), vec in zip(batch, vectors):
+                    await db.execute(
+                        "INSERT INTO model_embeddings "
+                        "(model_id, embedding, dim, embed_model, source_hash, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
+                        "ON CONFLICT(model_id) DO UPDATE SET embedding=excluded.embedding, "
+                        "dim=excluded.dim, embed_model=excluded.embed_model, "
+                        "source_hash=excluded.source_hash, updated_at=CURRENT_TIMESTAMP",
+                        (mid, embeddings.pack_vec(vec), len(vec), embed_model, h),
+                    )
+                await db.commit()
+            _embed_progress["completed"] += len(batch)
+            _embed_progress["embedded"] += len(batch)
+            await asyncio.sleep(0)
+
+        async with get_db() as db:
+            await embeddings.load_matrix_from_db(db)
+    except Exception as e:  # noqa: BLE001
+        _embed_progress["error"] = str(e)
+        logger.exception("Embedding backfill failed")
+    finally:
+        _embed_progress["running"] = False
+        logger.info("Embedding backfill done: %d embedded", _embed_progress["embedded"])

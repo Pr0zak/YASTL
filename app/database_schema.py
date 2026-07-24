@@ -149,6 +149,18 @@ CREATE TABLE IF NOT EXISTS print_log (
 CREATE INDEX IF NOT EXISTS idx_print_log_model ON print_log(model_id);
 CREATE INDEX IF NOT EXISTS idx_print_log_location ON print_log(location);
 
+-- Semantic-search embeddings (AI Phase 1). One vector per model, stored as a
+-- float32 BLOB; the web process keeps an in-memory numpy matrix for cosine
+-- search. source_hash detects staleness; embed_model detects provider switches.
+CREATE TABLE IF NOT EXISTS model_embeddings (
+    model_id INTEGER PRIMARY KEY REFERENCES models(id) ON DELETE CASCADE,
+    embedding BLOB NOT NULL,
+    dim INTEGER NOT NULL,
+    embed_model TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_models_file_path ON models(file_path);
 CREATE INDEX IF NOT EXISTS idx_models_file_hash ON models(file_hash);
 CREATE INDEX IF NOT EXISTS idx_models_file_format ON models(file_format);

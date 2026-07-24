@@ -40,6 +40,63 @@ def _sanitize_fts_query(raw: str) -> str:
     return " ".join(f'"{tok}"*' for tok in tokens)
 
 
+async def _semantic_candidate_ids(db, q: str, sanitized_q: str, mode: str):
+    """Return an ordered candidate id list for semantic/hybrid search, or None
+    to fall back to keyword FTS (AI unavailable, no embeddings, or embed fails)."""
+    from app.services import ai_client, embeddings
+
+    if not embeddings.is_ready():
+        return None
+    try:
+        vecs = await ai_client.embed_texts([q])
+    except (ai_client.AINotConfigured, ai_client.AIError):
+        return None
+    if not vecs:
+        return None
+    vec_ids = embeddings.search(vecs[0], 200)
+    if not vec_ids:
+        return None
+    if mode == "hybrid" and sanitized_q:
+        cursor = await db.execute(
+            "SELECT rowid FROM models_fts WHERE models_fts MATCH ? "
+            "ORDER BY rank LIMIT 200",
+            (sanitized_q,),
+        )
+        fts_ids = [r["rowid"] for r in await cursor.fetchall()]
+        return embeddings.rrf_fuse(fts_ids, vec_ids)
+    return vec_ids
+
+
+async def _semantic_page(db, cand_ids, where_clauses, params, q, mode, limit, offset):
+    """Filter a fused candidate id list by the other constraints, preserving the
+    fused ranking, then paginate + enrich a page of full model rows."""
+    matching: set[int] = set()
+    if cand_ids:
+        placeholders = ", ".join("?" for _ in cand_ids)
+        wc = where_clauses + [f"m.id IN ({placeholders})"]
+        cursor = await db.execute(
+            f"SELECT m.id FROM models m WHERE {' AND '.join(wc)}",
+            params + list(cand_ids),
+        )
+        matching = {r["id"] for r in await cursor.fetchall()}
+
+    ordered = [mid for mid in cand_ids if mid in matching]
+    total = len(ordered)
+    page_ids = ordered[offset:offset + limit]
+
+    models: list[dict] = []
+    if page_ids:
+        ph = ", ".join("?" for _ in page_ids)
+        cursor = await db.execute(
+            f"SELECT m.* FROM models m WHERE m.id IN ({ph})", page_ids
+        )
+        rowmap = {r["id"]: dict(r) for r in await cursor.fetchall()}
+        models = [rowmap[mid] for mid in page_ids if mid in rowmap]
+    await enrich_models_page(db, models)
+    return {"models": models, "total": total, "query": q,
+            "limit": limit, "offset": offset, "mode": mode}
+
+
 # ---------------------------------------------------------------------------
 # Full-text search
 # ---------------------------------------------------------------------------
@@ -68,6 +125,7 @@ async def search_models(
     sort_by: str = Query(default="relevance"),
     sort_order: str = Query(default="desc"),
     status: str = Query(default="active"),
+    mode: str = Query(default="keyword"),
 ):
     """Search models using full-text search with optional filters.
 
@@ -117,7 +175,13 @@ async def search_models(
         sanitized_q = _sanitize_fts_query(q) if q else ""
         use_fts = bool(sanitized_q)
 
-        if use_fts:
+        # Semantic / hybrid search (AI Phase 1). Computes a fused candidate id
+        # list up front; None => fall back to keyword FTS (graceful degradation).
+        semantic_ids = None
+        if mode in ("semantic", "hybrid") and q:
+            semantic_ids = await _semantic_candidate_ids(db, q, sanitized_q, mode)
+
+        if use_fts and semantic_ids is None:
             where_clauses.append(
                 """m.id IN (
                     SELECT rowid FROM models_fts WHERE models_fts MATCH ?
@@ -203,6 +267,13 @@ async def search_models(
         if zip_path is not None:
             where_clauses.append("m.zip_path = ?")
             params.append(zip_path)
+
+        # Semantic/hybrid path: order by the fused candidate list, filtered by
+        # the other constraints, and return early (zip grouping not applied).
+        if semantic_ids is not None:
+            return await _semantic_page(
+                db, semantic_ids, where_clauses, params, q, mode, limit, offset
+            )
 
         # Zip grouping
         zip_group_map: dict[int, dict] = {}
