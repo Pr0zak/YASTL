@@ -91,9 +91,13 @@ function onSearchInput(e) {
                         title="List view"
                         v-html="ICONS.list"></button>
                 <button v-if="viewMode === 'grid'" class="btn-ghost"
-                        :class="{ active: gridDensity === 'compact' }"
+                        :class="{ active: gridDensity !== 'comfortable' }"
                         @click="emit('toggleGridDensity')"
-                        :title="gridDensity === 'compact' ? 'Compact grid (click for comfortable)' : 'Comfortable grid (click for compact)'"
+                        :title="{
+                            comfortable: 'Comfortable grid (click for compact)',
+                            compact: 'Compact grid (click for minimal)',
+                            minimal: 'Minimal grid — thumbnail + name only (click for comfortable)'
+                        }[gridDensity] || 'Grid density'"
                         v-html="ICONS.menu"></button>
             </div>
             <!-- Stats & Status -->

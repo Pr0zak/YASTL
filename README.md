@@ -5,14 +5,16 @@
 <h1 align="center">YASTL - Yet Another STL</h1>
 
 <p align="center">
-  A personal 3D model library web application for browsing, searching, and previewing 3D model files.<br>
-  Built with Python/FastAPI backend and Vue 3 + Three.js frontend.
+  A local-first, self-hosted 3D model library for browsing, searching, and previewing your 3D print files.<br>
+  Your files never leave your machine — no account, no cloud, no telemetry.<br>
+  Built with a Python/FastAPI backend and a Vue 3 + Three.js frontend.
 </p>
 
 ![Grid View](docs/screenshots/grid-view.png)
 
 ## Features
 
+- **Local-first & private** — self-hosted; your model files never leave your machine. No account, no cloud sync, no telemetry — YASTL only reads the directories you point it at.
 - **Wide format support** — STL, OBJ, glTF/GLB, 3MF, STEP, FBX, PLY, DAE, OFF
 - **Interactive 3D viewer** — Three.js-powered in-browser preview with orbit controls and theme-aware lighting
 - **Full-text search** — SQLite FTS5 across model names and descriptions with tag/category/format filters

@@ -154,7 +154,10 @@ const searchQuery = ref('');
 const viewMode = ref('grid');
 const gridDensity = ref(localStorage.getItem('yastl_grid_density') || 'comfortable');
 function toggleGridDensity() {
-    gridDensity.value = gridDensity.value === 'compact' ? 'comfortable' : 'compact';
+    // Cycle comfortable → compact → minimal → comfortable. Unknown/legacy
+    // values fall through to 'comfortable' (indexOf -1 → +1 → 0).
+    const order = ['comfortable', 'compact', 'minimal'];
+    gridDensity.value = order[(order.indexOf(gridDensity.value) + 1) % order.length];
     localStorage.setItem('yastl_grid_density', gridDensity.value);
 }
 const loading = ref(false);
@@ -795,6 +798,16 @@ async function scanLibrary(libraryId) {
 
 async function quickScan() {
     await triggerScan('update');
+}
+
+// Folder-first onboarding: add the first library and immediately scan it,
+// so a brand-new user is one step from a populated library.
+async function onboardAddFolder() {
+    const before = libraries.value.length;
+    await addLibrary();
+    if (libraries.value.length > before) {
+        await triggerScan('full');
+    }
 }
 
 async function cancelScan() {
@@ -2139,12 +2152,20 @@ const { pickNextCollectionColor } = collectionsComposable;
                     <span v-html="ICONS.close"></span>
                     Clear search &amp; filters
                 </button>
-                <button v-else-if="!hasLibraries"
-                        class="btn btn-primary"
-                        @click="openSettings">
-                    <span v-html="ICONS.plus"></span>
-                    Add Library
-                </button>
+                <div v-else-if="!hasLibraries" class="onboarding-form">
+                    <input v-model="newLibName" type="text" class="form-input"
+                           placeholder="Library name (e.g. My 3D Models)"
+                           @keydown.enter="onboardAddFolder">
+                    <input v-model="newLibPath" type="text" class="form-input"
+                           placeholder="/path/to/your/models"
+                           @keydown.enter="onboardAddFolder">
+                    <button class="btn btn-primary"
+                            :disabled="addingLibrary || !newLibName.trim() || !newLibPath.trim()"
+                            @click="onboardAddFolder">
+                        <span v-html="ICONS.plus"></span>
+                        {{ addingLibrary ? 'Adding…' : 'Add folder &amp; scan' }}
+                    </button>
+                </div>
                 <button v-else-if="!searchQuery && !hasActiveFilters && hasLibraries"
                         class="btn btn-primary"
                         @click="triggerScan"

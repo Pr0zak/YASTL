@@ -345,6 +345,19 @@
     margin-bottom: 20px;
 }
 
+/* First-run folder-first onboarding form (shown when no libraries exist) */
+.empty-state .onboarding-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 340px;
+}
+.empty-state .onboarding-form .btn {
+    justify-content: center;
+    margin-top: 2px;
+}
+
 /* ============================================================
    Checkbox & Radio
    ============================================================ */

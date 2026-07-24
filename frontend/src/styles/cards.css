@@ -18,6 +18,23 @@
     height: 120px;
 }
 
+/* Minimal density — clean gallery: thumbnail + name only.
+   Metadata, collections, tags and the collection color bar are hidden;
+   the small thumbnail overlays (format/favorite/printed badges) stay.
+   Full details remain one click away in the detail panel. */
+.models-grid.density-minimal .model-card .card-meta,
+.models-grid.density-minimal .model-card .card-collections,
+.models-grid.density-minimal .model-card .card-tags,
+.models-grid.density-minimal .model-card .card-collection-bar {
+    display: none;
+}
+.models-grid.density-minimal .model-card .card-body {
+    padding: 8px 12px;
+}
+.models-grid.density-minimal .model-card .card-name {
+    margin-bottom: 0;
+}
+
 /* Thumbnail fade-in: images start transparent, fade in on load */
 .card-thumb-img {
     opacity: 0;
