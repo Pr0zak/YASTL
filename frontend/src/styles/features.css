@@ -1391,3 +1391,72 @@ textarea.import-textarea {
 @media (max-width: 560px) {
     .ai-settings-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Print queue modal
+   ============================================================ */
+.queue-counts {
+    font-size: 0.7rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    margin-left: 10px;
+}
+.queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.queue-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+}
+.queue-row.q-printing { border-left-color: #e8a23d; }
+.queue-row.q-done { border-left-color: var(--accent); opacity: 0.7; }
+.queue-row.q-failed { border-left-color: #dc3545; opacity: 0.7; }
+.queue-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: var(--bg-input);
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.queue-thumb-empty { cursor: default; }
+.queue-info { flex: 1; min-width: 0; }
+.queue-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.queue-name:hover { color: var(--accent); }
+.queue-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.queue-status-pill {
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+}
+.queue-status-pill.q-printing { color: #e8a23d; }
+.queue-status-pill.q-done { color: var(--accent); }
+.queue-status-pill.q-failed { color: #dc3545; }
+.queue-status-select { width: auto; flex-shrink: 0; font-size: 0.8rem; padding: 4px 8px; }
+.queue-reorder { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.queue-reorder .btn-icon { width: 22px; height: 18px; }
+.queue-remove { flex-shrink: 0; opacity: 0.6; }
+.queue-remove:hover { opacity: 1; }

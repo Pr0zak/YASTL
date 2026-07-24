@@ -149,6 +149,21 @@ CREATE TABLE IF NOT EXISTS print_log (
 CREATE INDEX IF NOT EXISTS idx_print_log_model ON print_log(model_id);
 CREATE INDEX IF NOT EXISTS idx_print_log_location ON print_log(location);
 
+-- Print queue (print pipeline). status: queued/printing/done/failed. On a
+-- transition to 'done' the app writes a print_log row + bumps print_count.
+CREATE TABLE IF NOT EXISTS print_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id INTEGER REFERENCES models(id) ON DELETE CASCADE,
+    status TEXT DEFAULT 'queued',
+    position INTEGER DEFAULT 0,
+    printer TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_print_queue_status ON print_queue(status, position);
+
 -- Semantic-search embeddings (AI Phase 1). One vector per model, stored as a
 -- float32 BLOB; the web process keeps an in-memory numpy matrix for cosine
 -- search. source_hash detects staleness; embed_model detects provider switches.

@@ -19,6 +19,7 @@ import DetailPanel from './components/DetailPanel.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import StatsModal from './components/StatsModal.vue';
 import FilamentModal from './components/FilamentModal.vue';
+import QueueModal from './components/QueueModal.vue';
 import DuplicatesModal from './components/DuplicatesModal.vue';
 import ImportModal from './components/ImportModal.vue';
 import CollectionModal from './components/CollectionModal.vue';
@@ -68,6 +69,11 @@ import {
     apiCreateFilament,
     apiUpdateFilament,
     apiDeleteFilament,
+    apiGetQueue,
+    apiAddToQueue,
+    apiUpdateQueueItem,
+    apiDeleteQueueItem,
+    apiReorderQueue,
 } from './api.js';
 import { useImport } from './composables/useImport.js';
 import { useCollections } from './composables/useCollections.js';
@@ -779,6 +785,63 @@ async function deleteFilamentRow(id) {
     } else {
         showToast('Failed to remove filament', 'error');
     }
+}
+
+/* ---- Print queue (print pipeline) ---- */
+const showQueue = ref(false);
+const queue = ref([]);
+
+async function refreshQueue() {
+    const { ok, data } = await apiGetQueue();
+    if (ok) queue.value = data.queue || [];
+}
+async function openQueue() {
+    showQueue.value = true;
+    document.body.classList.add('modal-open');
+    await refreshQueue();
+}
+function closeQueue() {
+    showQueue.value = false;
+    if (!showDetail.value && !showSettings.value) {
+        document.body.classList.remove('modal-open');
+    }
+}
+async function addToQueue(model) {
+    const id = typeof model === 'object' ? model.id : model;
+    const { ok, data } = await apiAddToQueue(id);
+    if (ok) {
+        showToast('Added to print queue', 'success');
+        if (showQueue.value) await refreshQueue();
+    } else {
+        showToast(data.detail || 'Failed to add to queue', 'error');
+    }
+}
+async function updateQueueItem({ id, payload }) {
+    const { ok } = await apiUpdateQueueItem(id, payload);
+    if (ok) {
+        await refreshQueue();
+        if (payload.status === 'done') {
+            // print_count changed on the model; refresh grid + open detail
+            fetchModels();
+            if (selectedModel.value) refreshSelectedModel(selectedModel.value.id);
+        }
+    } else {
+        showToast('Failed to update queue item', 'error');
+    }
+}
+async function removeQueueItem(id) {
+    const { ok } = await apiDeleteQueueItem(id);
+    if (ok) await refreshQueue();
+}
+async function reorderQueue(ids) {
+    // optimistic: reorder locally, then persist
+    queue.value = ids.map((id) => queue.value.find((q) => q.id === id)).filter(Boolean);
+    await apiReorderQueue(ids);
+}
+function openModelFromQueue(modelId) {
+    closeQueue();
+    const inGrid = models.value.find((m) => m.id === modelId);
+    viewModel(inGrid || { id: modelId });
 }
 
 async function restartApp() {
@@ -1831,6 +1894,8 @@ function onKeydown(e) {
             closeStats();
         } else if (showFilament.value) {
             closeFilament();
+        } else if (showQueue.value) {
+            closeQueue();
         } else if (showSettings.value) {
             closeSettings();
         } else if (showDetail.value) {
@@ -2121,6 +2186,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @toggleSelectionMode="toggleSelectionMode"
         @openStats="openStats"
         @openFilament="openFilament"
+        @openQueue="openQueue"
         @searchInput="onSearchInput"
         @clearSearch="clearSearch"
         @quickScan="quickScan"
@@ -2450,6 +2516,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @undoPrint="undoPrint"
         @deletePrint="deletePrintEntry"
         @aiTagModel="aiTagModel"
+        @addToQueue="addToQueue(selectedModel)"
         @clearAutoTags="clearAutoTags"
         @regenerateThumbnail="regenerateThumbnail"
     />
@@ -2547,6 +2614,16 @@ const { pickNextCollectionColor } = collectionsComposable;
         @close="closeFilament"
         @save="saveFilament"
         @delete="deleteFilamentRow"
+    />
+
+    <QueueModal
+        :showQueue="showQueue"
+        :queue="queue"
+        @close="closeQueue"
+        @updateItem="updateQueueItem"
+        @removeItem="removeQueueItem"
+        @reorder="reorderQueue"
+        @openModel="openModelFromQueue"
     />
 
     <DuplicatesModal

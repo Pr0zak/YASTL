@@ -193,6 +193,52 @@ export async function apiDeleteFilament(id) {
 }
 
 /* ==================================================================
+   Print queue
+   ================================================================== */
+
+export async function apiGetQueue() {
+    const res = await fetch('/api/queue');
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiAddToQueue(modelId) {
+    const res = await fetch('/api/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: modelId }),
+    });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiUpdateQueueItem(id, payload) {
+    const res = await fetch(`/api/queue/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiDeleteQueueItem(id) {
+    const res = await fetch(`/api/queue/${id}`, { method: 'DELETE' });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+export async function apiReorderQueue(ids) {
+    const res = await fetch('/api/queue/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+    });
+    const json = await res.json();
+    return { ok: res.ok, data: json };
+}
+
+/* ==================================================================
    Scan
    ================================================================== */
 

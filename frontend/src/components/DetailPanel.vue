@@ -112,6 +112,7 @@ const emit = defineEmits([
     'logPrint',
     'undoPrint',
     'deletePrint',
+    'addToQueue',
     'clearAutoTags',
     'aiTagModel',
 ]);
@@ -612,6 +613,10 @@ function formatClass(fmt) {
                                                 :title="showPrintForm ? 'Hide details' : 'Log with details'">Details…</button>
                                         <button v-if="selectedModel.print_count" class="btn btn-sm btn-ghost"
                                                 @click="emit('undoPrint')" title="Undo last print">Undo</button>
+                                        <button class="btn btn-sm btn-ghost" @click="emit('addToQueue')"
+                                                title="Add to print queue">
+                                            <span v-html="ICONS.queue"></span> Queue
+                                        </button>
                                     </div>
                                 </div>
 
