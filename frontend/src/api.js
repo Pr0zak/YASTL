@@ -688,6 +688,13 @@ export async function apiTestWebhook() {
     return json;
 }
 
+export async function apiTestAi() {
+    const res = await fetch('/api/settings/ai/test', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'AI test failed');
+    return json; // { ok, detail }
+}
+
 export async function apiClearAutoTags(id) {
     const res = await fetch(`/api/models/${id}/tags/auto`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to clear auto tags');

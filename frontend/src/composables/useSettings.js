@@ -11,6 +11,7 @@ import {
     apiGetSettings,
     apiUpdateSettings,
     apiTestWebhook,
+    apiTestAi,
     apiRegenerateThumbnails,
     apiGetRegenStatus,
     apiGeneratePreviews,
@@ -83,6 +84,21 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     // Automation: scheduled scans + webhook
     const scanIntervalMinutes = ref('0');
     const webhookUrl = ref('');
+
+    // AI (optional, bring-your-own-key). Keys arrive masked from the server.
+    const ai = reactive({
+        enabled: false,
+        provider: 'openrouter',
+        api_key: '',
+        vision_model: '',
+        embed_provider: 'openrouter',
+        embed_key: '',
+        embed_model: '',
+        vocab_mode: 'controlled',
+        monthly_cost_cap_usd: '0',
+    });
+    const aiTesting = ref(false);
+    const aiTestResult = ref(null); // { ok, detail } | null
 
     let regenPollTimer = null;
     let autoTagPollTimer = null;
@@ -166,6 +182,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             // Automation
             scanIntervalMinutes.value = data.scan_interval_minutes || '0';
             webhookUrl.value = data.webhook_url || '';
+            applyAiFromData(data);
         } catch (err) {
             console.error('fetchSettings error:', err);
         }
@@ -245,6 +262,53 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             showToast('Test webhook delivered', 'success');
         } catch (err) {
             showToast(err.message || 'Webhook test failed', 'error');
+        }
+    }
+
+    function applyAiFromData(data) {
+        ai.enabled = data.ai_enabled === 'true';
+        ai.provider = data.ai_provider || 'openrouter';
+        ai.api_key = data.ai_api_key || '';           // masked if set
+        ai.vision_model = data.ai_vision_model || '';
+        ai.embed_provider = data.ai_embed_provider || 'openrouter';
+        ai.embed_key = data.ai_embed_key || '';       // masked if set
+        ai.embed_model = data.ai_embed_model || '';
+        ai.vocab_mode = data.ai_autotag_vocab_mode || 'controlled';
+        ai.monthly_cost_cap_usd = data.ai_monthly_cost_cap_usd || '0';
+    }
+
+    async function saveAiSettings() {
+        // Send the current AI form. Masked keys ("••••…") are ignored server-side,
+        // so unchanged keys are preserved.
+        try {
+            const data = await apiUpdateSettings({
+                ai_enabled: ai.enabled ? 'true' : 'false',
+                ai_provider: ai.provider,
+                ai_api_key: ai.api_key,
+                ai_vision_model: ai.vision_model,
+                ai_embed_provider: ai.embed_provider,
+                ai_embed_key: ai.embed_key,
+                ai_embed_model: ai.embed_model,
+                ai_autotag_vocab_mode: ai.vocab_mode,
+                ai_monthly_cost_cap_usd: String(ai.monthly_cost_cap_usd || '0'),
+            });
+            applyAiFromData(data); // refresh masked keys
+            aiTestResult.value = null;
+            showToast('AI settings saved', 'success');
+        } catch (err) {
+            showToast(err.message || 'Failed to save AI settings', 'error');
+        }
+    }
+
+    async function testAiConnection() {
+        aiTesting.value = true;
+        aiTestResult.value = null;
+        try {
+            aiTestResult.value = await apiTestAi();
+        } catch (err) {
+            aiTestResult.value = { ok: false, detail: err.message || 'Test failed' };
+        } finally {
+            aiTesting.value = false;
         }
     }
 
@@ -531,6 +595,11 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         setScanInterval,
         setWebhookUrl,
         testWebhook,
+        ai,
+        aiTesting,
+        aiTestResult,
+        saveAiSettings,
+        testAiConnection,
         openSettings,
         closeSettings,
     };

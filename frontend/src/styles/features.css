@@ -1361,3 +1361,33 @@ textarea.import-textarea {
     opacity: 0.6;
 }
 .print-history-del:hover { opacity: 1; }
+
+/* ============================================================
+   AI settings card
+   ============================================================ */
+.settings-optional-tag {
+    font-size: 0.68rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    margin-left: 6px;
+}
+.ai-settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+}
+.ai-settings-grid .form-label {
+    display: block;
+    margin-bottom: 4px;
+}
+.ai-test-result {
+    font-size: 0.8rem;
+    align-self: center;
+}
+.ai-test-result.ok { color: var(--color-success, #2ec4b6); }
+.ai-test-result.err { color: #dc3545; }
+@media (max-width: 560px) {
+    .ai-settings-grid { grid-template-columns: 1fr; }
+}

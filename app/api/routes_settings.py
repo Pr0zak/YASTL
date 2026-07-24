@@ -52,6 +52,23 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["true", "false"],
         "default": "false",
     },
+    # --- AI (optional, bring-your-own-key; all off by default) ---
+    "ai_enabled": {
+        "allowed": ["true", "false"],
+        "default": "false",
+    },
+    "ai_provider": {  # chat/vision provider
+        "allowed": ["openrouter", "anthropic", "openai"],
+        "default": "openrouter",
+    },
+    "ai_embed_provider": {  # embeddings provider (Anthropic has none -> voyage)
+        "allowed": ["openrouter", "openai", "voyage"],
+        "default": "openrouter",
+    },
+    "ai_autotag_vocab_mode": {
+        "allowed": ["controlled", "open"],
+        "default": "controlled",
+    },
 }
 
 # Numeric settings with min/max validation (stored as strings in DB)
@@ -61,12 +78,39 @@ NUMERIC_SETTINGS: dict[str, dict] = {
     "bed_height": {"default": "256", "min": 50, "max": 1000},
     # Auto-scan interval in minutes; 0 disables scheduled scans.
     "scan_interval_minutes": {"default": "0", "min": 0, "max": 10080},
+    # Monthly AI spend cap in USD; 0 disables the cap.
+    "ai_monthly_cost_cap_usd": {"default": "0", "min": 0, "max": 100000},
 }
 
 # Free-form string settings (length-capped)
 STRING_SETTINGS: dict[str, dict] = {
     "webhook_url": {"default": "", "max_len": 500},
+    # AI keys/models (keys are masked on read; empty model = provider default)
+    "ai_api_key": {"default": "", "max_len": 300},
+    "ai_embed_key": {"default": "", "max_len": 300},
+    "ai_vision_model": {"default": "", "max_len": 100},
+    "ai_embed_model": {"default": "", "max_len": 100},
 }
+
+# Secret settings masked when read back (never echo the full value).
+_MASKED_SETTINGS = {"ai_api_key", "ai_embed_key"}
+
+
+def _mask_secret(value: str) -> str:
+    """Mask a secret for display: keep the last 4 chars, hide the rest."""
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return "••••"
+    return "••••" + value[-4:]
+
+
+def _mask_settings(result: dict) -> dict:
+    """Return a copy of the settings dict with secret values masked."""
+    for k in _MASKED_SETTINGS:
+        if result.get(k):
+            result[k] = _mask_secret(result[k])
+    return result
 
 # Module-level regeneration progress state
 _regen_progress: dict = {
@@ -115,7 +159,7 @@ async def get_settings():
         result[key] = stored.get(key, schema["default"])
     for key, schema in STRING_SETTINGS.items():
         result[key] = stored.get(key, schema["default"])
-    return result
+    return _mask_settings(result)
 
 
 @router.put("")
@@ -137,6 +181,9 @@ async def update_settings(body: dict):
             )
         if string is not None:
             value = str(value or "")
+            # Never overwrite a stored secret with its masked display value.
+            if key in _MASKED_SETTINGS and value.startswith("••••"):
+                continue
             if len(value) > string.get("max_len", 500):
                 raise HTTPException(
                     status_code=400,
@@ -178,7 +225,7 @@ async def update_settings(body: dict):
         result[key] = stored.get(key, schema["default"])
     for key, schema in STRING_SETTINGS.items():
         result[key] = stored.get(key, schema["default"])
-    return result
+    return _mask_settings(result)
 
 
 @router.post("/webhook/test")
@@ -193,6 +240,14 @@ async def test_webhook():
             detail="No webhook URL configured, or delivery failed (see logs).",
         )
     return {"detail": "Test webhook delivered"}
+
+
+@router.post("/ai/test")
+async def test_ai_connection():
+    """Validate the configured AI chat provider/key with a tiny round-trip."""
+    from app.services.ai_client import test_connection
+
+    return await test_connection()
 
 
 @router.post("/regenerate-thumbnails")

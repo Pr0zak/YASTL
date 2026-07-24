@@ -36,6 +36,9 @@ defineProps({
     autoTagOnScan: { type: Boolean, default: false },
     scanIntervalMinutes: { type: String, default: '0' },
     webhookUrl: { type: String, default: '' },
+    ai: { type: Object, default: () => ({}) },
+    aiTesting: { type: Boolean, default: false },
+    aiTestResult: { type: Object, default: null },
 });
 
 const emit = defineEmits([
@@ -68,6 +71,8 @@ const emit = defineEmits([
     'setScanInterval',
     'setWebhookUrl',
     'testWebhook',
+    'saveAiSettings',
+    'testAi',
 ]);
 
 function timeAgo(dateStr) {
@@ -414,6 +419,86 @@ function timeAgo(dateStr) {
                         </div>
                         <span class="text-muted text-sm" style="margin-top:4px;display:block">
                             Previews: {{ previewProgress.completed }} / {{ previewProgress.total }} large models &middot; {{ previewProgress.generated }} built
+                        </span>
+                    </div>
+                </div>
+
+                <!-- ========== 5. AI (optional, bring your own key) ========== -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.zap"></span>
+                        AI <span class="settings-optional-tag">optional · bring your own key</span>
+                    </div>
+                    <div class="settings-hint" style="margin-bottom:10px">
+                        Off by default. Adds AI auto-tagging and natural-language
+                        semantic search using your own API key. Requests go directly
+                        from this server to your provider; keys are stored locally.
+                    </div>
+
+                    <label class="checkbox-item" style="margin-bottom:10px">
+                        <input type="checkbox" v-model="ai.enabled">
+                        <span>Enable AI features</span>
+                    </label>
+
+                    <div class="ai-settings-grid">
+                        <div>
+                            <label class="form-label">Chat / vision provider</label>
+                            <select class="form-input" v-model="ai.provider">
+                                <option value="openrouter">OpenRouter</option>
+                                <option value="anthropic">Anthropic (Claude)</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">API key</label>
+                            <input type="password" class="form-input" v-model="ai.api_key"
+                                   placeholder="sk-…" autocomplete="off">
+                        </div>
+                        <div>
+                            <label class="form-label">Vision model <span class="text-muted">(blank = default)</span></label>
+                            <input type="text" class="form-input" v-model="ai.vision_model"
+                                   placeholder="e.g. claude-haiku-4-5">
+                        </div>
+                        <div>
+                            <label class="form-label">Embeddings provider</label>
+                            <select class="form-input" v-model="ai.embed_provider">
+                                <option value="openrouter">OpenRouter</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="voyage">Voyage (for Anthropic key)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Embeddings key <span class="text-muted">(if different)</span></label>
+                            <input type="password" class="form-input" v-model="ai.embed_key"
+                                   placeholder="(reuses chat key if blank)" autocomplete="off">
+                        </div>
+                        <div>
+                            <label class="form-label">Embeddings model <span class="text-muted">(blank = default)</span></label>
+                            <input type="text" class="form-input" v-model="ai.embed_model"
+                                   placeholder="e.g. text-embedding-3-small">
+                        </div>
+                        <div>
+                            <label class="form-label">Auto-tag vocabulary</label>
+                            <select class="form-input" v-model="ai.vocab_mode">
+                                <option value="controlled">Controlled (existing tags only)</option>
+                                <option value="open">Open (allow new tags)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Monthly cost cap (USD, 0 = none)</label>
+                            <input type="number" min="0" class="form-input" v-model="ai.monthly_cost_cap_usd">
+                        </div>
+                    </div>
+
+                    <div class="settings-btn-row" style="margin-top:12px">
+                        <button class="btn btn-primary" @click="emit('saveAiSettings')">Save AI settings</button>
+                        <button class="btn btn-secondary" @click="emit('testAi')"
+                                :disabled="aiTesting || !ai.enabled">
+                            {{ aiTesting ? 'Testing…' : 'Test connection' }}
+                        </button>
+                        <span v-if="aiTestResult" class="ai-test-result"
+                              :class="aiTestResult.ok ? 'ok' : 'err'">
+                            {{ aiTestResult.ok ? '✓ ' : '✗ ' }}{{ aiTestResult.detail }}
                         </span>
                     </div>
                 </div>

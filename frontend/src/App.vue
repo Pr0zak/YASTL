@@ -282,6 +282,7 @@ const {
     extractingMetadata, metadataProgress,
     generatingPreviews, previewProgress, generatePreviews,
     scanIntervalMinutes, webhookUrl, setScanInterval, setWebhookUrl, testWebhook,
+    ai, aiTesting, aiTestResult, saveAiSettings, testAiConnection,
     bedConfig, bedPreset, colorTheme, favoritesFirst, collectionCardTint, preferredSlicer,
     autoTagOnScan,
     fetchLibraries, addLibrary, deleteLibrary, fetchSettings,
@@ -2428,6 +2429,9 @@ const { pickNextCollectionColor } = collectionsComposable;
         :previewProgress="previewProgress"
         :scanIntervalMinutes="scanIntervalMinutes"
         :webhookUrl="webhookUrl"
+        :ai="ai"
+        :aiTesting="aiTesting"
+        :aiTestResult="aiTestResult"
         :autoTagging="autoTagging"
         :autoTagProgress="autoTagProgress"
         :extractingMetadata="extractingMetadata"
@@ -2456,6 +2460,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         @setScanInterval="setScanInterval"
         @setWebhookUrl="setWebhookUrl"
         @testWebhook="testWebhook"
+        @saveAiSettings="saveAiSettings"
+        @testAi="testAiConnection"
         @autoTagAll="autoTagAll"
         @extractMetadata="extractMetadata"
         @cleanupTags="cleanupTags"
