@@ -47,6 +47,7 @@ const props = defineProps({
     printHistory: { type: Array, default: () => [] },
     filaments: { type: Array, default: () => [] },
     modelPlates: { type: Array, default: () => [] },
+    activePlate: { type: Number, default: null },
     aiEnabled: { type: Boolean, default: false },
     aiTagging: { type: Boolean, default: false },
     relatedModels: { type: Array, default: () => [] },
@@ -114,6 +115,7 @@ const emit = defineEmits([
     'undoPrint',
     'deletePrint',
     'addToQueue',
+    'selectPlate',
     'clearAutoTags',
     'aiTagModel',
 ]);
@@ -275,6 +277,18 @@ function formatClass(fmt) {
             <div class="detail-content">
                 <!-- 3D Viewer -->
                 <div class="detail-viewer">
+                    <!-- Multi-plate selector: swap the viewer between the whole
+                         project and a single build plate. -->
+                    <div v-if="modelPlates.length > 1" class="viewer-plate-bar">
+                        <button class="viewer-plate-chip" :class="{ active: activePlate === null }"
+                                @click="emit('selectPlate', null)">Full project</button>
+                        <button v-for="pl in modelPlates" :key="pl.index"
+                                class="viewer-plate-chip" :class="{ active: activePlate === pl.index }"
+                                @click="emit('selectPlate', pl.index)"
+                                :title="pl.name || ('Plate ' + (pl.index + 1))">
+                            {{ pl.index + 1 }}
+                        </button>
+                    </div>
                     <div id="viewer-container" :class="{ 'viewer-inert': !viewerInteractive }">
                         <!-- Tap-to-interact gate: on touch, keep the canvas inert so the
                              sheet scrolls; tapping activates orbit for this model. -->
@@ -616,7 +630,10 @@ function formatClass(fmt) {
                             <div v-if="modelPlates.length > 1" class="info-section">
                                 <div class="info-section-title">Plates ({{ modelPlates.length }})</div>
                                 <div class="plate-grid">
-                                    <div v-for="pl in modelPlates" :key="pl.index" class="plate-cell">
+                                    <div v-for="pl in modelPlates" :key="pl.index" class="plate-cell"
+                                         :class="{ active: activePlate === pl.index }"
+                                         @click="emit('selectPlate', pl.index)"
+                                         title="Show this plate in the viewer">
                                         <img v-if="pl.has_thumbnail"
                                              :src="`/api/models/${selectedModel.id}/plates/${pl.index}/thumbnail`"
                                              class="plate-thumb" alt="" loading="lazy">

@@ -47,6 +47,17 @@ def make_plain_3mf(path):
     return str(path)
 
 
+def make_real_multiplate_3mf(path):
+    """A 3MF with real geometry (trimesh box) + Bambu multi-plate metadata."""
+    import trimesh
+    trimesh.creation.box(extents=(10, 10, 10)).export(str(path))
+    with zipfile.ZipFile(path, "a") as z:
+        z.writestr("Metadata/model_settings.config", _MODEL_SETTINGS)
+        z.writestr("Metadata/plate_1.png", _PNG1)
+        z.writestr("Metadata/plate_2.png", _PNG2)
+    return str(path)
+
+
 @pytest.mark.asyncio
 class TestInspect3mf:
     async def test_multiplate_detected(self, tmp_path):
@@ -119,3 +130,21 @@ class TestPlatesApi:
         mid = await insert_test_model(client._db_path, name="stl", file_path="/m/x.stl")
         r = await client.get(f"/api/models/{mid}/plates")
         assert r.json()["plate_count"] == 1
+
+
+@pytest.mark.asyncio
+class TestPlateGlb:
+    async def test_build_plate_glb_returns_glb(self, tmp_path):
+        from app.services.preview import build_plate_glb
+        p = make_real_multiplate_3mf(tmp_path / "real.3mf")
+        info = threemf_plates.inspect_3mf(p)
+        glb = build_plate_glb(p, info["plates"][0]["object_ids"])
+        assert glb[:4] == b"glTF"          # valid GLB magic
+        assert len(glb) > 100
+
+    async def test_build_plate_glb_bad_ids_falls_back(self, tmp_path):
+        from app.services.preview import build_plate_glb
+        p = make_real_multiplate_3mf(tmp_path / "real2.3mf")
+        # object ids that don't exist -> falls back to the whole model, still GLB
+        glb = build_plate_glb(p, [999])
+        assert glb[:4] == b"glTF"

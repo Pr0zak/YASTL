@@ -982,6 +982,7 @@ async function viewModel(model) {
     variantCandidates.value = [];
     printHistory.value = [];
     modelPlates.value = [];
+    activePlate.value = null;
     detailTab.value = 'info';
     showFileDetails.value = false;
     showDetail.value = true;
@@ -2088,6 +2089,29 @@ async function loadModelPlates(model) {
     }
 }
 
+// Per-plate viewer: null = the whole project, else a plate index.
+const activePlate = ref(null);
+async function selectViewerPlate(index) {
+    if (!selectedModel.value || activePlate.value === index) return;
+    activePlate.value = index;
+    viewerLoading.value = true;
+    viewerProgress.value = 0;
+    const id = selectedModel.value.id;
+    const url = index === null
+        ? `/api/models/${id}/file/glb`
+        : `/api/models/${id}/plates/${index}/glb`;
+    try {
+        await loadModel(url, 'glb', { onProgress: (f) => { viewerProgress.value = f; } });
+        viewerDecimated.value = true;
+    } catch (err) {
+        showToast('Failed to load plate', 'error');
+        console.error('plate load error', err);
+    } finally {
+        viewerLoading.value = false;
+        viewerProgress.value = null;
+    }
+}
+
 async function loadPrintHistory(modelId) {
     if (!modelId) { printHistory.value = []; return; }
     const { ok, data } = await apiListPrints(modelId);
@@ -2467,6 +2491,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :printHistory="printHistory"
         :filaments="filaments"
         :modelPlates="modelPlates"
+        :activePlate="activePlate"
         :aiEnabled="ai.enabled"
         :aiTagging="aiTagging"
         :relatedModels="relatedModels"
@@ -2531,6 +2556,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @deletePrint="deletePrintEntry"
         @aiTagModel="aiTagModel"
         @addToQueue="addToQueue(selectedModel)"
+        @selectPlate="selectViewerPlate"
         @clearAutoTags="clearAutoTags"
         @regenerateThumbnail="regenerateThumbnail"
     />

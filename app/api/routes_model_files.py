@@ -541,3 +541,47 @@ async def serve_plate_thumbnail(request: Request, model_id: int, plate_index: in
     if data is None:
         raise HTTPException(status_code=404, detail="No embedded preview for this plate")
     return Response(content=data, media_type=ctype)
+
+
+@router.get("/{model_id}/plates/{plate_index}/glb")
+async def serve_plate_glb(request: Request, model_id: int, plate_index: int):
+    """Serve a decimated GLB of a single build plate (its objects only)."""
+    from app.services.preview import build_plate_glb
+    from app.services.threemf_plates import inspect_3mf
+
+    model = await _model_row(request, model_id)
+    resolved = _resolve_model_file(model)
+    if resolved is None or not resolved.lower().endswith(".3mf"):
+        raise HTTPException(status_code=404, detail="Not a 3MF file")
+    info = inspect_3mf(resolved)
+    if plate_index < 0 or plate_index >= len(info["plates"]):
+        raise HTTPException(status_code=404, detail="Plate not found")
+    object_ids = info["plates"][plate_index].get("object_ids") or []
+
+    cache_dir = os.path.join(
+        str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache"
+    )
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"plate_{model_id}_{plate_index}.glb")
+
+    if os.path.exists(cache_path):
+        try:
+            if os.path.getmtime(resolved) <= os.path.getmtime(cache_path):
+                return FileResponse(path=cache_path, media_type="model/gltf-binary")
+        except OSError:
+            pass
+
+    try:
+        glb_data = await run_cpu_job(build_plate_glb, resolved, object_ids, recycle=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Plate GLB build failed for model %s plate %s: %s",
+                       model_id, plate_index, e)
+        raise HTTPException(status_code=500, detail="Failed to build plate preview")
+
+    try:
+        with open(cache_path, "wb") as f:
+            f.write(glb_data)
+        _evict_glb_cache(cache_dir)
+    except OSError:
+        pass
+    return Response(content=glb_data, media_type="model/gltf-binary")
