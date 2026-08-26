@@ -32,12 +32,26 @@ FORMAT_MAP: dict[str, str] = {
 # Extensions that trimesh can load natively
 TRIMESH_SUPPORTED: set[str] = {
     ".stl", ".obj", ".gltf", ".glb", ".3mf",
-    ".ply", ".dae", ".off", ".fbx",
+    ".ply", ".off",
 }
 
 # Extensions that require special handling / fallback
 FALLBACK_ONLY: set[str] = {
     ".step", ".stp",
+}
+
+# Extensions the browser can render but this process cannot parse.
+#
+# trimesh registers no FBX loader at all, and its Collada loader depends on
+# pycollada, which is not among YASTL's dependencies. Both therefore raise on
+# load: server-side metadata extraction, thumbnails, and GLB conversion are all
+# unavailable for these formats, and the file is indexed on size and name only.
+# The viewer loads them natively with three.js FBXLoader/ColladaLoader instead.
+#
+# They stay "known" so the scanner and importer keep accepting them; only the
+# trimesh work is skipped.
+CLIENT_ONLY: set[str] = {
+    ".dae", ".fbx",
 }
 
 
@@ -137,7 +151,7 @@ def extract_metadata(file_path: str) -> dict:
         logger.warning("Could not determine file size for %s: %s", file_path, e)
 
     # Check if the format is recognized at all
-    all_known = TRIMESH_SUPPORTED | FALLBACK_ONLY
+    all_known = TRIMESH_SUPPORTED | FALLBACK_ONLY | CLIENT_ONLY
     if ext not in all_known:
         logger.warning(
             "Unsupported or unrecognized 3D format '%s' for file: %s",
@@ -212,6 +226,14 @@ def extract_metadata(file_path: str) -> dict:
                 )
             finally:
                 del mesh
+        elif ext in CLIENT_ONLY:
+            logger.debug(
+                "No server-side parser for %s (%s); the viewer renders it "
+                "natively. Returning file info only: %s",
+                ext,
+                file_path,
+                e,
+            )
         else:
             logger.warning(
                 "Failed to extract mesh data from %s: %s. Returning partial metadata.",
@@ -282,7 +304,7 @@ def process_and_thumbnail(
         logger.warning("Could not determine file size for %s: %s", file_path, e)
 
     thumb_filename: str | None = None
-    all_known = TRIMESH_SUPPORTED | FALLBACK_ONLY
+    all_known = TRIMESH_SUPPORTED | FALLBACK_ONLY | CLIENT_ONLY
     if ext not in all_known:
         logger.warning(
             "Unsupported or unrecognized 3D format '%s' for file: %s", ext, file_path
@@ -382,6 +404,13 @@ def process_and_thumbnail(
                 logger.debug("STEP converter failed for %s: %s", file_path, conv_err)
             finally:
                 del step_mesh
+        elif ext in CLIENT_ONLY:
+            logger.debug(
+                "No server-side parser for %s (%s); the viewer renders it "
+                "natively, so there is no thumbnail. Returning file info "
+                "only: %s",
+                ext, file_path, e,
+            )
         else:
             logger.warning(
                 "Failed to process %s: %s. Returning partial metadata.",

@@ -26,6 +26,7 @@ const props = defineProps({
     viewerClipping: { type: Boolean, default: false },
     viewerClipPos: { type: Number, default: 0.55 },
     viewerOrtho: { type: Boolean, default: false },
+    viewerRenderMode: { type: String, default: 'shaded' },
     viewerMeasuring: { type: Boolean, default: false },
     viewerMeasuredMm: { type: Number, default: null },
     editName: { type: String, default: '' },
@@ -107,6 +108,7 @@ const emit = defineEmits([
     'loadFullResolution',
     'navigate',
     'setView',
+    'setRenderMode',
     'toggleClipping',
     'setClipPosition',
     'toggleOrtho',
@@ -336,6 +338,15 @@ function formatClass(fmt) {
                                 :title="viewerOrtho ? 'Orthographic (click for perspective)' : 'Perspective (click for orthographic)'">
                             {{ viewerOrtho ? 'Ortho' : 'Persp' }}
                         </button>
+                        <select class="btn viewer-view-select" title="Render mode"
+                                :class="{ 'btn-active': viewerRenderMode !== 'shaded' }"
+                                :value="viewerRenderMode"
+                                @change="emit('setRenderMode', $event.target.value)">
+                            <option value="shaded">Shaded</option>
+                            <option value="wireframe">Wireframe</option>
+                            <option value="normals">Normals</option>
+                            <option value="xray">X-ray</option>
+                        </select>
                         <button class="btn" :class="{ 'btn-active': viewerMeasuring }"
                                 @click="emit('toggleMeasuring')"
                                 title="Measure: click two points on the model for a distance">

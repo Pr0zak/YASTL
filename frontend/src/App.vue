@@ -142,6 +142,13 @@ function toastIcon(type) {
     return ICONS.check;
 }
 
+// 'shaded' | 'wireframe' | 'normals' | 'xray' — diagnostic material swap.
+const viewerRenderMode = ref('shaded');
+function setViewerRenderMode(mode) {
+    viewerRenderMode.value = mode;
+    viewer?.setRenderMode(mode);
+}
+
 const viewerOrtho = ref(false);
 function toggleViewerOrtho() {
     const r = viewer?.toggleOrtho();
@@ -1029,6 +1036,10 @@ async function viewModel(model) {
     if (isErrorModel) {
         viewerLoading.value = false;
         bedVisible.value = false;
+        // The composable resets its own render mode on dispose, so reset the
+        // toolbar's copy too — otherwise the select keeps showing the previous
+        // model's mode for as long as the error model is open.
+        viewerRenderMode.value = 'shaded';
         return;
     }
 
@@ -1037,6 +1048,7 @@ async function viewModel(model) {
     viewerDecimated.value = false;
     viewerClipping.value = false;
     viewerOrtho.value = false;
+    viewerRenderMode.value = 'shaded';
     viewerMeasuring.value = false;
     viewerMeasuredMm.value = null;
     await ensureViewer();
@@ -1055,12 +1067,15 @@ async function viewModel(model) {
     //  - STL/PLY parse off the main thread in a Web Worker, so they load at
     //    full res without freezing unless the raw file is too big to transfer.
     //  - OBJ (text) parses quickly on the main thread; same size guard.
+    //  - FBX/DAE must load natively: trimesh has no FBX loader at all, and its
+    //    Collada loader needs pycollada, so server-side GLB conversion fails
+    //    for both. Main-thread parse, so they take the same size guard as OBJ.
     //  - GLB/glTF parse on the main thread, so decimate only very high-poly ones.
     //  - Everything else (3MF/STEP/…) must be server-converted to GLB, which
     //    decimates server-side only when the mesh exceeds the target.
     const HUGE_FILE = 120 * 1024 * 1024;
     let useDecimated;
-    if (['stl', 'ply', 'obj'].includes(fmt)) {
+    if (['stl', 'ply', 'obj', 'fbx', 'dae'].includes(fmt)) {
         useDecimated = fileSize > HUGE_FILE;
     } else if (['glb', 'gltf'].includes(fmt)) {
         useDecimated = faceCount > 800000;
@@ -2470,6 +2485,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :viewerClipping="viewerClipping"
         :viewerClipPos="viewerClipPos"
         :viewerOrtho="viewerOrtho"
+        :viewerRenderMode="viewerRenderMode"
         :viewerMeasuring="viewerMeasuring"
         :viewerMeasuredMm="viewerMeasuredMm"
         :editName="editName"
@@ -2547,6 +2563,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @loadFullResolution="loadFullResolution"
         @navigate="navigateModel"
         @setView="setViewPreset"
+        @setRenderMode="setViewerRenderMode"
         @toggleClipping="toggleClipping"
         @setClipPosition="onClipPosition"
         @toggleOrtho="toggleViewerOrtho"
