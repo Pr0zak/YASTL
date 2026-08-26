@@ -13,6 +13,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { plyHasFaces } from '../ply.js';
 
 /**
  * Create a new viewer instance scoped to the calling component.
@@ -84,9 +85,16 @@ export function useViewer() {
             'normalMap', 'roughnessMap', 'specularMap',
         ];
         for (const prop of textureProps) {
-            if (material[prop]) {
-                material[prop].dispose();
+            const tex = material[prop];
+            if (!tex) continue;
+            // FBXLoader mints an object URL per embedded image and never revokes
+            // it; Texture.dispose() frees GPU state but leaves the blob pinned,
+            // so re-opening such a model would accumulate its texture bytes.
+            const src = tex.image && tex.image.src;
+            if (typeof src === 'string' && src.startsWith('blob:')) {
+                URL.revokeObjectURL(src);
             }
+            tex.dispose();
         }
         material.dispose();
     }
@@ -144,6 +152,10 @@ export function useViewer() {
      */
     function clearCurrentModel() {
         if (currentModel && scene) {
+            // Put displaced materials back first: a render-mode swap holds the
+            // originals off-mesh, and the traversal below can only dispose what
+            // is currently attached.
+            restoreOriginalMaterials();
             scene.remove(currentModel);
             currentModel.traverse((child) => {
                 if (child.geometry) child.geometry.dispose();
@@ -521,7 +533,12 @@ export function useViewer() {
                 disposeObject3D(object);
                 return;
             }
-            if (scene) addModelToScene(object);
+            if (scene) {
+                addModelToScene(object);
+                // Carry the active render mode onto the newly loaded model.
+                applyRenderMode();
+                requestRender();
+            }
             if (gen === loadGeneration) viewerProgress.value = null;
         } catch (err) {
             if (gen !== loadGeneration) return; // superseded; swallow
@@ -594,6 +611,10 @@ export function useViewer() {
                 return Promise.resolve(parseObj(buffer));
             case '3mf':
                 return Promise.resolve(parse3mf(buffer));
+            case 'fbx':
+                return parseFbx(buffer);
+            case 'dae':
+                return parseDae(buffer);
             default:
                 console.warn(`YASTL viewer: unknown format "${fmt}", trying STL.`);
                 return parseInWorker(buffer, 'stl', opts);
@@ -641,10 +662,14 @@ export function useViewer() {
                 if (data.normals) {
                     geom.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3));
                 }
+                if (data.colors) {
+                    geom.setAttribute('color', new THREE.BufferAttribute(
+                        data.colors, data.colorItemSize || 3));
+                }
                 if (data.index) {
                     geom.setIndex(new THREE.BufferAttribute(data.index, 1));
                 }
-                resolve(meshFromGeometry(geom));
+                resolve(data.isPoints ? pointsFromGeometry(geom) : meshFromGeometry(geom));
             });
             // Copy (no transfer) so the cached buffer stays usable for re-open.
             worker.postMessage({ id, format: fmt, buffer, smooth: !opts.flat });
@@ -661,11 +686,31 @@ export function useViewer() {
         return mesh;
     }
 
+    /**
+     * Wrap a face-less geometry (a PLY point cloud) in a renderable Points
+     * object. sizeAttenuation is off so the cloud stays legible at any zoom
+     * rather than dissolving as the camera pulls back.
+     * @param {THREE.BufferGeometry} geom
+     * @returns {THREE.Points}
+     */
+    function pointsFromGeometry(geom) {
+        const hasColor = !!geom.getAttribute('color');
+        const material = new THREE.PointsMaterial({
+            color: hasColor ? 0xffffff : 0x2ec4b6,
+            vertexColors: hasColor,
+            size: 2,
+            sizeAttenuation: false,
+        });
+        return new THREE.Points(geom, material);
+    }
+
     // Synchronous fallback when the worker can't be created.
     function parseGeometryMainThread(buffer, fmt, opts) {
+        const isPoints = fmt === 'ply' && !plyHasFaces(buffer);
         const geom = fmt === 'ply'
             ? new PLYLoader().parse(buffer)
             : new STLLoader().parse(buffer);
+        if (isPoints) return pointsFromGeometry(geom);
         if (!opts.flat && !geom.getAttribute('normal')) geom.computeVertexNormals();
         return meshFromGeometry(geom);
     }
@@ -734,6 +779,123 @@ export function useViewer() {
             }
         });
         return group;
+    }
+
+    /**
+     * Build a LoadingManager that refuses to fetch anything outside the model
+     * file itself.
+     *
+     * YASTL serves a model as a single URL with no siblings, so a texture that
+     * an FBX or Collada file references by relative path can never resolve —
+     * requesting it only produces a 404 and a material bound to an image-less
+     * sampler, which renders as a black silhouette. Blocking those requests up
+     * front is both quieter and more honest, and the returned flag lets the
+     * caller fall back to the default material for that model.
+     *
+     * Embedded media is unaffected: FBXLoader turns it into blob: URLs, which
+     * resolve from memory and are allowed through.
+     *
+     * @returns {{ manager: THREE.LoadingManager, state: { blockedExternal: boolean } }}
+     */
+    function makeSelfContainedManager() {
+        const state = { blockedExternal: false };
+        const manager = new THREE.LoadingManager();
+        // A 1x1 transparent PNG — a URL the browser can always satisfy without
+        // touching the network, so the loader completes instead of erroring.
+        const INERT = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        manager.setURLModifier((url) => {
+            if (typeof url === 'string' && (url.startsWith('blob:') || url.startsWith('data:'))) {
+                return url;
+            }
+            state.blockedExternal = true;
+            return INERT;
+        });
+        return { manager, state };
+    }
+
+    /**
+     * Enable shadows, and substitute the teal default material when the model's
+     * own materials cannot be honoured.
+     *
+     * The substitution is all-or-nothing per file. Once an external texture has
+     * been blocked there is no way to tell, per material, which ones depended on
+     * it — three.js assigns a Texture object synchronously and only fills in its
+     * image later, so the presence of `map` says nothing about whether the image
+     * will ever arrive. Falling back for the whole model is coarse but never
+     * leaves half of it rendering black.
+     *
+     * @param {THREE.Object3D} group
+     * @param {boolean} forceDefault Replace every material regardless of textures.
+     */
+    function applyDefaultMaterials(group, forceDefault) {
+        group.traverse((child) => {
+            if (!child.isMesh) return;
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            if (forceDefault || !mats.some((m) => m && m.map)) {
+                child.material = DEFAULT_MATERIAL.clone();
+            }
+            child.castShadow = true;
+            child.receiveShadow = true;
+        });
+    }
+
+    /**
+     * Wrap a loaded scene so it reaches addModelToScene at identity.
+     *
+     * addModelToScene assumes the object it is given is untransformed: it
+     * measures a world-space bounding box and then overwrites scale and
+     * position outright. STL, PLY, OBJ, GLB and 3MF all satisfy that, but
+     * ColladaLoader applies the file's `<unit>` to the scene root and FBXLoader
+     * collapses its root onto a child group that may carry a transform. Wrapping
+     * preserves those transforms on the child instead of letting them be
+     * clobbered, which would misplace and misscale the model.
+     *
+     * @param {THREE.Object3D} object
+     * @returns {THREE.Group}
+     */
+    function wrapAtIdentity(object) {
+        const wrapper = new THREE.Group();
+        wrapper.add(object);
+        return wrapper;
+    }
+
+    /**
+     * Parse an FBX buffer.
+     *
+     * trimesh has no FBX loader at all, so the server cannot convert these to
+     * GLB — three.js's FBXLoader is the only path that renders them. It is
+     * imported lazily because it is a large module that most libraries, which
+     * are overwhelmingly STL and 3MF, will never load.
+     *
+     * @param {ArrayBuffer} buffer
+     * @returns {Promise<THREE.Object3D>}
+     */
+    async function parseFbx(buffer) {
+        const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
+        const { manager, state } = makeSelfContainedManager();
+        const group = new FBXLoader(manager).parse(buffer, '');
+        applyDefaultMaterials(group, state.blockedExternal);
+        return wrapAtIdentity(group);
+    }
+
+    /**
+     * Parse a Collada (.dae) buffer. Same reasoning as FBX: trimesh's Collada
+     * loader needs pycollada, which is not installed, so server-side GLB
+     * conversion fails and this is the only working path.
+     *
+     * @param {ArrayBuffer} buffer
+     * @returns {Promise<THREE.Object3D>}
+     */
+    async function parseDae(buffer) {
+        const { ColladaLoader } = await import('three/examples/jsm/loaders/ColladaLoader.js');
+        const { manager, state } = makeSelfContainedManager();
+        const collada = new ColladaLoader(manager).parse(new TextDecoder().decode(buffer), '');
+        // ColladaLoader normalises the scene to metres via the file's `<unit>`.
+        // Every dimension YASTL reports — model size, bed fit, the measure tool —
+        // is in millimetres, so convert rather than mislabel metres as mm.
+        collada.scene.scale.multiplyScalar(1000);
+        applyDefaultMaterials(collada.scene, state.blockedExternal);
+        return wrapAtIdentity(collada.scene);
     }
 
     function disposeObject3D(object) {
@@ -891,6 +1053,9 @@ export function useViewer() {
         _pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         _pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
         _raycaster.setFromCamera(_pointer, camera);
+        // Points are picked within a radius, and the default of 1 scene unit is
+        // a quarter of a normalized model — far too coarse to measure with.
+        _raycaster.params.Points.threshold = 0.02;
         const hits = _raycaster.intersectObject(currentModel, true);
         if (!hits.length) return;
         addMeasurePoint(hits[0].point.clone());
@@ -945,15 +1110,25 @@ export function useViewer() {
 
     function applyClipToModel() {
         if (!currentModel) return;
+        // Any object with a material, not just meshes: THREE.Points (a PLY point
+        // cloud) honours clipping planes too, and skipping it would leave the
+        // Clip button looking active while nothing was cut.
         currentModel.traverse((c) => {
-            if (c.isMesh && c.material) {
-                const mats = Array.isArray(c.material) ? c.material : [c.material];
-                mats.forEach((m) => {
-                    m.clippingPlanes = clipEnabled && clipPlane ? [clipPlane] : [];
+            if (!c.material) return;
+            const mats = Array.isArray(c.material) ? c.material : [c.material];
+            mats.forEach((m) => {
+                m.clippingPlanes = clipEnabled && clipPlane ? [clipPlane] : [];
+                if (clipEnabled) {
+                    // Stash the authored side so turning clipping back off does
+                    // not permanently leave a front-culled material double-sided.
+                    if (m.userData._yastlSide === undefined) m.userData._yastlSide = m.side;
                     m.side = THREE.DoubleSide; // reveal the cut interior
-                    m.needsUpdate = true;
-                });
-            }
+                } else if (m.userData._yastlSide !== undefined) {
+                    m.side = m.userData._yastlSide;
+                    delete m.userData._yastlSide;
+                }
+                m.needsUpdate = true;
+            });
         });
     }
 
@@ -977,6 +1152,106 @@ export function useViewer() {
         requestRender();
     }
 
+    /* ==================================================================
+       Render modes
+
+       Swaps every mesh material for a diagnostic one and keeps the original
+       aside, so the model can be restored without being reloaded.
+
+       Adapted from NexoIP 3D Viewer (MIT, (c) 2026 Iker Perez / NexoIP);
+       see THIRD_PARTY_NOTICES.md.
+       ================================================================== */
+
+    /** Active mode: 'shaded' (untouched materials) | 'wireframe' | 'normals' | 'xray'. */
+    let renderMode = 'shaded';
+    /** mesh.uuid -> { material, castShadow } captured before a mode swap. */
+    const originalMaterials = new Map();
+    /** Materials this module created, tracked so they can be disposed. */
+    const previewMaterials = new Set();
+
+    /**
+     * Build the diagnostic material for a mode.
+     * @param {string} mode
+     * @returns {THREE.Material|null} null for 'shaded' or an unknown mode.
+     */
+    function makePreviewMaterial(mode) {
+        switch (mode) {
+            case 'wireframe':
+                return new THREE.MeshBasicMaterial({ color: 0x2ec4b6, wireframe: true });
+            case 'normals':
+                // Colors each face by its normal direction, which makes flipped
+                // or inconsistently-wound faces on a print model obvious.
+                return new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+            case 'xray':
+                // depthWrite off so overlapping shells accumulate instead of
+                // occluding each other — that stacking is what reveals interior
+                // walls and infill without having to cut the model.
+                return new THREE.MeshStandardMaterial({
+                    color: 0x61afef,
+                    transparent: true,
+                    opacity: 0.28,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                    roughness: 0.4,
+                    metalness: 0.0,
+                });
+            default:
+                return null;
+        }
+    }
+
+    /** Put every displaced material back on its mesh and drop the previews. */
+    function restoreOriginalMaterials() {
+        if (currentModel && originalMaterials.size) {
+            currentModel.traverse((child) => {
+                if (!child.isMesh) return;
+                const original = originalMaterials.get(child.uuid);
+                if (!original) return;
+                child.material = original.material;
+                child.castShadow = original.castShadow;
+            });
+        }
+        originalMaterials.clear();
+        previewMaterials.forEach((m) => m.dispose());
+        previewMaterials.clear();
+    }
+
+    /** Apply the active render mode to the current model. */
+    function applyRenderMode() {
+        restoreOriginalMaterials();
+        if (!currentModel || renderMode === 'shaded') return;
+
+        // One shared instance per mode: these materials carry no per-mesh
+        // state, so an instance per mesh would only cost memory.
+        const preview = makePreviewMaterial(renderMode);
+        if (!preview) return;
+        previewMaterials.add(preview);
+
+        currentModel.traverse((child) => {
+            if (!child.isMesh) return;
+            originalMaterials.set(child.uuid, {
+                material: child.material,
+                castShadow: child.castShadow,
+            });
+            child.material = preview;
+            // The shadow pass derives a depth material and ignores opacity, so a
+            // translucent x-ray body would otherwise drop a fully solid shadow.
+            if (renderMode === 'xray') child.castShadow = false;
+        });
+    }
+
+    /**
+     * Switch the viewer render mode.
+     * @param {'shaded'|'wireframe'|'normals'|'xray'} mode
+     */
+    function setRenderMode(mode) {
+        renderMode = mode || 'shaded';
+        applyRenderMode();
+        // The swap replaced the materials the clip planes were attached to.
+        applyClipToModel();
+        requestRender();
+    }
+
     /**
      * Clean up all Three.js resources: stop animation, dispose geometries,
      * materials, textures, renderer, and remove the canvas from the DOM.
@@ -990,6 +1265,7 @@ export function useViewer() {
         measureGroup = null;
         measuredDistanceMm.value = null;
         viewerProgress.value = null;
+        renderMode = 'shaded';
         // Terminate the parse worker and drop any pending callbacks.
         if (_worker) {
             _worker.terminate();
@@ -1245,6 +1521,7 @@ export function useViewer() {
         measuredDistanceMm,
         setClipping,
         setClipPosition,
+        setRenderMode,
         setViewerTheme,
         setBedOverlay,
         clearBedOverlay,

@@ -71,8 +71,8 @@ async def process_imported_file(
         logger.info("Zip file saved at %s - will be processed on next scan", file_path_str)
         return None
 
-    from app.services.processor import TRIMESH_SUPPORTED, FALLBACK_ONLY
-    all_known = TRIMESH_SUPPORTED | FALLBACK_ONLY
+    from app.services.processor import TRIMESH_SUPPORTED, FALLBACK_ONLY, CLIENT_ONLY
+    all_known = TRIMESH_SUPPORTED | FALLBACK_ONLY | CLIENT_ONLY
     if ext not in all_known:
         logger.warning("Unsupported format %s for imported file %s", ext, file_path_str)
         return None
