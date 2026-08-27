@@ -317,7 +317,16 @@ async def normalize_tags(request: Request, dry_run: bool = False):
             low = re.sub(r"[^a-z0-9\-\s]+", " ", low)
             words = [w.strip("-") for w in low.split() if w.strip("-")]
             words = [w for w in words if len(w) >= MIN_TAG_LENGTH and not w.isdigit()]
-            return words[0] if len(words) == 1 else ""
+            if len(words) == 1:
+                return words[0]
+            # A short phrase of nothing but letters and spaces is a tag someone
+            # typed ("rc car", "pickle ball"), not a filename that lost its
+            # punctuation — those carry digits, "+" or brackets. Keep it,
+            # hyphenated to match the vocabulary the library already uses
+            # ("low-poly"). Anything longer is a title rather than a tag.
+            if 1 < len(words) <= 3 and re.fullmatch(r"[a-z ]+", name.strip().lower()):
+                return "-".join(words)
+            return ""
 
         for row in rows:
             original = row["name"]
