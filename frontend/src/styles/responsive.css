@@ -510,3 +510,48 @@
         max-height: 48vh;
     }
 }
+
+@media (max-width: 768px) {
+    /* Swap the inline action row for the overflow button. */
+    .nav-action-wide {
+        display: none;
+    }
+
+    .nav-overflow,
+    .crumb-overflow-btn {
+        display: inline-flex;
+    }
+
+    /* The filter trail is what tells you why the grid looks the way it does,
+       so it gets the room the action cluster used to take. */
+    .breadcrumb-nav {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .breadcrumb-actions {
+        display: none;
+    }
+
+    .breadcrumb-actions.crumb-actions-open {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 12px;
+        right: 8px;
+        top: calc(100% + 6px);
+    }
+
+    .breadcrumb-actions.crumb-actions-open .btn,
+    .breadcrumb-actions.crumb-actions-open .sort-control,
+    .breadcrumb-actions.crumb-actions-open .sort-select {
+        width: 100%;
+        min-height: 44px;
+        justify-content: flex-start;
+    }
+
+    /* .breadcrumb-bar is position: fixed, which already establishes the
+       containing block the menu positions against — making it relative here
+       would drop it out of the fixed layer and let it scroll away. */
+}

@@ -155,14 +155,17 @@ def build_plate_glb(file_path: str, object_ids: list[int],
         id2name = _object_id_to_names(file_path)
         want = {id2name[o] for o in (object_ids or []) if o in id2name}
 
-        def _collect(match_all: bool):
+        # `scene` is passed in rather than closed over: the finally block below
+        # deletes it, and a closure that reads a deleted enclosing local is a
+        # NameError waiting for someone to move the call site.
+        def _collect(src, match_all: bool):
             out = []
-            for node in scene.graph.nodes_geometry:
-                transform, gname = scene.graph[node]
+            for node in src.graph.nodes_geometry:
+                transform, gname = src.graph[node]
                 base = gname.rsplit("_", 1)[0]
                 hit = match_all or gname in want or base in want or gname.split(".")[0] in want
                 if hit:
-                    geom = scene.geometry.get(gname)
+                    geom = src.geometry.get(gname)
                     if geom is not None and hasattr(geom, "faces"):
                         gm = geom.copy()
                         try:
@@ -172,11 +175,11 @@ def build_plate_glb(file_path: str, object_ids: list[int],
                         out.append(gm)
             return out
 
-        kept = _collect(match_all=not want)
+        kept = _collect(scene, match_all=not want)
         if want and not kept:
             # Mapping failed for this file — show the whole project rather than
             # nothing (real Bambu files should map; synthetic/edge cases fall back).
-            kept = _collect(match_all=True)
+            kept = _collect(scene, match_all=True)
         if not kept:
             raise ValueError("no mesh geometry for plate")
 

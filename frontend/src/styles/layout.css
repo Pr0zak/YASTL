@@ -533,3 +533,84 @@
     border-right: none;
     overflow: hidden;
 }
+
+/* ==========================================================================
+   Top-bar overflow
+
+   The navbar packed ten icon buttons into a fixed, no-wrap 56px row, and the
+   breadcrumb bar put a five-control action cluster beside the filter trail.
+   Neither could shrink, so on a phone the navbar ran 62px past the viewport at
+   412px (114px at 360px) and the breadcrumb bar overflowed by 121px with
+   overflow-x: visible — clipped outright, with no way to scroll to it. The
+   filter trail, being the flexible sibling, collapsed to nothing, so an active
+   filter was invisible while the buttons that overflowed stayed on screen.
+   ========================================================================== */
+
+/* The only route to the filters on mobile. It must never be squeezed. */
+.navbar .sidebar-toggle {
+    flex-shrink: 0;
+    min-width: 40px;
+}
+
+.nav-overflow,
+.crumb-overflow-btn {
+    display: none;
+}
+
+.nav-overflow {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.nav-overflow-menu,
+.breadcrumb-actions.crumb-actions-open {
+    position: absolute;
+    right: 8px;
+    top: calc(100% + 6px);
+    z-index: 1001;
+    min-width: 232px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 28px var(--shadow);
+    overflow: hidden;
+}
+
+.nav-overflow-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    min-height: 46px;
+    padding: 0 14px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.nav-overflow-item:last-child {
+    border-bottom: none;
+}
+
+.nav-overflow-item:hover:not(:disabled) {
+    background: var(--hover-wash);
+}
+
+.nav-overflow-item:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.nav-overflow-item.active {
+    color: var(--accent);
+}
+
+.nav-overflow-icon {
+    display: inline-flex;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
