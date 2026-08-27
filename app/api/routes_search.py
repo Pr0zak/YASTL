@@ -113,6 +113,14 @@ async def search_models(
     categories: str | None = Query(
         default=None, description="Comma-separated list of category names"
     ),
+    category_ids: str | None = Query(
+        default=None,
+        description=(
+            "Comma-separated category ids. Preferred over `categories`: names "
+            "are not unique, so filtering by them silently unions unrelated "
+            "branches. Descendants are included automatically."
+        ),
+    ),
     library_id: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -153,6 +161,13 @@ async def search_models(
     cat_list: list[str] = []
     if categories:
         cat_list = [c.strip() for c in categories.split(",") if c.strip()]
+
+    cat_id_list: list[int] = []
+    if category_ids:
+        for part in category_ids.split(","):
+            part = part.strip()
+            if part.lstrip("-").isdigit():
+                cat_id_list.append(int(part))
 
     async with open_db(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -219,8 +234,32 @@ async def search_models(
                 params.extend(tag_list)
                 params.append(len(tag_list))
 
-        # Category filter: model in ANY of the specified categories
-        if cat_list:
+        # Category filter: model in ANY of the specified categories.
+        #
+        # Prefer ids. Category names are not unique — this library has 42
+        # duplicated names and "files" exists as 59 separate rows, a by-product
+        # of the "<zip stem>_files" convention the scanner uses — so a name
+        # filter unions every branch that happens to share a label, which is
+        # why drilling into a chess set returned pegboard brackets. Matching on
+        # ids and expanding the subtree in SQL also reaches categories deeper
+        # than the sidebar can render.
+        if cat_id_list:
+            id_placeholders = ", ".join("?" for _ in cat_id_list)
+            where_clauses.append(
+                f"""m.id IN (
+                    WITH RECURSIVE subtree(id) AS (
+                        SELECT id FROM categories WHERE id IN ({id_placeholders})
+                        UNION
+                        SELECT c.id FROM categories c
+                        JOIN subtree s ON c.parent_id = s.id
+                    )
+                    SELECT mc.model_id FROM model_categories mc
+                    JOIN subtree ON subtree.id = mc.category_id
+                )"""
+            )
+            params.extend(cat_id_list)
+        elif cat_list:
+            # Retained so saved searches and shared links keep working.
             cat_placeholders = ", ".join("?" for _ in cat_list)
             where_clauses.append(
                 f"""m.id IN (

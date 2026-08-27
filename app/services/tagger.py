@@ -43,8 +43,12 @@ def _split_filename(name: str) -> list[str]:
     - CamelCase splitting
     - Strips numbers-only tokens but keeps mixed (e.g. "mk2")
     """
-    # Replace common separators with space
-    s = re.sub(r"[_\-.\s]+", " ", name)
+    # Replace separators with space. '+' is here because model sites encode
+    # spaces in filenames that way, so "Beer+mug+(two+types)" arrives as one
+    # token and used to become one tag. Brackets and commas are separators too:
+    # stripping them only at the edges left "part[a1mini]" as one tag with the
+    # bracket still in the middle of it.
+    s = re.sub(r"[_\-.+,;()\[\]{}\s]+", " ", name)
 
     # CamelCase split: insert space before uppercase sequences
     s = re.sub(r"([a-z])([A-Z])", r"\1 \2", s)
@@ -52,7 +56,7 @@ def _split_filename(name: str) -> list[str]:
 
     words = []
     for w in s.split():
-        w = w.strip().lower()
+        w = _clean_token(w)
         # Skip pure numbers, too-short, and stop words
         if not w or len(w) < MIN_TAG_LENGTH:
             continue
@@ -63,6 +67,22 @@ def _split_filename(name: str) -> list[str]:
         words.append(w)
 
     return words
+
+
+# Punctuation that is never part of a tag, only of the filename around it.
+# Leaving it in produced a vocabulary of "(bishop)", "(3", "+0" and "80%)" —
+# every one of them a separate tag that matches exactly the files whose names
+# happened to be punctuated the same way.
+_EDGE_PUNCT = "()[]{}<>\"'`,;:!?%$#@&*|/\\~^=" + "\u2018\u2019\u201c\u201d"
+
+
+def _clean_token(word: str) -> str:
+    """Strip surrounding punctuation from one filename token.
+
+    Only the edges are stripped, so genuinely hyphenated or apostrophed words
+    survive intact once the separator pass above has done its work.
+    """
+    return word.strip().strip(_EDGE_PUNCT).lower()
 
 
 def _classify_size(dims_x: float | None, dims_y: float | None, dims_z: float | None) -> str | None:

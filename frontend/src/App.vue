@@ -241,6 +241,10 @@ const filters = reactive({
     tags: [],
     tagMatch: 'and',
     categories: [],
+    // Ids for the same selection. Names are not unique — this library has 42
+    // duplicated category names — so the API filters on these and treats the
+    // names above as the legacy path.
+    categoryIds: [],
     library_id: null,
     favoritesOnly: false,
     duplicatesOnly: false,
@@ -284,6 +288,23 @@ async function onDuplicatesChanged() {
     await fetchFavoritesCount();
 }
 const statsData = ref(null);
+// Format facet counts. The sidebar used to hardcode eleven formats, five of
+// which match nothing in this library; these come from the real histogram.
+const formatCounts = ref([]);
+
+/** Total active models in the library, for the "of N" in the sidebar. */
+const libraryTotal = computed(() =>
+    formatCounts.value.reduce((sum, f) => sum + (f.count || 0), 0)
+);
+
+async function loadFormatCounts() {
+    try {
+        const stats = await apiGetStats();
+        formatCounts.value = stats.formats || [];
+    } catch {
+        formatCounts.value = [];
+    }
+}
 const statsLoading = ref(false);
 
 // System status indicator
@@ -463,7 +484,7 @@ const shownCount = computed(() => {
 });
 
 const hasActiveFilters = computed(() => {
-    return !!(filters.format || filters.library_id || filters.tags.length || filters.categories.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection || filters.zipPath);
+    return !!(filters.format || filters.library_id || filters.tags.length || filters.categories.length || filters.categoryIds.length || filters.favoritesOnly || filters.duplicatesOnly || filters.collection || filters.zipPath);
 });
 
 // Find the library object for the currently selected library_id
@@ -551,6 +572,11 @@ const breadcrumbTrail = computed(() => {
     if (filters.format) {
         trail.push({ type: 'format', label: filters.format.toUpperCase() });
     }
+    // Categories chosen by id, resolved to their names for display.
+    for (const id of filters.categoryIds) {
+        const node = findCategoryById(allCategories.value, id);
+        trail.push({ type: 'categoryId', id, label: node ? node.name : 'Category' });
+    }
     // Categories (plural array)
     for (const cat of filters.categories) {
         trail.push({ type: 'category', label: cat, value: cat });
@@ -582,7 +608,11 @@ async function fetchModels(append = false) {
             params.append('tags', filters.tags.join(','));
             if (filters.tagMatch === 'or') params.append('tag_match', 'or');
         }
-        if (filters.categories.length > 0) params.append('categories', filters.categories.join(','));
+        if (filters.categoryIds.length > 0) {
+            params.append('category_ids', filters.categoryIds.join(','));
+        } else if (filters.categories.length > 0) {
+            params.append('categories', filters.categories.join(','));
+        }
         if (filters.favoritesOnly) params.append('favorites_only', 'true');
         if (filters.duplicatesOnly) params.append('duplicates_only', 'true');
         // For non-smart collections, pass collection id to API
@@ -1419,6 +1449,7 @@ function setLibraryFilter(libId) {
 function clearFilters() {
     filters.format = '';
     filters.library_id = null;
+    filters.categoryIds = [];
     filters.tags = [];
     filters.tagMatch = 'and';
     filters.categories = [];
@@ -1466,7 +1497,23 @@ function clearZipFilter() {
     refreshCurrentView();
 }
 
+/** Clear every value of one facet, from the picker's Clear button. */
+function clearFacet(key) {
+    if (key === 'format') filters.format = '';
+    else if (key === 'tags') filters.tags = [];
+    else if (key === 'categories') { filters.categories = []; filters.categoryIds = []; }
+    else if (key === 'library') filters.library_id = null;
+    pagination.offset = 0;
+    refreshCurrentView();
+}
+
 function removeBreadcrumb(crumb) {
+    if (crumb.type === 'categoryId') {
+        filters.categoryIds = filters.categoryIds.filter((id) => id !== crumb.id);
+        pagination.offset = 0;
+        refreshCurrentView();
+        return;
+    }
     if (crumb.type === 'format') {
         filters.format = '';
     } else if (crumb.type === 'tag') {
@@ -1841,6 +1888,16 @@ function filterByTag(tagName) {
 }
 
 // Collect a category node's name plus all descendant names (rollup).
+/** Depth-first lookup of a category node by id, at any depth. */
+function findCategoryById(nodes, id) {
+    for (const n of nodes || []) {
+        if (n.id === id) return n;
+        const hit = findCategoryById(n.children, id);
+        if (hit) return hit;
+    }
+    return null;
+}
+
 function collectCategoryNames(node) {
     const names = [node.name];
     for (const child of node.children || []) {
@@ -1850,18 +1907,26 @@ function collectCategoryNames(node) {
 }
 
 function toggleCategoryFilter(cat) {
-    // Accept either a category node (from the sidebar tree) or a bare name.
+    // Accept a category node (from the picker), or a bare name from a saved
+    // search or a deep link.
     const node = typeof cat === 'string' ? { name: cat, children: [] } : cat;
-    const names = collectCategoryNames(node);
-    const active = filters.categories.includes(node.name);
-    if (active) {
-        // Remove the category and its descendants.
-        filters.categories = filters.categories.filter((n) => !names.includes(n));
+
+    if (node.id != null) {
+        // Id path. The server expands the subtree itself with a recursive
+        // query, so the client neither walks the tree nor cares how deep it
+        // goes — which is also what makes categories past level three
+        // reachable at all.
+        const on = filters.categoryIds.includes(node.id);
+        filters.categoryIds = on
+            ? filters.categoryIds.filter((id) => id !== node.id)
+            : [...filters.categoryIds, node.id];
+        filters.categories = [];
     } else {
-        // Add the category and its descendants so a parent rolls up children.
-        const set = new Set(filters.categories);
-        names.forEach((n) => set.add(n));
-        filters.categories = [...set];
+        const names = collectCategoryNames(node);
+        const active = filters.categories.includes(node.name);
+        filters.categories = active
+            ? filters.categories.filter((n) => !names.includes(n))
+            : [...new Set([...filters.categories, ...names])];
     }
     pagination.offset = 0;
     refreshCurrentView();
@@ -2043,6 +2108,7 @@ onMounted(() => {
     const initialParams = applyUrlState();
     fetchSettings();
     fetchLibraries();
+    loadFormatCounts();
     fetchModels();
     fetchTags();
     fetchCategories();
@@ -2338,20 +2404,22 @@ const { pickNextCollectionColor } = collectionsComposable;
             :collections="collections"
             :libraries="libraries"
             :favoritesCount="favoritesCount"
-            :collapsedSections="collapsedSections"
-            :expandedCategories="expandedCategories"
             :savedSearches="savedSearches"
             :editingCollectionId="editingCollectionId"
             :editCollectionName="editCollectionName"
+            :activeFilters="breadcrumbTrail"
+            :resultCount="pagination.total"
+            :totalCount="libraryTotal"
+            :formatCounts="formatCounts"
             @update:sidebarOpen="sidebarOpen = $event"
             @update:editCollectionName="editCollectionName = $event"
             @setLibraryFilter="setLibraryFilter"
             @setFormatFilter="setFormatFilter"
             @toggleTagFilter="toggleTagFilter"
-            @setTagMatch="setTagMatch"
             @toggleCategoryFilter="toggleCategoryFilter"
-            @toggleCategory="toggleCategory"
-            @toggleCollapsedSection="(section) => collapsedSections[section] = !collapsedSections[section]"
+            @removeFilter="removeBreadcrumb"
+            @clearFilters="clearFilters"
+            @clearFacet="clearFacet"
             @setCollectionFilter="setCollectionFilter"
             @toggleFavoritesFilter="toggleFavoritesFilter"
             @toggleDuplicatesFilter="toggleDuplicatesFilter"

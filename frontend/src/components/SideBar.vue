@@ -1,20 +1,26 @@
 <script setup>
 /**
- * SideBar - Filters sidebar with libraries, format, tags, categories, collections, saved searches.
+ * SideBar — search-first filter panel.
+ *
+ * Replaces five always-expanded sections with three bands: what is currently
+ * applied, a short list of places to jump to, and a set of facets that open in
+ * a searchable picker. The old shape did not survive real data — expanding
+ * Tags rendered up to 70,000px of rows, the category tree hid 99 of its 756
+ * nodes behind a hardcoded three-level unroll, and 77% of the column was
+ * padding from touch-target floors applied at desktop widths.
+ *
+ * Collections no longer carry a cover thumbnail or a colour dot. That marker
+ * looked arbitrary because it was: a collection got a thumbnail only when it
+ * still had rows in collection_models and a dot when it did not, so it encoded
+ * leftover manual membership rather than anything about the collection.
  */
-import { ref, computed } from 'vue';
+import { computed, ref } from 'vue';
 import { ICONS } from '../icons.js';
-import { parseTag, tagColorStyle } from '../tags.js';
+import FacetPicker from './FacetPicker.vue';
 
-const TAG_PAGE_SIZE = 30;
-const tagSearch = ref('');
-const tagShowAll = ref(false);
 const dragOverCollection = ref(null);
-
-function onDropCollection(col) {
-    dragOverCollection.value = null;
-    emit('dropOnCollection', col.id);
-}
+/** Which facet picker is open: 'format' | 'tags' | 'categories' | 'library' | null */
+const picker = ref(null);
 
 const props = defineProps({
     sidebarOpen: { type: Boolean, default: false },
@@ -24,11 +30,15 @@ const props = defineProps({
     collections: { type: Array, default: () => [] },
     libraries: { type: Array, default: () => [] },
     favoritesCount: { type: Number, default: 0 },
-    collapsedSections: { type: Object, required: true },
-    expandedCategories: { type: Object, required: true },
     savedSearches: { type: Array, default: () => [] },
     editingCollectionId: { default: null },
     editCollectionName: { type: String, default: '' },
+    /** Facet pills for what is applied right now, from App.vue. */
+    activeFilters: { type: Array, default: () => [] },
+    resultCount: { type: Number, default: 0 },
+    totalCount: { type: Number, default: 0 },
+    /** [{ file_format, count }] from /api/stats — only formats that exist. */
+    formatCounts: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits([
@@ -37,10 +47,7 @@ const emit = defineEmits([
     'setLibraryFilter',
     'setFormatFilter',
     'toggleTagFilter',
-    'setTagMatch',
     'toggleCategoryFilter',
-    'toggleCategory',
-    'toggleCollapsedSection',
     'setCollectionFilter',
     'toggleFavoritesFilter',
     'toggleDuplicatesFilter',
@@ -55,257 +62,210 @@ const emit = defineEmits([
     'deleteCollection',
     'applySavedSearch',
     'deleteSavedSearch',
+    'removeFilter',
+    'clearFilters',
+    'clearFacet',
 ]);
 
-function formatClass(fmt) {
-    if (!fmt) return '';
-    const f = fmt.toLowerCase().replace('.', '');
-    if (f === '3mf') return '_3mf';
-    return f;
+function onDropCollection(col) {
+    dragOverCollection.value = null;
+    emit('dropOnCollection', col.id);
 }
 
-const filteredTags = computed(() => {
-    const q = tagSearch.value.trim().toLowerCase();
-    let tags = props.allTags;
-    if (q) {
-        tags = tags.filter(t => t.name.toLowerCase().includes(q));
-    }
-    return tags;
+/** Flatten the category tree so a search reaches every depth, not just three. */
+const flatCategories = computed(() => {
+    const out = [];
+    const walk = (nodes, depth, trail) => {
+        for (const n of nodes) {
+            const path = trail ? `${trail} / ${n.name}` : n.name;
+            out.push({ id: n.id, name: n.name, count: n.model_count, depth, path });
+            if (n.children?.length) walk(n.children, depth + 1, path);
+        }
+    };
+    walk(props.allCategories, 0, '');
+    return out;
 });
 
-const visibleTags = computed(() => {
-    if (tagShowAll.value || tagSearch.value.trim()) return filteredTags.value;
-    return filteredTags.value.slice(0, TAG_PAGE_SIZE);
-});
-
-const hasMoreTags = computed(() => {
-    return !tagShowAll.value && !tagSearch.value.trim() && filteredTags.value.length > TAG_PAGE_SIZE;
-});
-
-// Filter out smart collections that also have no models (for add-to-collection filtering)
-const manualCollections = computed(() =>
-    props.collections.filter(c => !c.is_smart)
+const tagItems = computed(() =>
+    // Most-used first: alphabetical put every punctuation-damaged tag on top.
+    [...props.allTags]
+        .sort((a, b) => (b.model_count || 0) - (a.model_count || 0))
+        .map((t) => ({ id: t.name, name: t.name, count: t.model_count }))
 );
+
+const formatItems = computed(() =>
+    props.formatCounts.map((f) => ({
+        id: (f.file_format || '').toLowerCase(),
+        name: (f.file_format || '').toUpperCase(),
+        count: f.count,
+    }))
+);
+
+const libraryItems = computed(() =>
+    props.libraries.map((l) => ({ id: l.id, name: l.name, count: l.model_count }))
+);
+
+const FACETS = [
+    { key: 'format', title: 'Format', items: () => formatItems.value, single: true },
+    { key: 'tags', title: 'Tags', items: () => tagItems.value },
+    { key: 'categories', title: 'Categories', items: () => flatCategories.value },
+    { key: 'library', title: 'Library', items: () => libraryItems.value, single: true },
+];
+
+const activePicker = computed(() => FACETS.find((f) => f.key === picker.value) || null);
+
+const pickerItems = computed(() => (activePicker.value ? activePicker.value.items() : []));
+
+const pickerSelected = computed(() => {
+    switch (picker.value) {
+        case 'format': return props.filters.format ? [props.filters.format] : [];
+        case 'tags': return props.filters.tags;
+        case 'categories': return props.filters.categoryIds || [];
+        case 'library': return props.filters.library_id != null ? [props.filters.library_id] : [];
+        default: return [];
+    }
+});
+
+/** Count shown beside each facet row: how many values are applied, else the size. */
+function facetSummary(key) {
+    switch (key) {
+        case 'format': return props.filters.format ? 1 : formatItems.value.length;
+        case 'tags': return props.filters.tags.length || tagItems.value.length;
+        case 'categories': return (props.filters.categoryIds || []).length || flatCategories.value.length;
+        case 'library': return props.filters.library_id != null ? 1 : libraryItems.value.length;
+        default: return 0;
+    }
+}
+
+function facetActive(key) {
+    switch (key) {
+        case 'format': return !!props.filters.format;
+        case 'tags': return props.filters.tags.length > 0;
+        case 'categories': return (props.filters.categoryIds || []).length > 0;
+        case 'library': return props.filters.library_id != null;
+        default: return false;
+    }
+}
+
+function onPick(item) {
+    switch (picker.value) {
+        case 'format': emit('setFormatFilter', item.id); picker.value = null; break;
+        case 'tags': emit('toggleTagFilter', item.name); break;
+        case 'categories': emit('toggleCategoryFilter', item); break;
+        case 'library': emit('setLibraryFilter', item.id); picker.value = null; break;
+    }
+}
 </script>
 
 <template>
     <!-- Sidebar backdrop (mobile) -->
     <div v-if="sidebarOpen" class="sidebar-backdrop" @click="emit('update:sidebarOpen', false)"></div>
 
-    <!-- Sidebar -->
-    <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: !sidebarOpen }">
+    <aside class="sidebar" :class="{ collapsed: !sidebarOpen }">
 
-        <!-- Libraries -->
-        <div class="sidebar-section" v-if="libraries.length > 0">
-            <div class="sidebar-section-title">Libraries</div>
-            <div v-for="lib in libraries" :key="lib.id"
-                 class="sidebar-item"
-                 :class="{ active: filters.library_id === lib.id }"
-                 @click="emit('setLibraryFilter', lib.id)">
-                <span class="sidebar-item-icon" v-html="ICONS.folder"></span>
-                <span>{{ lib.name }}</span>
-                <span v-if="lib.model_count != null" class="item-count">{{ lib.model_count }}</span>
+        <!-- What is applied right now. The app never showed this in one place;
+             on a phone the filter was invisible once the drawer was closed. -->
+        <div class="sidebar-section sb-applied" v-if="activeFilters.length">
+            <div class="sb-label">Filtering by</div>
+            <div class="sb-pills">
+                <button v-for="(f, i) in activeFilters" :key="i" class="sb-pill"
+                        @click="emit('removeFilter', f)" :title="`Remove ${f.label}`">
+                    {{ f.label }}<span class="sb-pill-x">&times;</span>
+                </button>
+            </div>
+            <div class="sb-count">
+                <strong>{{ resultCount.toLocaleString() }}</strong>
+                <span v-if="totalCount"> of {{ totalCount.toLocaleString() }}</span> models
+                <button class="sb-clear" @click="emit('clearFilters')">Clear all</button>
             </div>
         </div>
 
-        <!-- Format Filters (collapsible) -->
+        <!-- Jump to -->
         <div class="sidebar-section">
-            <div class="sidebar-section-title sidebar-section-toggle"
-                 @click="emit('toggleCollapsedSection', 'format')">
-                <span>Format</span>
-                <span v-if="filters.format" class="sidebar-section-active-badge">
-                    {{ filters.format.toUpperCase() }}
-                </span>
-                <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.format }"
-                      v-html="ICONS.chevron"></span>
-            </div>
-            <template v-if="!collapsedSections.format">
-                <label v-for="fmt in ['stl','obj','gltf','glb','3mf','step','stp','ply','fbx','dae','off']"
-                       :key="fmt"
-                       class="checkbox-item"
-                       @click.prevent="emit('setFormatFilter', fmt)">
-                    <input type="checkbox" :checked="filters.format === fmt" readonly>
-                    <span class="format-badge" :class="formatClass(fmt)">{{ fmt.toUpperCase() }}</span>
-                </label>
-            </template>
+            <div class="sb-label">Jump to</div>
+            <button class="sb-row" :class="{ on: !activeFilters.length }" @click="emit('clearFilters')">
+                All models<span class="sb-num">{{ totalCount.toLocaleString() }}</span>
+            </button>
+            <button class="sb-row" :class="{ on: filters.favoritesOnly }" @click="emit('toggleFavoritesFilter')">
+                Favorites<span class="sb-num">{{ favoritesCount }}</span>
+            </button>
+            <button class="sb-row" :class="{ on: filters.duplicatesOnly }" @click="emit('toggleDuplicatesFilter')">
+                Duplicates
+                <span class="sb-row-action" @click.stop="emit('openDuplicatesReview')">Review</span>
+            </button>
         </div>
 
-        <!-- Tags -->
+        <!-- Collections -->
         <div class="sidebar-section">
-            <div class="sidebar-section-title sidebar-section-toggle"
-                 @click="emit('toggleCollapsedSection', 'tags')">
-                <span>Tags</span>
-                <span v-if="filters.tags.length" class="sidebar-section-active-badge">
-                    {{ filters.tags.length }} active
-                </span>
-                <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.tags }"
-                      v-html="ICONS.chevron"></span>
-            </div>
-            <template v-if="!collapsedSections.tags">
-                <div v-if="filters.tags.length > 1" class="tag-match-toggle">
-                    <span class="tag-match-label">Match</span>
-                    <button class="tag-match-btn" :class="{ active: (filters.tagMatch || 'and') === 'and' }"
-                            @click="emit('setTagMatch', 'and')" title="Models with ALL selected tags">All</button>
-                    <button class="tag-match-btn" :class="{ active: filters.tagMatch === 'or' }"
-                            @click="emit('setTagMatch', 'or')" title="Models with ANY selected tag">Any</button>
-                </div>
-                <div v-if="allTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
-                    No tags yet
-                </div>
-                <template v-else>
-                    <div class="sidebar-search" v-if="allTags.length > TAG_PAGE_SIZE">
-                        <input type="text" class="sidebar-search-input" v-model="tagSearch"
-                               placeholder="Filter tags..." @click.stop>
-                    </div>
-                    <div v-for="tag in visibleTags" :key="tag.id"
-                         class="sidebar-item"
-                         :class="{ active: filters.tags.includes(tag.name) }"
-                         :style="tagColorStyle(tag.name)"
-                         @click="emit('toggleTagFilter', tag.name)">
-                        <span class="sidebar-tag-label"><span v-if="parseTag(tag.name).namespace"
-                              class="sidebar-tag-ns">{{ parseTag(tag.name).namespace }}</span>{{ parseTag(tag.name).value }}</span>
-                        <span v-if="tag.model_count != null" class="item-count">{{ tag.model_count }}</span>
-                    </div>
-                    <div v-if="tagSearch && filteredTags.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
-                        No matching tags
-                    </div>
-                    <button v-if="hasMoreTags" class="sidebar-show-more" @click="tagShowAll = true">
-                        Show all {{ filteredTags.length }} tags
-                    </button>
-                    <button v-if="tagShowAll && allTags.length > TAG_PAGE_SIZE && !tagSearch" class="sidebar-show-more" @click="tagShowAll = false">
-                        Show fewer
-                    </button>
-                </template>
-            </template>
-        </div>
-
-        <!-- Categories -->
-        <div class="sidebar-section">
-            <div class="sidebar-section-title sidebar-section-toggle"
-                 @click="emit('toggleCollapsedSection', 'categories')">
-                <span>Categories</span>
-                <span v-if="filters.categories.length" class="sidebar-section-active-badge">
-                    {{ filters.categories.length }} active
-                </span>
-                <span class="sidebar-section-chevron" :class="{ expanded: !collapsedSections.categories }"
-                      v-html="ICONS.chevron"></span>
-            </div>
-            <template v-if="!collapsedSections.categories">
-            <div v-if="allCategories.length === 0" class="text-muted text-sm" style="padding: 4px 10px;">
-                No categories yet
-            </div>
-            <ul class="category-tree">
-                <template v-for="cat in allCategories" :key="cat.id">
-                    <li>
-                        <div class="category-item"
-                             :class="{ active: filters.categories.includes(cat.name) }"
-                             @click="emit('toggleCategoryFilter', cat)">
-                            <span v-if="cat.children && cat.children.length"
-                                  class="category-toggle"
-                                  :class="{ expanded: expandedCategories[cat.id] }"
-                                  @click.stop="emit('toggleCategory', cat.id)"
-                                  v-html="ICONS.chevron"></span>
-                            <span v-else style="width:16px;display:inline-block"></span>
-                            <span class="category-name">{{ cat.name }}</span>
-                            <span v-if="cat.model_count" class="category-count">({{ cat.model_count }})</span>
-                        </div>
-                        <ul v-if="cat.children && cat.children.length && expandedCategories[cat.id]"
-                            class="category-children">
-                            <li v-for="child in cat.children" :key="child.id">
-                                <div class="category-item"
-                                     :class="{ active: filters.categories.includes(child.name) }"
-                                     @click="emit('toggleCategoryFilter', child)">
-                                    <span v-if="child.children && child.children.length"
-                                          class="category-toggle"
-                                          :class="{ expanded: expandedCategories[child.id] }"
-                                          @click.stop="emit('toggleCategory', child.id)"
-                                          v-html="ICONS.chevron"></span>
-                                    <span v-else style="width:16px;display:inline-block"></span>
-                                    <span class="category-name">{{ child.name }}</span>
-                                    <span v-if="child.model_count" class="category-count">({{ child.model_count }})</span>
-                                </div>
-                                <!-- Third level -->
-                                <ul v-if="child.children && child.children.length && expandedCategories[child.id]"
-                                    class="category-children">
-                                    <li v-for="grandchild in child.children" :key="grandchild.id">
-                                        <div class="category-item"
-                                             :class="{ active: filters.categories.includes(grandchild.name) }"
-                                             @click="emit('toggleCategoryFilter', grandchild)">
-                                            <span style="width:16px;display:inline-block"></span>
-                                            <span class="category-name">{{ grandchild.name }}</span>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </li>
-                        </ul>
-                    </li>
-                </template>
-            </ul>
-            </template>
-        </div>
-
-        <!-- Collections (unified — regular and smart) -->
-        <div class="sidebar-section">
-            <div class="sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between">
+            <div class="sb-label">
                 Collections
-                <button class="btn-icon" style="width:20px;height:20px" @click="emit('openCollectionModal')"
-                        title="New collection"><span v-html="ICONS.plus"></span></button>
-            </div>
-            <div class="sidebar-item" :class="{ active: filters.favoritesOnly }" @click="emit('toggleFavoritesFilter')">
-                <span v-html="ICONS.heart"></span>
-                <span>Favorites</span>
-                <span v-if="favoritesCount > 0" class="item-count">{{ favoritesCount }}</span>
-            </div>
-            <div class="sidebar-item" :class="{ active: filters.duplicatesOnly }" @click="emit('toggleDuplicatesFilter')">
-                <span v-html="ICONS.copy"></span>
-                <span>Duplicates</span>
-                <button class="sidebar-item-action" title="Review duplicates"
-                        @click.stop="emit('openDuplicatesReview')">Review</button>
+                <button class="sb-add" @click="emit('openCollectionModal')" title="New collection">
+                    <span v-html="ICONS.plus"></span>
+                </button>
             </div>
             <div v-for="col in collections" :key="col.id"
-                 class="sidebar-item" :class="{ active: filters.collection === col.id, 'drop-target': dragOverCollection === col.id }"
+                 class="sb-row" :class="{ on: filters.collection === col.id, 'drop-target': dragOverCollection === col.id }"
                  @click="emit('setCollectionFilter', col.id)"
                  @dragover.prevent="dragOverCollection = col.id"
                  @dragenter.prevent="dragOverCollection = col.id"
                  @dragleave="dragOverCollection === col.id && (dragOverCollection = null)"
                  @drop.prevent="onDropCollection(col)">
-                <img v-if="col.cover_thumbnail" class="collection-cover"
-                     :src="`/thumbnails/${col.cover_thumbnail}`" alt=""
-                     :style="{ borderColor: col.color || 'var(--border)' }"
-                     @error="(e) => (e.target.style.display = 'none')">
-                <span v-else class="collection-dot" :style="{ background: col.color || '#666' }"></span>
                 <template v-if="editingCollectionId === col.id">
                     <input class="sidebar-edit-input" :value="editCollectionName"
                            @input="emit('update:editCollectionName', $event.target.value)"
                            @blur="emit('saveCollectionName', col)"
                            @keydown.enter="emit('saveCollectionName', col)"
-                           @keydown.escape="emit('cancelEditCollection')"
+                           @keydown.escape.stop="emit('cancelEditCollection')"
                            @click.stop
-                           autofocus>
+                           @vue:mounted="$event.el.focus()">
                 </template>
                 <template v-else>
-                    <span v-if="col.pinned" class="sidebar-pin-mark" v-html="ICONS.bookmark" title="Pinned"></span>
-                    <span class="truncate" @dblclick.stop="emit('startEditCollection', col)">{{ col.name }}</span>
-                    <span v-if="col.is_smart" class="sidebar-smart-icon" v-html="ICONS.zap" title="Smart collection"></span>
+                    <span class="sb-row-name" @dblclick.stop="emit('startEditCollection', col)">{{ col.name }}</span>
+                    <span class="sb-num">{{ col.model_count }}</span>
+                    <span class="sb-row-tools">
+                        <button @click.stop="emit('togglePinCollection', col)"
+                                :class="{ on: col.pinned }"
+                                :title="col.pinned ? 'Unpin' : 'Pin to top'" v-html="ICONS.bookmark"></button>
+                        <button v-if="col.is_smart" @click.stop="emit('editCollection', col)"
+                                title="Edit rules" v-html="ICONS.settings"></button>
+                        <button @click.stop="emit('deleteCollection', col.id)" title="Delete collection">&times;</button>
+                    </span>
                 </template>
-                <span class="item-count">{{ col.model_count }}</span>
-                <button class="sidebar-item-action" @click.stop="emit('togglePinCollection', col)"
-                        :title="col.pinned ? 'Unpin' : 'Pin to top'" v-html="ICONS.bookmark"></button>
-                <button v-if="col.is_smart" class="sidebar-item-action" @click.stop="emit('editCollection', col)"
-                        title="Edit rules" v-html="ICONS.settings"></button>
-                <button class="sidebar-item-delete" @click.stop="emit('deleteCollection', col.id)">&times;</button>
+            </div>
+            <div v-if="!collections.length" class="sb-empty">No collections yet.</div>
+        </div>
+
+        <!-- Facets: each opens a searchable picker rather than an endless list -->
+        <div class="sidebar-section">
+            <div class="sb-label">Narrow by</div>
+            <button v-for="f in FACETS" :key="f.key"
+                    class="sb-row" :class="{ on: facetActive(f.key) }"
+                    @click="picker = f.key">
+                {{ f.title }}
+                <span class="sb-num">{{ facetSummary(f.key).toLocaleString() }}</span>
+                <span class="sb-chev" v-html="ICONS.chevron"></span>
+            </button>
+        </div>
+
+        <!-- Saved searches -->
+        <div class="sidebar-section" v-if="savedSearches.length">
+            <div class="sb-label">Saved searches</div>
+            <div v-for="search in savedSearches" :key="search.id"
+                 class="sb-row" @click="emit('applySavedSearch', search)">
+                <span class="sb-row-name">{{ search.name }}</span>
+                <span class="sb-row-tools">
+                    <button @click.stop="emit('deleteSavedSearch', search.id)" title="Delete saved search">&times;</button>
+                </span>
             </div>
         </div>
 
-        <!-- Saved Searches -->
-        <div class="sidebar-section" v-if="savedSearches.length">
-            <div class="sidebar-section-title">Saved Searches</div>
-            <div v-for="search in savedSearches" :key="search.id"
-                 class="sidebar-item" @click="emit('applySavedSearch', search)">
-                <span v-html="ICONS.bookmark"></span>
-                <span class="truncate">{{ search.name }}</span>
-                <button class="sidebar-item-delete" @click.stop="emit('deleteSavedSearch', search.id)">&times;</button>
-            </div>
-        </div>
+        <FacetPicker :open="!!activePicker"
+                     :title="activePicker ? activePicker.title : ''"
+                     :items="pickerItems"
+                     :selected="pickerSelected"
+                     :single="activePicker ? !!activePicker.single : false"
+                     @close="picker = null"
+                     @pick="onPick"
+                     @clear="emit('clearFacet', picker)" />
     </aside>
 </template>
