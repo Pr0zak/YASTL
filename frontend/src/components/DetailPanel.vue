@@ -727,14 +727,22 @@ function formatClass(fmt) {
                                  class="info-section">
                                 <div class="info-section-title">Docs &amp; Files</div>
                                 <div v-if="modelDocs.readme" class="doc-readme">
-                                    <div class="doc-readme-name">{{ modelDocs.readme.name }}</div>
+                                    <div class="doc-readme-name">
+                                        {{ modelDocs.readme.name }}
+                                        <!-- Say whose it is: in a folder of many models a
+                                             README describes the download, not this model. -->
+                                        <span v-if="modelDocs.readme.scope === 'folder'" class="doc-scope">
+                                            for the whole folder
+                                        </span>
+                                    </div>
                                     <pre class="doc-readme-text">{{ modelDocs.readme.text }}<span v-if="modelDocs.readme.truncated" class="text-muted">
 … (truncated)</span></pre>
                                 </div>
                                 <div v-if="modelDocs.images && modelDocs.images.length" class="doc-image-grid">
                                     <a v-for="img in modelDocs.images" :key="img.name"
                                        :href="docFileUrl(img.name)" target="_blank" rel="noopener"
-                                       class="doc-image-thumb" :title="img.name">
+                                       class="doc-image-thumb"
+                                       :title="img.name + (img.scope === 'folder' ? ' (folder-level)' : '')">
                                         <img :src="docFileUrl(img.name)" :alt="img.name" loading="lazy">
                                     </a>
                                 </div>

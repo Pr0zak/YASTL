@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
@@ -336,10 +337,57 @@ _DOC_EXTS = {".md", ".txt", ".rst", ".pdf", ".nfo"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 _MAX_README_BYTES = 60_000
 
+# Cap on images returned for one model, so a folder holding hundreds of photos
+# cannot turn the detail panel into a directory listing.
+_MAX_DOC_IMAGES = 24
+
+# Shortest stem that may match by prefix. Without a floor, a model called "a"
+# would claim every file in the folder.
+_MIN_STEM_MATCH = 4
+
 
 def _is_readme(name: str) -> bool:
     low = name.lower()
     return low.startswith("readme") or low.startswith("read_me")
+
+
+def _is_folder_doc(name: str) -> bool:
+    """True for documents that describe a whole download rather than one model.
+
+    A README or a licence sitting beside twenty STLs belongs to the pack, not to
+    any one of them. These stay visible in a shared folder, but are reported
+    with scope "folder" so the UI can say whose they are.
+    """
+    low = name.lower()
+    return _is_readme(low) or "license" in low or "licence" in low
+
+
+def _norm_stem(name: str) -> str:
+    """Filename stem reduced to lowercase alphanumerics.
+
+    Lets "Wall Mount v2.stl" match "wall_mount_v2-assembled.jpg", which is how
+    people actually name the photo they took of a print.
+    """
+    stem = os.path.splitext(name)[0].lower()
+    return re.sub(r"[^a-z0-9]+", "", stem)
+
+
+def _stems_related(model_stem: str, other_stem: str) -> bool:
+    """Whether a sibling file's name ties it to this model.
+
+    Either name may be the longer one: a photo is usually the model name plus a
+    suffix, but a model is sometimes the photo name plus one.
+    """
+    if not model_stem or not other_stem:
+        return False
+    if model_stem == other_stem:
+        return True
+    longer, shorter = (
+        (model_stem, other_stem)
+        if len(model_stem) >= len(other_stem)
+        else (other_stem, model_stem)
+    )
+    return len(shorter) >= _MIN_STEM_MATCH and longer.startswith(shorter)
 
 
 def _doc_kind(name: str) -> str | None:
@@ -351,10 +399,27 @@ def _doc_kind(name: str) -> str | None:
     return None
 
 
-async def _model_docs(model: dict):
-    """Return (base_dir, entries) where entries is a list of sibling doc/image
-    files. Handles both loose files on disk and files inside a zip archive.
-    Returns (None, []) when nothing is available."""
+async def _model_docs(model: dict, shared_folder: bool = False):
+    """Return (base_dir, entries) for the doc/image files belonging to a model.
+
+    Each entry is (full_path, basename, kind, size, scope) where scope is
+    "model" for a file named after this model and "folder" for a pack-level
+    README or licence.
+
+    When ``shared_folder`` is true the directory holds more than one model, so
+    returning everything in it would attribute unrelated files to whichever
+    model the user happened to open — the folder's other photos, screenshots
+    and stray downloads. In that case only files whose name ties them to this
+    model are returned, plus pack-level documents. When the model has the
+    folder to itself, everything in it is genuinely its own.
+
+    Handles both loose files on disk and files inside a zip archive. Returns
+    (None, []) when nothing is available."""
+    model_name = os.path.basename(
+        model.get("zip_entry") or model.get("file_path") or ""
+    )
+    model_stem = _norm_stem(model_name)
+
     zip_path = model.get("zip_path")
     if zip_path:
         if not os.path.exists(zip_path):
@@ -375,10 +440,12 @@ async def _model_docs(model: dict):
                         continue
                     kind = _doc_kind(base)
                     if kind and (str(p.parent) == entry_dir or str(p.parent) == "."):
-                        found.append((info.filename, base, kind, info.file_size))
+                        scope = _entry_scope(base, model_stem, shared_folder)
+                        if scope is not None:
+                            found.append((info.filename, base, kind, info.file_size, scope))
         except Exception:
             logger.exception("Failed reading docs from zip %s", zip_path)
-        return zip_path, found
+        return zip_path, _cap_images(found)
 
     file_path = model.get("file_path")
     if not file_path or not os.path.exists(file_path):
@@ -390,11 +457,37 @@ async def _model_docs(model: dict):
             if not entry.is_file() or entry.name.startswith("."):
                 continue
             kind = _doc_kind(entry.name)
-            if kind:
-                found.append((entry.name, entry.name, kind, entry.stat().st_size))
+            if not kind:
+                continue
+            scope = _entry_scope(entry.name, model_stem, shared_folder)
+            if scope is not None:
+                found.append((entry.name, entry.name, kind, entry.stat().st_size, scope))
     except OSError:
         return None, []
-    return base_dir, found
+    return base_dir, _cap_images(found)
+
+
+def _entry_scope(name: str, model_stem: str, shared_folder: bool) -> str | None:
+    """Classify a sibling file, or None when it does not belong to this model."""
+    if not shared_folder:
+        return "model" if _stems_related(model_stem, _norm_stem(name)) else "folder"
+    if _stems_related(model_stem, _norm_stem(name)):
+        return "model"
+    if _is_folder_doc(name):
+        return "folder"
+    return None
+
+
+def _cap_images(entries: list) -> list:
+    """Keep every document but at most _MAX_DOC_IMAGES images."""
+    kept, images = [], 0
+    for e in entries:
+        if e[2] == "image":
+            if images >= _MAX_DOC_IMAGES:
+                continue
+            images += 1
+        kept.append(e)
+    return kept
 
 
 @router.get("/{model_id}/docs")
@@ -410,13 +503,16 @@ async def list_model_docs(request: Request, model_id: int):
     if row is None:
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
-    base, entries = await _model_docs(dict(row))
+    model = dict(row)
+    shared = await _folder_holds_other_models(db_path, model)
+    base, entries = await _model_docs(model, shared)
     docs, images, readme = [], [], None
-    for full, name, kind, size in entries:
+    for full, name, kind, size, scope in entries:
+        item = {"name": name, "path": full, "size": size, "scope": scope}
         if kind == "image":
-            images.append({"name": name, "path": full, "size": size})
+            images.append(item)
         else:
-            docs.append({"name": name, "path": full, "size": size})
+            docs.append(item)
 
     # Pick a README and read a preview of its text
     readme_entry = next(
@@ -430,11 +526,63 @@ async def list_model_docs(request: Request, model_id: int):
             if data is not None:
                 text = data[:_MAX_README_BYTES].decode("utf-8", errors="replace")
                 readme = {"name": readme_entry["name"], "text": text,
-                          "truncated": len(data) > _MAX_README_BYTES}
+                          "truncated": len(data) > _MAX_README_BYTES,
+                          "scope": readme_entry["scope"]}
         except Exception:
             logger.debug("Could not read README for model %d", model_id)
 
-    return {"readme": readme, "docs": docs, "images": images}
+    return {
+        "readme": readme,
+        "docs": docs,
+        "images": images,
+        "shared_folder": shared,
+    }
+
+
+async def _folder_holds_other_models(db_path: str, model: dict) -> bool:
+    """Whether this model shares its directory (or zip directory) with others.
+
+    A folder with one model in it is that model's folder, and everything in it
+    is fair to show. A folder with fifty is a library directory, where a photo
+    is no more this model's than any other's.
+    """
+    from pathlib import Path, PurePosixPath
+
+    zip_path = model.get("zip_path")
+    try:
+        async with open_db(db_path) as db:
+            if zip_path:
+                entry_dir = str(PurePosixPath(model.get("zip_entry", "")).parent)
+                cursor = await db.execute(
+                    "SELECT zip_entry FROM models WHERE zip_path = ? AND id != ? "
+                    "AND status = 'active' LIMIT 200",
+                    (zip_path, model["id"]),
+                )
+                return any(
+                    str(PurePosixPath(r[0] or "").parent) == entry_dir
+                    for r in await cursor.fetchall()
+                )
+
+            file_path = model.get("file_path")
+            if not file_path:
+                return False
+            parent = str(Path(file_path).parent)
+            # Same indexed range scan the related-models query uses: SQLite's
+            # case-insensitive LIKE cannot use idx_models_file_path. '0' is the
+            # character after '/' in ASCII, so this bounds the subtree.
+            cursor = await db.execute(
+                "SELECT file_path FROM models WHERE file_path > ? AND file_path < ? "
+                "AND id != ? AND status = 'active' AND zip_path IS NULL LIMIT 200",
+                (parent + "/", parent + "0", model["id"]),
+            )
+            # The range covers subdirectories too, so compare the parent exactly.
+            return any(
+                os.path.dirname(r[0] or "") == parent for r in await cursor.fetchall()
+            )
+    except Exception:
+        logger.exception("Could not count folder siblings for model %s", model.get("id"))
+        # Fall back to the permissive behaviour rather than hiding real docs.
+        return False
 
 
 async def _read_doc_bytes(model: dict, entry_path: str, base) -> bytes | None:
