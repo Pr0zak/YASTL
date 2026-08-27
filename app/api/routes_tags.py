@@ -255,3 +255,116 @@ async def cleanup_unused_tags(request: Request):
         await db.commit()
 
     return {"detail": f"Removed {removed} unused tag(s)", "removed": removed}
+
+
+# ---------------------------------------------------------------------------
+# Normalise punctuation-damaged tags
+# ---------------------------------------------------------------------------
+
+
+@router.post("/normalize")
+async def normalize_tags(request: Request, dry_run: bool = False):
+    """Repair tags that carry filename punctuation, merging them where they collide.
+
+    The auto-tagger used to tokenise filenames without stripping punctuation, so
+    a library accumulated tags like ``(bishop)``, ``(3``, ``+0`` and ``80%)`` —
+    each one matching only the files whose names happened to be punctuated the
+    same way, and each one occupying a row in the sidebar ahead of every useful
+    tag, because ``(`` sorts before every letter.
+
+    A tag that is already well formed is never touched, which is what protects
+    real hyphenated tags like ``low-poly``. Everything else has digit-only
+    bracket groups removed (a ``(2)`` copy suffix), remaining punctuation
+    stripped, and the rest tokenised: exactly one usable word is a repair,
+    anything more was a mangled filename rather than a tag —
+    ``+beer+mug+(two+types)`` — and is deleted along with its links.
+
+    Repair can collide with a tag that already exists (``(bishop)`` and
+    ``bishop``). Those are merged: every model on the damaged tag moves to the
+    clean one, duplicates are dropped, and the damaged row is deleted.
+
+    Pass ``dry_run=true`` to see the plan without writing anything.
+    """
+    import re
+
+    from app.services.tagger import MIN_TAG_LENGTH
+
+    db_path = _get_db_path(request)
+    renamed: list[dict] = []
+    merged: list[dict] = []
+    dropped: list[str] = []
+
+    async with open_db(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA foreign_keys=ON")
+
+        cursor = await db.execute("SELECT id, name FROM tags")
+        rows = [dict(r) for r in await cursor.fetchall()]
+        by_name = {r["name"].lower(): r["id"] for r in rows}
+
+        # A tag that already looks like a tag: letters and digits, optionally
+        # joined by single hyphens or underscores. Left strictly alone.
+        well_formed = re.compile(r"^[a-z0-9]+([-_][a-z0-9]+)*$")
+
+        def repair(name: str) -> str:
+            low = name.strip().lower()
+            if well_formed.match(low):
+                return low
+            # A "(2)" or "[3]" is a copy suffix, not part of the name.
+            low = re.sub(r"[([{]\s*\d*\s*[)\]}]", " ", low)
+            # Everything else that is not a word character, hyphen or space is
+            # filename punctuation; "+" is how model sites encode a space.
+            low = re.sub(r"[^a-z0-9\-\s]+", " ", low)
+            words = [w.strip("-") for w in low.split() if w.strip("-")]
+            words = [w for w in words if len(w) >= MIN_TAG_LENGTH and not w.isdigit()]
+            return words[0] if len(words) == 1 else ""
+
+        for row in rows:
+            original = row["name"]
+            cleaned = repair(original)
+            if cleaned == original.lower():
+                continue
+
+            if not cleaned:
+                dropped.append(original)
+                if not dry_run:
+                    await db.execute("DELETE FROM model_tags WHERE tag_id = ?", (row["id"],))
+                    await db.execute("DELETE FROM tags WHERE id = ?", (row["id"],))
+                continue
+
+            target_id = by_name.get(cleaned)
+            if target_id is not None and target_id != row["id"]:
+                merged.append({"from": original, "into": cleaned})
+                if not dry_run:
+                    await db.execute(
+                        "UPDATE OR IGNORE model_tags SET tag_id = ? WHERE tag_id = ?",
+                        (target_id, row["id"]),
+                    )
+                    await db.execute("DELETE FROM model_tags WHERE tag_id = ?", (row["id"],))
+                    await db.execute("DELETE FROM tags WHERE id = ?", (row["id"],))
+            else:
+                renamed.append({"from": original, "to": cleaned})
+                if not dry_run:
+                    await db.execute(
+                        "UPDATE tags SET name = ? WHERE id = ?", (cleaned, row["id"])
+                    )
+                    by_name[cleaned] = row["id"]
+
+        if not dry_run:
+            await db.commit()
+
+    return {
+        "dry_run": dry_run,
+        "renamed": len(renamed),
+        "merged": len(merged),
+        "dropped": len(dropped),
+        "detail": (
+            f"{len(renamed)} renamed, {len(merged)} merged into an existing tag, "
+            f"{len(dropped)} removed as unusable"
+        ),
+        "examples": {
+            "renamed": renamed[:20],
+            "merged": merged[:20],
+            "dropped": dropped[:20],
+        },
+    }

@@ -41,7 +41,7 @@ async def list_libraries(request: Request):
             """
             SELECT l.*, COUNT(m.id) as model_count
             FROM libraries l
-            LEFT JOIN models m ON m.library_id = l.id
+            LEFT JOIN models m ON m.library_id = l.id AND m.status = 'active'
             GROUP BY l.id
             ORDER BY l.name
             """
