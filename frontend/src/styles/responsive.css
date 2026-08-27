@@ -139,26 +139,40 @@
         -webkit-overflow-scrolling: touch;
     }
 
+    /* The action bar lives inside .detail-info, which is overflow:hidden. An
+       overflow ancestor becomes the sticky element's scroll box, and since
+       .detail-info is sized to its content it never scrolls — so sticky would
+       never engage. Releasing the clip lets the bar stick to .detail-content,
+       which is the real scroller here. */
+    .detail-info {
+        overflow: visible;
+    }
+
+    /* The class promises pinning and the desktop layout delivers it. On mobile
+       .detail-content is the scroller, so without this the primary action sits
+       at the bottom of the scrolled content — on a long tab, ~700px down. */
+    .detail-actions-pinned {
+        position: sticky;
+        bottom: 0;
+        z-index: 8;
+        background: var(--bg-secondary);
+    }
+
     #viewer-container {
         height: 260px;
     }
 
-    /* Viewer toolbar: too many controls to center on a phone — pin it across
-       the bottom and let it scroll horizontally so every button is reachable. */
+    /* Pinned across the bottom of the viewer. It must NOT scroll: overflow-x
+       computes overflow-y to auto as well, which makes the toolbar a clip box
+       and paints the upward-opening overflow menu at zero visible pixels. The
+       three remaining controls plus the menu button fit 390px, so nothing
+       needs to scroll. */
     .viewer-toolbar {
         left: 8px;
         right: 8px;
         transform: none;
         justify-content: flex-start;
         flex-wrap: nowrap;
-        overflow-x: auto;
-        padding-bottom: 2px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-
-    .viewer-toolbar::-webkit-scrollbar {
-        display: none;
     }
 
     .viewer-toolbar .btn,
@@ -306,13 +320,29 @@
     }
 
     /* Detail actions: stack vertically */
-    .detail-actions,
-    .detail-actions-pinned {
+    .detail-actions {
         flex-direction: column;
     }
 
-    .detail-actions .btn,
-    .detail-actions-pinned .btn {
+    /* Stacking three full-width buttons cost ~170px of a sticky bar — a fifth
+       of the screen, permanently. The primary action keeps its label and the
+       room; the other two shrink to their icons, which stay 44px targets and
+       carry title/aria-label text. Without a slicer configured there is no
+       primary button, so Download keeps its label instead (see .btn-primary
+       sibling rule below). */
+    .detail-actions-pinned:has(.btn-primary) .btn-label {
+        display: none;
+    }
+
+    .detail-actions-pinned .btn-secondary,
+    .detail-actions-pinned .btn-danger {
+        min-width: 46px;
+        padding-left: 0;
+        padding-right: 0;
+        justify-content: center;
+    }
+
+    .detail-actions .btn {
         width: 100%;
         justify-content: center;
     }
@@ -466,5 +496,17 @@
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
+    }
+}
+
+@media (max-width: 768px) {
+    /* The toolbar sits at the bottom of a 220px viewer, so an upward-opening
+       menu is taller than the room above it and gets clipped by the sheet's
+       top edge. Below the toolbar is the whole tab area, so drop it downward
+       instead — over the content it is not competing with. */
+    .viewer-overflow-menu {
+        top: calc(100% + 6px);
+        bottom: auto;
+        max-height: 48vh;
     }
 }

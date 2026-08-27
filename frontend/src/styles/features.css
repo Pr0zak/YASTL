@@ -1492,7 +1492,8 @@ textarea.import-textarea {
     transform: translateX(-50%);
     display: flex;
     gap: 4px;
-    z-index: 5;
+    /* Above the tap-to-interact gate (z-index 4), like the viewer toolbar. */
+    z-index: 7;
     background: var(--overlay-bg, rgba(255, 255, 255, 0.85));
     border: 1px solid var(--border);
     border-radius: 20px;
