@@ -1140,3 +1140,12 @@
     max-height: 62vh;
     overflow-y: auto;
 }
+
+/* Marks a README or licence that belongs to the download rather than to the
+   model the panel is showing. */
+.doc-scope {
+    margin-left: 6px;
+    font-size: 0.68rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
