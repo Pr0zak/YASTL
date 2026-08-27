@@ -38,6 +38,14 @@ dev = [
     "ruff>=0.8.0",
 ]
 
+[tool.ruff.lint]
+# Pin the rule set explicitly. Without this ruff lints with whatever its
+# current release considers the default, and that set has broadened over time —
+# which failed CI on every pull request, including one that changed a single
+# Markdown file. These are the rules the project was already passing under:
+# pycodestyle's import/statement/syntax errors plus all of pyflakes.
+select = ["E4", "E7", "E9", "F"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 

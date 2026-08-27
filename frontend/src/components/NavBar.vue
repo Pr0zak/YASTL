@@ -2,6 +2,7 @@
 /**
  * NavBar - Top navigation bar with search, view mode toggle, and action buttons.
  */
+import { ref, watch, onBeforeUnmount } from 'vue';
 import { ICONS } from '../icons.js';
 
 defineProps({
@@ -40,6 +41,47 @@ function statusDotClass(status) {
 function onSearchInput(e) {
     emit('searchInput', e);
 }
+
+// The navbar carried ten icon buttons in a fixed 56px row with no shrink and
+// no wrap. On a 412px phone the cluster ran 62px past the viewport edge, and
+// 114px past it at 360px, so the last buttons were unreachable. These are the
+// ones that move into an overflow menu below 769px; the view toggle and the
+// search box stay out, because they are what a phone actually uses.
+const SECONDARY_ACTIONS = [
+    { key: 'scan', label: 'Check for new files', icon: 'refresh', event: 'quickScan' },
+    { key: 'queue', label: 'Print queue', icon: 'queue', event: 'openQueue' },
+    { key: 'filament', label: 'Filament inventory', icon: 'spool', event: 'openFilament' },
+    { key: 'import', label: 'Import models', icon: 'upload', event: 'openImportModal' },
+    { key: 'select', label: 'Selection mode', icon: 'select', event: 'toggleSelectionMode' },
+    { key: 'settings', label: 'Settings', icon: 'settings', event: 'openSettings' },
+];
+
+const navOverflowOpen = ref(false);
+const navOverflowEl = ref(null);
+
+function fireAction(a) {
+    emit(a.event);
+    navOverflowOpen.value = false;
+}
+
+function onNavOutside(e) {
+    if (navOverflowEl.value && !navOverflowEl.value.contains(e.target)) navOverflowOpen.value = false;
+}
+function onNavKey(e) {
+    if (e.key === 'Escape' && navOverflowOpen.value) {
+        e.stopPropagation();
+        navOverflowOpen.value = false;
+    }
+}
+watch(navOverflowOpen, (open) => {
+    const m = open ? 'addEventListener' : 'removeEventListener';
+    document[m]('pointerdown', onNavOutside, true);
+    document[m]('keydown', onNavKey, true);
+});
+onBeforeUnmount(() => {
+    document.removeEventListener('pointerdown', onNavOutside, true);
+    document.removeEventListener('keydown', onNavKey, true);
+});
 </script>
 
 <template>
@@ -110,19 +152,34 @@ function onSearchInput(e) {
                     <span class="status-dot" :class="statusDotClass(systemStatus.health)"></span>
                 </button>
             </div>
-            <button class="btn-icon" @click="emit('quickScan')" :disabled="scanStatus.scanning"
-                    :title="scanStatus.scanning ? 'Scan in progress...' : 'Check for new files'">
-                <span v-html="ICONS.refresh"></span>
+            <!-- Inline from 769px up, where the row has room for them. -->
+            <button v-for="a in SECONDARY_ACTIONS" :key="a.key"
+                    class="btn-icon nav-action-wide"
+                    :class="{ active: a.key === 'select' && selectionMode }"
+                    :disabled="a.key === 'scan' && scanStatus.scanning"
+                    @click="emit(a.event)"
+                    :title="a.key === 'scan' && scanStatus.scanning ? 'Scan in progress...' : a.label">
+                <span v-html="ICONS[a.icon]"></span>
             </button>
-            <button class="btn-icon" @click="emit('openQueue')" title="Print Queue" v-html="ICONS.queue"></button>
-            <button class="btn-icon" @click="emit('openFilament')" title="Filament Inventory" v-html="ICONS.spool"></button>
-            <button class="btn-icon" @click="emit('openImportModal')" title="Import Models">
-                <span v-html="ICONS.upload"></span>
-            </button>
-            <button class="btn-icon" :class="{ active: selectionMode }" @click="emit('toggleSelectionMode')" title="Selection mode">
-                <span v-html="ICONS.select"></span>
-            </button>
-            <button class="btn-icon" @click="emit('openSettings')" title="Settings" v-html="ICONS.settings"></button>
+
+            <!-- Below 769px the same actions live behind one button. -->
+            <div class="nav-overflow" ref="navOverflowEl">
+                <button class="btn-icon nav-overflow-btn" :class="{ active: navOverflowOpen }"
+                        @click="navOverflowOpen = !navOverflowOpen"
+                        :aria-expanded="String(navOverflowOpen)" title="More actions">
+                    <span v-html="ICONS.dots"></span>
+                </button>
+                <div v-if="navOverflowOpen" class="nav-overflow-menu">
+                    <button v-for="a in SECONDARY_ACTIONS" :key="a.key"
+                            class="nav-overflow-item"
+                            :class="{ active: a.key === 'select' && selectionMode }"
+                            :disabled="a.key === 'scan' && scanStatus.scanning"
+                            @click="fireAction(a)">
+                        <span class="nav-overflow-icon" v-html="ICONS[a.icon]"></span>
+                        <span>{{ a.key === 'scan' && scanStatus.scanning ? 'Scan in progress…' : a.label }}</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </nav>
 </template>

@@ -226,6 +226,8 @@ const isEditingLicense = ref(false);
 
 // Detail panel tab state
 const detailTab = ref('overview');
+// Sort/save/clear cluster in the breadcrumb bar, collapsed on narrow screens.
+const crumbActionsOpen = ref(false);
 const showFileDetails = ref(false);
 
 // Category expansion state (by category id)
@@ -2280,8 +2282,15 @@ const { pickNextCollectionColor } = collectionsComposable;
                 </a>
             </template>
         </div>
-        <!-- Right side: result count + actions -->
-        <div class="breadcrumb-actions">
+        <!-- Right side: result count + actions. Collapsed behind one button
+             below 769px, where the cluster used to overflow the viewport and
+             squeeze the filter trail beside it down to zero width. -->
+        <button class="btn-icon crumb-overflow-btn" :class="{ active: crumbActionsOpen }"
+                @click="crumbActionsOpen = !crumbActionsOpen"
+                :aria-expanded="String(crumbActionsOpen)" title="Sort and actions">
+            <span v-html="ICONS.dots"></span>
+        </button>
+        <div class="breadcrumb-actions" :class="{ 'crumb-actions-open': crumbActionsOpen }">
             <button v-if="ai.enabled && searchQuery.trim()" class="btn btn-sm"
                     :class="searchMode === 'semantic' ? 'btn-primary' : 'btn-ghost'"
                     @click="toggleSearchMode"

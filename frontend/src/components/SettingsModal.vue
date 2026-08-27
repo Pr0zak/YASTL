@@ -92,6 +92,17 @@ function timeAgo(dateStr) {
 </script>
 
 <template>
+    <!--
+        eslint-disable vue/no-mutating-props
+
+        `ai` and `bedConfig` are not value props — they are the reactive
+        settings objects created by useSettings(), handed to this modal because
+        it is their editor. Binding v-model straight to their fields is the
+        intended design, the same way a store slice is edited in place. The rule
+        cannot tell that apart from an accidental write to a value prop, so it
+        is declared off here rather than routed through nine emit handlers that
+        would only copy values back into the same object.
+    -->
     <div v-if="showSettings" class="detail-overlay" @click.self="emit('close')">
         <div class="settings-panel">
             <!-- Header -->
