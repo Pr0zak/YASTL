@@ -196,45 +196,94 @@ async def serve_model_glb(request: Request, model_id: int):
 
     cache_path = os.path.join(cache_dir, preview_cache_name(model_id))
 
-    if os.path.exists(cache_path):
-        src_mtime = os.path.getmtime(file_path)
-        cache_mtime = os.path.getmtime(cache_path)
-        if src_mtime <= cache_mtime:
-            return FileResponse(
-                path=cache_path,
-                media_type="model/gltf-binary",
-                filename=f"{os.path.splitext(model['name'])[0]}.glb",
-            )
+    src_mtime = os.path.getmtime(file_path)
 
-    # Build a decimated preview GLB in the worker pool (OOM-protected, off
-    # the event loop). Large meshes are simplified so the client parse is
-    # trivial and the viewer never blocks; small meshes pass through.
-    # Recycle the worker after a big-mesh conversion so its memory doesn't
-    # linger for the next request (small meshes don't need it).
-    heavy = (model.get("face_count") or 0) > 200_000
-    try:
-        glb_data = await run_cpu_job(build_preview_glb, file_path, recycle=heavy)
-    except Exception as e:
-        logger.warning(
-            "GLB conversion failed for model %d (%s): %s", model_id, file_path, e
+    def _hit() -> FileResponse:
+        return FileResponse(
+            path=cache_path,
+            media_type="model/gltf-binary",
+            filename=f"{os.path.splitext(model['name'])[0]}.glb",
         )
+
+    if os.path.exists(cache_path) and src_mtime <= os.path.getmtime(cache_path):
+        return _hit()
+
+    # A model that cannot be converted must not be retried on every open. The
+    # conversion runs on a single-worker pool, so one unconvertible file was a
+    # repeatable denial of that worker: 95 seconds of work, every time, for a
+    # guaranteed failure — while every other preview and thumbnail job queued
+    # behind it. The marker is invalidated by the source file changing, so a
+    # repaired file converts again on its next open.
+    fail_path = cache_path + ".failed"
+    if os.path.exists(fail_path) and src_mtime <= os.path.getmtime(fail_path):
         raise HTTPException(
             status_code=422,
-            detail="Could not convert model to GLB for preview",
+            detail="Could not convert model to GLB for preview (cached failure)",
         )
 
-    # Write to cache
-    with open(cache_path, "wb") as f:
-        f.write(glb_data)
+    # Concurrent opens of the same model must share one conversion. Without
+    # this, arrowing through a folder queued a separate multi-minute job per
+    # request onto the one worker, and the client that had already navigated
+    # away still owned a place in that queue.
+    lock = _glb_locks.setdefault(model_id, asyncio.Lock())
+    try:
+        async with lock:
+            # Another request may have finished the work while we waited.
+            if os.path.exists(cache_path) and src_mtime <= os.path.getmtime(cache_path):
+                return _hit()
+            if os.path.exists(fail_path) and src_mtime <= os.path.getmtime(fail_path):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Could not convert model to GLB for preview (cached failure)",
+                )
+
+            # Build a decimated preview GLB in the worker pool (OOM-protected,
+            # off the event loop). Large meshes are simplified so the client
+            # parse is trivial and the viewer never blocks; small meshes pass
+            # through. Recycle the worker after a big-mesh conversion so its
+            # memory doesn't linger for the next request.
+            #
+            # face_count is NULL for exactly the files whose metadata extraction
+            # already failed — the ones most likely to be heavy or broken — so
+            # treat an unknown count as heavy rather than as zero.
+            face_count = model.get("face_count")
+            heavy = face_count is None or face_count > 200_000
+            try:
+                glb_data = await run_cpu_job(build_preview_glb, file_path, recycle=heavy)
+            except Exception as e:
+                logger.warning(
+                    "GLB conversion failed for model %d (%s): %s", model_id, file_path, e
+                )
+                try:
+                    with open(fail_path, "wb"):
+                        pass
+                except OSError:
+                    logger.debug("Could not record GLB failure marker for %d", model_id)
+                raise HTTPException(
+                    status_code=422,
+                    detail="Could not convert model to GLB for preview",
+                )
+
+            # Write to cache before releasing, so a waiter finds the result
+            # rather than starting the same conversion again.
+            with open(cache_path, "wb") as f:
+                f.write(glb_data)
+    finally:
+        # Only the last holder clears the entry; a waiter that is still queued
+        # re-creates it, which is harmless because the cache check above will
+        # short-circuit it.
+        if not lock.locked():
+            _glb_locks.pop(model_id, None)
 
     # Evict old cache entries if over size limit
     _evict_glb_cache(cache_dir)
 
-    return FileResponse(
-        path=cache_path,
-        media_type="model/gltf-binary",
-        filename=f"{os.path.splitext(model['name'])[0]}.glb",
-    )
+    return _hit()
+
+
+# One in-flight conversion per model. Entries are removed as each conversion
+# settles, so this never grows beyond the number of models being converted.
+_glb_locks: dict[int, "asyncio.Lock"] = {}
 
 
 # ---------------------------------------------------------------------------
