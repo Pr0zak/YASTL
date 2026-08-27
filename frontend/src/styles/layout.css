@@ -966,3 +966,15 @@
     font-size: 0.82rem;
     color: var(--text-muted);
 }
+
+/* Collection colour. Present on every row at a fixed size, unlike the old
+   marker that was a 20px thumbnail or a 10px dot depending on whether the
+   collection still had manual membership rows — which moved the name's left
+   edge from row to row and told the reader nothing. */
+.sb-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid var(--dot-border);
+}

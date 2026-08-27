@@ -55,38 +55,47 @@ function onKeydown(e) {
 </script>
 
 <template>
-    <div v-if="open" class="facet-overlay" @click.self="emit('close')" @keydown="onKeydown">
-        <div class="facet-panel" role="dialog" :aria-label="title">
-            <div class="facet-head">
-                <span class="facet-title">{{ title }}</span>
-                <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
-            </div>
+    <!--
+        Teleported to the body. The picker is declared inside the sidebar, and
+        `.sidebar` is position: sticky with overflow: auto — sticky always
+        creates a stacking context, so a z-index of 1200 inside it still loses
+        to the model grid, and the overflow clips a fixed overlay to the
+        sidebar's box. Rendered here the overlay covers the page as intended.
+    -->
+    <Teleport to="body">
+        <div v-if="open" class="facet-overlay" @click.self="emit('close')" @keydown="onKeydown">
+            <div class="facet-panel" role="dialog" :aria-label="title">
+                <div class="facet-head">
+                    <span class="facet-title">{{ title }}</span>
+                    <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
+                </div>
 
-            <div class="facet-search">
-                <span v-html="ICONS.search"></span>
-                <input ref="inputEl" type="text" v-model="query"
-                       :placeholder="`Search ${items.length.toLocaleString()}…`"
-                       :aria-label="`Search ${title}`" @keydown="onKeydown">
-            </div>
+                <div class="facet-search">
+                    <span v-html="ICONS.search"></span>
+                    <input ref="inputEl" type="text" v-model="query"
+                           :placeholder="`Search ${items.length.toLocaleString()}…`"
+                           :aria-label="`Search ${title}`" @keydown="onKeydown">
+                </div>
 
-            <div v-if="selected.length" class="facet-selected">
-                <span>{{ selected.length }} selected</span>
-                <button class="btn btn-sm btn-ghost" @click="emit('clear')">Clear</button>
-            </div>
+                <div v-if="selected.length" class="facet-selected">
+                    <span>{{ selected.length }} selected</span>
+                    <button class="btn btn-sm btn-ghost" @click="emit('clear')">Clear</button>
+                </div>
 
-            <div class="facet-list">
-                <button v-for="item in matches" :key="item.id ?? item.name"
-                        class="facet-item" :class="{ on: selectedSet.has(item.id ?? item.name) }"
-                        :style="item.depth ? { paddingLeft: (14 + item.depth * 14) + 'px' } : null"
-                        @click="emit('pick', item)">
-                    <span class="facet-item-name">{{ item.name }}</span>
-                    <span v-if="item.path && item.depth" class="facet-item-path">{{ item.path }}</span>
-                    <span v-if="item.count != null" class="facet-item-count">{{ item.count.toLocaleString() }}</span>
-                </button>
-                <div v-if="!matches.length" class="facet-empty">
-                    Nothing matches “{{ query }}”.
+                <div class="facet-list">
+                    <button v-for="item in matches" :key="item.id ?? item.name"
+                            class="facet-item" :class="{ on: selectedSet.has(item.id ?? item.name) }"
+                            :style="item.depth ? { paddingLeft: (14 + item.depth * 14) + 'px' } : null"
+                            @click="emit('pick', item)">
+                        <span class="facet-item-name">{{ item.name }}</span>
+                        <span v-if="item.path && item.depth" class="facet-item-path">{{ item.path }}</span>
+                        <span v-if="item.count != null" class="facet-item-count">{{ item.count.toLocaleString() }}</span>
+                    </button>
+                    <div v-if="!matches.length" class="facet-empty">
+                        Nothing matches “{{ query }}”.
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </Teleport>
 </template>

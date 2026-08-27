@@ -9,10 +9,13 @@
  * nodes behind a hardcoded three-level unroll, and 77% of the column was
  * padding from touch-target floors applied at desktop widths.
  *
- * Collections no longer carry a cover thumbnail or a colour dot. That marker
- * looked arbitrary because it was: a collection got a thumbnail only when it
- * still had rows in collection_models and a dot when it did not, so it encoded
- * leftover manual membership rather than anything about the collection.
+ * Collections keep their colour but lose the cover thumbnail. The old marker
+ * looked arbitrary because it was conditional: a collection got a 20px
+ * thumbnail only when it still had rows in collection_models and a 10px dot
+ * when it did not, so the marker encoded leftover manual membership rather
+ * than anything about the collection, and the name's left edge moved by 10px
+ * from row to row. Every row now carries the same dot in the collection's own
+ * colour, which is the part that was actually doing work.
  */
 import { computed, ref } from 'vue';
 import { ICONS } from '../icons.js';
@@ -220,6 +223,8 @@ function onPick(item) {
                            @vue:mounted="$event.el.focus()">
                 </template>
                 <template v-else>
+                    <span class="sb-dot" :style="{ background: col.color || 'var(--text-muted)' }"
+                          aria-hidden="true"></span>
                     <span class="sb-row-name" @dblclick.stop="emit('startEditCollection', col)">{{ col.name }}</span>
                     <span class="sb-num">{{ col.model_count }}</span>
                     <span class="sb-row-tools">

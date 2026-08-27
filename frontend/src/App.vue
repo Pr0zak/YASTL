@@ -292,10 +292,12 @@ const statsData = ref(null);
 // which match nothing in this library; these come from the real histogram.
 const formatCounts = ref([]);
 
-/** Total active models in the library, for the "of N" in the sidebar. */
-const libraryTotal = computed(() =>
-    formatCounts.value.reduce((sum, f) => sum + (f.count || 0), 0)
-);
+/** What an unfiltered view returns, for "All models" and the "of N" beside a
+ *  filtered count. Not the raw model count: the grid groups zip archives into
+ *  one card, so summing the format histogram reported 2,444 where the grid
+ *  showed 1,241 for the same view. Captured from the last unfiltered fetch so
+ *  the two numbers are the same number. */
+const libraryTotal = ref(0);
 
 async function loadFormatCounts() {
     try {
@@ -664,6 +666,11 @@ async function fetchModels(append = false) {
             models.value = data.models || [];
         }
         pagination.total = data.total || 0;
+        // An unfiltered result IS the library total, counted the same way the
+        // grid counts — grouped zips included.
+        if (!hasActiveFilters.value && !searchQuery.value.trim()) {
+            libraryTotal.value = pagination.total;
+        }
     } catch (err) {
         if (myGen !== fetchGeneration) return;
         showToast('Failed to load models', 'error');
