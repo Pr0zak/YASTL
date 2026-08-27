@@ -3,7 +3,7 @@
  * DetailPanel - Model detail overlay with 3D viewer and tabbed info panel.
  * Tabs: Info (description, source, file summary, categories), Tags, More (collections, duplicates).
  */
-import { computed, ref, reactive, watch } from 'vue';
+import { computed, ref, reactive, watch, onBeforeUnmount } from 'vue';
 import { ICONS } from '../icons.js';
 import { formatFileSize, formatNumber, formatDimensions, formatDate } from '../search.js';
 import { parseTag, tagColorStyle } from '../tags.js';
@@ -56,7 +56,7 @@ const props = defineProps({
     variantPickerOpen: { type: Boolean, default: false },
     variantQuery: { type: String, default: '' },
     variantSearching: { type: Boolean, default: false },
-    detailTab: { type: String, default: 'info' },
+    detailTab: { type: String, default: 'overview' },
     showFileDetails: { type: Boolean, default: false },
     bedConfig: { type: Object, default: () => ({ enabled: false, width: 256, depth: 256, height: 256, shape: 'rectangular' }) },
     bedVisible: { type: Boolean, default: false },
@@ -127,6 +127,50 @@ watch(() => props.selectedModel?.id, () => {
     if (isCoarsePointer) viewerInteractive.value = false;
 });
 
+// Heavy sections start collapsed. The panel used to render every one of them
+// inline, which is what made the old More tab a 1358px wall of unrelated
+// material; a count in the header tells you whether opening one is worth it.
+const openSections = reactive({ docs: false, plates: false, variants: false, related: false });
+function toggleSection(key) {
+    openSections[key] = !openSections[key];
+}
+// Collapse everything again when a different model opens, so a section left
+// open does not silently expand on the next twenty models.
+watch(() => props.selectedModel?.id, () => {
+    for (const k of Object.keys(openSections)) openSections[k] = false;
+    overflowOpen.value = false;
+    cameraView.value = 'iso';
+});
+
+// Situational viewer controls live behind one overflow button so the toolbar
+// fits a phone. Nine controls in a row needed 758px of a 394px viewport.
+const overflowOpen = ref(false);
+const overflowEl = ref(null);
+// Which camera angle the select is showing. Reset View and a new model both
+// put the camera back to isometric, so the control follows.
+const cameraView = ref('iso');
+
+function onOverflowOutside(e) {
+    if (overflowEl.value && !overflowEl.value.contains(e.target)) overflowOpen.value = false;
+}
+// Escape closes the menu rather than the panel — the panel's own Escape is the
+// global handler, and it would otherwise tear everything down from one keypress.
+function onOverflowKey(e) {
+    if (e.key === 'Escape' && overflowOpen.value) {
+        e.stopPropagation();
+        overflowOpen.value = false;
+    }
+}
+watch(overflowOpen, (open) => {
+    const m = open ? 'addEventListener' : 'removeEventListener';
+    document[m]('pointerdown', onOverflowOutside, true);
+    document[m]('keydown', onOverflowKey, true);
+});
+onBeforeUnmount(() => {
+    document.removeEventListener('pointerdown', onOverflowOutside, true);
+    document.removeEventListener('keydown', onOverflowKey, true);
+});
+
 // Log-with-details form state (Print History)
 const showPrintForm = ref(false);
 const printForm = reactive({ quantity: 1, location: '', filament_id: null, grams_used: null });
@@ -141,6 +185,20 @@ function submitPrintForm() {
     emit('logPrint', { ...printForm });
     resetPrintForm();
 }
+
+const docsCount = computed(() => {
+    const d = props.modelDocs;
+    if (!d) return '';
+    const n = (d.images?.length || 0) + (d.docs?.length || 0);
+    return n || '';
+});
+
+// Badge on the Organise tab: how much filing this model already carries.
+const organiseCount = computed(() => {
+    const m = props.selectedModel;
+    if (!m) return 0;
+    return (m.tags?.length || 0) + (m.collections?.length || 0);
+});
 
 function viewerThumb(model) {
     if (model && model.thumbnail_path) return `/thumbnails/${model.thumbnail_path}`;
@@ -232,25 +290,32 @@ function formatClass(fmt) {
     <div v-if="showDetail && selectedModel" class="detail-overlay" @click.self="emit('close')">
         <div class="detail-panel">
             <!-- Header -->
+            <!--
+                Header. The old row spent ~296px of a 390px screen on chrome —
+                two 40px chevrons, a counter, two icon buttons and a close —
+                which left the model name so little room it was hard-clipped
+                mid-word with no ellipsis, and pushed the rename control off
+                the edge entirely. The name now leads, with the facts that
+                identify it underneath, and the paging controls collapse into
+                one pill.
+            -->
             <div class="detail-header">
-                <div class="detail-nav" v-if="navTotal > 1">
-                    <button class="btn-icon" :disabled="navIndex <= 0"
-                            @click="emit('navigate', -1)" title="Previous model (←)">
-                        <span v-html="ICONS.chevron" style="transform:rotate(90deg);display:inline-flex"></span>
-                    </button>
-                    <span class="detail-nav-pos">{{ navIndex + 1 }} / {{ navTotal }}</span>
-                    <button class="btn-icon" :disabled="navIndex >= navTotal - 1"
-                            @click="emit('navigate', 1)" title="Next model (→)">
-                        <span v-html="ICONS.chevron" style="transform:rotate(-90deg);display:inline-flex"></span>
-                    </button>
-                </div>
                 <div class="detail-title">
                     <template v-if="!isEditingName">
-                        <span @dblclick="emit('startEditName')" title="Double-click to edit">
-                            {{ selectedModel.name }}
-                        </span>
+                        <div class="detail-title-block">
+                            <span class="detail-title-text" @click="emit('startEditName')" title="Rename">
+                                {{ selectedModel.name }}
+                            </span>
+                            <div class="detail-title-meta">
+                                <span class="format-badge" :class="formatClass(selectedModel.file_format)">{{ selectedModel.file_format }}</span>
+                                <span>{{ formatFileSize(selectedModel.file_size) }}</span>
+                                <span v-if="selectedModel.dimensions_x">
+                                    · {{ Math.round(selectedModel.dimensions_x) }} × {{ Math.round(selectedModel.dimensions_y) }} × {{ Math.round(selectedModel.dimensions_z) }} mm
+                                </span>
+                            </div>
+                        </div>
                         <button class="btn-icon btn-edit-inline" @click="emit('startEditName')" title="Rename model">
-                            <span v-html="ICONS.edit || '&#9998;'"></span>
+                            <span v-html="ICONS.edit"></span>
                         </button>
                     </template>
                     <template v-else>
@@ -259,19 +324,28 @@ function formatClass(fmt) {
                                @input="emit('update:editName', $event.target.value)"
                                @blur="emit('saveName')"
                                @keydown.enter="emit('saveName')"
-                               @keydown.escape="emit('update:isEditingName', false)"
+                               @keydown.escape.stop="emit('update:isEditingName', false)"
                                @vue:mounted="$event.el.focus()"
                                style="flex:1;min-width:0;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:1.1rem;font-weight:600">
                     </template>
                 </div>
-                <button class="btn btn-sm btn-ghost" :class="{ 'text-danger': selectedModel.is_favorite }"
-                        @click="emit('toggleFavorite', selectedModel, $event)" title="Toggle favorite">
+
+                <button class="btn btn-sm btn-ghost detail-fav" :class="{ 'text-danger': selectedModel.is_favorite }"
+                        @click="emit('toggleFavorite', selectedModel, $event)" title="Toggle favourite">
                     <span v-html="selectedModel.is_favorite ? ICONS.heartFilled : ICONS.heart"></span>
                 </button>
-                <button class="btn btn-sm btn-ghost"
-                        @click="emit('openAddToCollection', selectedModel.id)" title="Add to collection">
-                    <span v-html="ICONS.collection"></span>
-                </button>
+
+                <div class="detail-nav" v-if="navTotal > 1">
+                    <button class="btn-icon" :disabled="navIndex <= 0"
+                            @click="emit('navigate', -1)" :title="'Previous model (←) · ' + (navIndex + 1) + ' of ' + navTotal">
+                        <span v-html="ICONS.chevron" style="transform:rotate(180deg);display:inline-flex"></span>
+                    </button>
+                    <button class="btn-icon" :disabled="navIndex >= navTotal - 1"
+                            @click="emit('navigate', 1)" :title="'Next model (→) · ' + (navIndex + 1) + ' of ' + navTotal">
+                        <span v-html="ICONS.chevron" style="display:inline-flex"></span>
+                    </button>
+                </div>
+
                 <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
             </div>
 
@@ -319,12 +393,28 @@ function formatClass(fmt) {
                             <span class="viewer-error-reason">{{ selectedModel.error_reason || 'This model failed to process' }}</span>
                         </div>
                     </div>
-                    <!-- Viewer toolbar -->
+                    <!--
+                        Viewer toolbar: three verbs plus an overflow.
+
+                        The previous row put nine controls at equal weight in
+                        758px of width against a 394px phone viewport, with the
+                        scrollbar hidden, so half of them were invisible and
+                        unreachable. It also mixed four labelling conventions —
+                        "Reset View" named an action, "Persp" named the current
+                        state, "Measure" named the mode you would enter, and the
+                        circular arrow had no label at all. What stays out here
+                        is what you touch on nearly every model; what moves into
+                        the menu is situational.
+                    -->
                     <div class="viewer-toolbar">
-                        <button class="btn" @click="emit('resetView')">Reset View</button>
-                        <select class="btn viewer-view-select" title="Camera angle"
-                                @change="emit('setView', $event.target.value); $event.target.selectedIndex = 0">
-                            <option value="" disabled selected>View</option>
+                        <button class="btn viewer-tool" @click="cameraView = 'iso'; emit('resetView')"
+                                title="Point the camera back at the model">
+                            <span v-html="ICONS.refresh"></span> Reset
+                        </button>
+
+                        <select class="btn viewer-tool viewer-view-select" title="Camera angle"
+                                :value="cameraView"
+                                @change="cameraView = $event.target.value; emit('setView', cameraView)">
                             <option value="iso">Isometric</option>
                             <option value="front">Front</option>
                             <option value="back">Back</option>
@@ -333,13 +423,10 @@ function formatClass(fmt) {
                             <option value="top">Top</option>
                             <option value="bottom">Bottom</option>
                         </select>
-                        <button class="btn" :class="{ 'btn-active': viewerOrtho }"
-                                @click="emit('toggleOrtho')"
-                                :title="viewerOrtho ? 'Orthographic (click for perspective)' : 'Perspective (click for orthographic)'">
-                            {{ viewerOrtho ? 'Ortho' : 'Persp' }}
-                        </button>
-                        <select class="btn viewer-view-select" title="Render mode"
-                                :class="{ 'btn-active': viewerRenderMode !== 'shaded' }"
+
+                        <!-- Projection and shading are one question: how is this drawn. -->
+                        <select class="btn viewer-tool viewer-view-select" title="How the model is drawn"
+                                :class="{ 'btn-active': viewerRenderMode !== 'shaded' || viewerOrtho }"
                                 :value="viewerRenderMode"
                                 @change="emit('setRenderMode', $event.target.value)">
                             <option value="shaded">Shaded</option>
@@ -347,34 +434,96 @@ function formatClass(fmt) {
                             <option value="normals">Normals</option>
                             <option value="xray">X-ray</option>
                         </select>
-                        <button class="btn" :class="{ 'btn-active': viewerMeasuring }"
+
+                        <!-- Shown from 769px up, where the row has room; the
+                             same three live in the overflow menu below 769px. -->
+                        <button class="btn viewer-tool viewer-tool-wide" :class="{ 'btn-active': viewerMeasuring }"
                                 @click="emit('toggleMeasuring')"
-                                title="Measure: click two points on the model for a distance">
-                            {{ viewerMeasuredMm != null ? (viewerMeasuredMm.toFixed(1) + ' mm') : 'Measure' }}
+                                title="Tap two points on the model for a distance">
+                            {{ viewerMeasuredMm != null ? viewerMeasuredMm.toFixed(1) + ' mm' : 'Measure' }}
                         </button>
-                        <button class="btn" :class="{ 'btn-active': viewerClipping }"
+                        <button class="btn viewer-tool viewer-tool-wide" :class="{ 'btn-active': viewerClipping }"
                                 @click="emit('toggleClipping')"
-                                title="Cross-section: slice the model to inspect the interior">
-                            Clip
+                                title="Slice the model open to inspect the interior">
+                            Slice
                         </button>
                         <input v-if="viewerClipping" type="range" min="0" max="1" step="0.01"
-                               class="viewer-clip-slider" :value="viewerClipPos"
+                               class="viewer-clip-slider viewer-tool-wide" :value="viewerClipPos"
                                @input="emit('setClipPosition', parseFloat($event.target.value))"
-                               title="Cross-section height">
-                        <button v-if="viewerDecimated && !viewerLoading" class="btn"
-                                @click="emit('loadFullResolution')"
-                                title="Showing a simplified preview — load the full-detail mesh">
-                            Full resolution
-                        </button>
-                        <button class="btn" :class="{ 'btn-active': bedVisible }"
+                               title="Cross-section height" aria-label="Cross-section height">
+                        <button class="btn viewer-tool viewer-tool-wide" :class="{ 'btn-active': bedVisible }"
                                 @click="emit('toggleBed')"
-                                :title="bedConfig.enabled ? bedConfig.width + '×' + bedConfig.depth + '×' + bedConfig.height + 'mm' : 'Enable print bed in Settings first'">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                                :title="bedConfig.enabled ? bedConfig.width + '×' + bedConfig.depth + '×' + bedConfig.height + 'mm' : 'Enable the print bed in Settings first'">
                             Bed
                         </button>
-                        <button class="btn" @click="emit('regenerateThumbnail')" title="Regenerate thumbnail">
-                            <span v-html="ICONS.refresh"></span>
-                        </button>
+
+                        <div class="viewer-overflow" ref="overflowEl">
+                            <button class="btn viewer-tool viewer-overflow-btn"
+                                    :class="{ 'btn-active': overflowOpen || viewerMeasuring || viewerClipping || bedVisible }"
+                                    @click="overflowOpen = !overflowOpen"
+                                    :aria-expanded="String(overflowOpen)" title="More viewer tools">
+                                <span v-html="ICONS.dots || '&#8943;'"></span>
+                            </button>
+
+                            <div v-if="overflowOpen" class="viewer-overflow-menu">
+                                <button class="viewer-overflow-item" :class="{ active: viewerOrtho }"
+                                        @click="emit('toggleOrtho')">
+                                    <span>Flat (orthographic) view</span>
+                                    <span class="viewer-overflow-state">{{ viewerOrtho ? 'On' : 'Off' }}</span>
+                                </button>
+
+                                <button class="viewer-overflow-item viewer-overflow-narrow" :class="{ active: viewerMeasuring }"
+                                        @click="emit('toggleMeasuring')">
+                                    <span>Measure a distance</span>
+                                    <span class="viewer-overflow-state">
+                                        {{ viewerMeasuredMm != null ? viewerMeasuredMm.toFixed(1) + ' mm' : (viewerMeasuring ? 'Tap two points' : '') }}
+                                    </span>
+                                </button>
+
+                                <button class="viewer-overflow-item viewer-overflow-narrow" :class="{ active: viewerClipping }"
+                                        @click="emit('toggleClipping')">
+                                    <span>Slice it open</span>
+                                    <span class="viewer-overflow-state">{{ viewerClipping ? 'On' : 'Off' }}</span>
+                                </button>
+                                <div v-if="viewerClipping" class="viewer-overflow-slider viewer-overflow-narrow">
+                                    <input type="range" min="0" max="1" step="0.01"
+                                           class="viewer-clip-slider" :value="viewerClipPos"
+                                           @input="emit('setClipPosition', parseFloat($event.target.value))"
+                                           title="Cross-section height"
+                                           aria-label="Cross-section height">
+                                </div>
+
+                                <button class="viewer-overflow-item viewer-overflow-narrow" :class="{ active: bedVisible }"
+                                        @click="emit('toggleBed')"
+                                        :title="bedConfig.enabled ? bedConfig.width + '×' + bedConfig.depth + '×' + bedConfig.height + 'mm' : 'Enable the print bed in Settings first'">
+                                    <span>Show my print bed</span>
+                                    <span class="viewer-overflow-state"
+                                          :class="bedVisible ? (bedFits ? 'text-success' : 'text-danger') : ''">
+                                        {{ bedVisible ? (bedFits ? 'Fits' : 'Too large') : (bedConfig.enabled ? 'Off' : 'Not set up') }}
+                                    </span>
+                                </button>
+
+                                <button v-if="viewerDecimated && !viewerLoading" class="viewer-overflow-item"
+                                        @click="emit('loadFullResolution')">
+                                    <span>Load full detail</span>
+                                    <span class="viewer-overflow-state">simplified now</span>
+                                </button>
+
+                                <!-- This never touched the 3D view; it redraws the grid card. -->
+                                <button class="viewer-overflow-item" @click="emit('regenerateThumbnail')">
+                                    <span>Redo the card thumbnail</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- The measurement has to be readable while the menu is
+                             closed — taking it is what closes the menu. -->
+                        <span v-if="viewerMeasuredMm != null" class="bed-status viewer-measure-readout">
+                            {{ viewerMeasuredMm.toFixed(1) }} mm
+                        </span>
+
+                        <!-- Bed verdict stays visible on the toolbar: it answers
+                             "will this print" without opening anything. -->
                         <span v-if="bedVisible" class="bed-status" :class="bedFits ? 'bed-fits' : 'bed-too-large'">
                             {{ bedFits ? 'Fits' : 'Too large' }}
                         </span>
@@ -385,33 +534,54 @@ function formatClass(fmt) {
                 <div class="detail-info">
                     <!-- Tab bar -->
                     <div class="detail-tabs">
-                        <button class="detail-tab" :class="{ active: detailTab === 'info' }"
-                                @click="emit('update:detailTab', 'info')">Info</button>
-                        <button class="detail-tab" :class="{ active: detailTab === 'tags' }"
-                                @click="emit('update:detailTab', 'tags')">Tags</button>
-                        <button class="detail-tab" :class="{ active: detailTab === 'more' }"
-                                @click="emit('update:detailTab', 'more')">More</button>
+                        <button class="detail-tab" :class="{ active: detailTab === 'overview' }"
+                                @click="emit('update:detailTab', 'overview')">Overview</button>
+                        <button class="detail-tab" :class="{ active: detailTab === 'organise' }"
+                                @click="emit('update:detailTab', 'organise')">
+                            Organise
+                            <span v-if="organiseCount" class="detail-tab-count">{{ organiseCount }}</span>
+                        </button>
                     </div>
 
                     <!-- Tab content (scrollable) -->
                     <div class="detail-tab-content">
 
-                        <!-- ==================== INFO TAB ==================== -->
-                        <template v-if="detailTab === 'info'">
+                        <!-- ==================== OVERVIEW ==================== -->
+                        <template v-if="detailTab === 'overview'">
+                            <!-- Size first: the fact that decides whether this gets printed. -->
+                            <div class="dims-row" v-if="selectedModel.dimensions_x">
+                                <div class="dim-card">
+                                    <div class="dim-label">Width</div>
+                                    <div class="dim-value">{{ Math.round(selectedModel.dimensions_x) }}<span>mm</span></div>
+                                </div>
+                                <div class="dim-card">
+                                    <div class="dim-label">Depth</div>
+                                    <div class="dim-value">{{ Math.round(selectedModel.dimensions_y) }}<span>mm</span></div>
+                                </div>
+                                <div class="dim-card">
+                                    <div class="dim-label">Height</div>
+                                    <div class="dim-value">{{ Math.round(selectedModel.dimensions_z) }}<span>mm</span></div>
+                                </div>
+                            </div>
+
                             <!-- Description -->
                             <div class="info-section">
                                 <div class="info-section-title">Description</div>
-                                <div v-if="!isEditingDesc"
-                                     @dblclick="emit('startEditDesc')"
-                                     style="cursor:pointer;min-height:36px;font-size:0.85rem;color:var(--text-secondary);padding:4px 0">
-                                    {{ selectedModel.description || 'Double-click to add a description...' }}
+                                <div v-if="!isEditingDesc && selectedModel.description"
+                                     @click="emit('startEditDesc')"
+                                     class="editable-value"
+                                     title="Edit description">
+                                    {{ selectedModel.description }}
                                 </div>
+                                <button v-else-if="!isEditingDesc" class="field-add" @click="emit('startEditDesc')">
+                                    <span v-html="ICONS.edit"></span> Add a description
+                                </button>
                                 <div v-else class="editable-field">
                                     <textarea :value="editDesc"
                                               @input="emit('update:editDesc', $event.target.value)"
                                               rows="3"
                                               @blur="emit('saveDesc')"
-                                              @keydown.escape="emit('update:isEditingDesc', false)"
+                                              @keydown.escape.stop="emit('update:isEditingDesc', false)"
                                               placeholder="Enter description..."
                                               autofocus></textarea>
                                 </div>
@@ -433,10 +603,9 @@ function formatClass(fmt) {
                                             <span v-html="ICONS.edit || '&#9998;'"></span>
                                         </button>
                                     </div>
-                                    <div v-else @dblclick="emit('startEditSourceUrl')"
-                                         style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);padding:4px 0">
-                                        Double-click to add a source URL...
-                                    </div>
+                                    <button v-else class="field-add" @click="emit('startEditSourceUrl')">
+                                        <span v-html="ICONS.edit"></span> Add a source URL
+                                    </button>
                                 </template>
                                 <template v-else>
                                     <div class="editable-field">
@@ -445,7 +614,7 @@ function formatClass(fmt) {
                                                @input="emit('update:editSourceUrl', $event.target.value)"
                                                @blur="emit('saveSourceUrl')"
                                                @keydown.enter="emit('saveSourceUrl')"
-                                               @keydown.escape="emit('update:isEditingSourceUrl', false)"
+                                               @keydown.escape.stop="emit('update:isEditingSourceUrl', false)"
                                                placeholder="https://..."
                                                style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:0.85rem"
                                                autofocus>
@@ -465,10 +634,9 @@ function formatClass(fmt) {
                                             <span v-html="ICONS.edit || '&#9998;'"></span>
                                         </button>
                                     </div>
-                                    <div v-else @dblclick="emit('startEditLicense')"
-                                         style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);padding:4px 0">
-                                        Double-click to add a license…
-                                    </div>
+                                    <button v-else class="field-add" @click="emit('startEditLicense')">
+                                        <span v-html="ICONS.edit"></span> Add a licence
+                                    </button>
                                 </template>
                                 <template v-else>
                                     <input type="text"
@@ -476,7 +644,7 @@ function formatClass(fmt) {
                                            @input="emit('update:editLicense', $event.target.value)"
                                            @blur="emit('saveLicense')"
                                            @keydown.enter="emit('saveLicense')"
-                                           @keydown.escape="emit('update:isEditingLicense', false)"
+                                           @keydown.escape.stop="emit('update:isEditingLicense', false)"
                                            placeholder="e.g. CC-BY 4.0"
                                            style="width:100%;padding:4px 8px;background:var(--bg-input);border:1px solid var(--accent);border-radius:4px;color:var(--text-primary);font-size:0.85rem"
                                            autofocus>
@@ -545,10 +713,177 @@ function formatClass(fmt) {
                                 </div>
                             </div>
 
+
+                            <div class="disclosure" v-if="modelDocs && (modelDocs.readme || (modelDocs.images && modelDocs.images.length) || (modelDocs.docs && modelDocs.docs.length))">
+                                <button class="disclosure-head" @click="toggleSection('docs')"
+                                        :aria-expanded="String(!!openSections.docs)">
+                                    <span class="disclosure-label">Original files</span>
+                                    <span class="disclosure-count">{{ docsCount }}</span>
+                                    <span class="disclosure-chevron" :class="{ open: openSections.docs }" v-html="ICONS.chevron"></span>
+                                </button>
+                                <div v-if="openSections.docs" class="disclosure-body">
+                            <!-- Docs / README / photos -->
+                            <div v-if="modelDocs && (modelDocs.readme || (modelDocs.images && modelDocs.images.length) || (modelDocs.docs && modelDocs.docs.length))"
+                                 class="info-section">
+                                <div class="info-section-title">Docs &amp; Files</div>
+                                <div v-if="modelDocs.readme" class="doc-readme">
+                                    <div class="doc-readme-name">{{ modelDocs.readme.name }}</div>
+                                    <pre class="doc-readme-text">{{ modelDocs.readme.text }}<span v-if="modelDocs.readme.truncated" class="text-muted">
+… (truncated)</span></pre>
+                                </div>
+                                <div v-if="modelDocs.images && modelDocs.images.length" class="doc-image-grid">
+                                    <a v-for="img in modelDocs.images" :key="img.name"
+                                       :href="docFileUrl(img.name)" target="_blank" rel="noopener"
+                                       class="doc-image-thumb" :title="img.name">
+                                        <img :src="docFileUrl(img.name)" :alt="img.name" loading="lazy">
+                                    </a>
+                                </div>
+                                <div v-if="docLinks.length" class="doc-file-links">
+                                    <a v-for="f in docLinks" :key="f.name"
+                                       :href="docFileUrl(f.name)" target="_blank" rel="noopener"
+                                       class="doc-file-link">
+                                        <span v-html="ICONS.folder"></span> {{ f.name }}
+                                    </a>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+
+                            <div class="disclosure" v-if="modelPlates.length > 1">
+                                <button class="disclosure-head" @click="toggleSection('plates')"
+                                        :aria-expanded="String(!!openSections.plates)">
+                                    <span class="disclosure-label">Build plates</span>
+                                    <span class="disclosure-count">{{ modelPlates.length }}</span>
+                                    <span class="disclosure-chevron" :class="{ open: openSections.plates }" v-html="ICONS.chevron"></span>
+                                </button>
+                                <div v-if="openSections.plates" class="disclosure-body">
+                            <!-- Multi-plate 3MF (Bambu/Orca project) -->
+                            <div v-if="modelPlates.length > 1" class="info-section">
+                                <div class="info-section-title">Plates ({{ modelPlates.length }})</div>
+                                <div class="plate-grid">
+                                    <div v-for="pl in modelPlates" :key="pl.index" class="plate-cell"
+                                         :class="{ active: activePlate === pl.index }"
+                                         @click="emit('selectPlate', pl.index)"
+                                         title="Show this plate in the viewer">
+                                        <img v-if="pl.has_thumbnail"
+                                             :src="`/api/models/${selectedModel.id}/plates/${pl.index}/thumbnail`"
+                                             class="plate-thumb" alt="" loading="lazy">
+                                        <div v-else class="plate-thumb plate-thumb-empty"></div>
+                                        <div class="plate-label" :title="pl.name || ('Plate ' + (pl.index + 1))">
+                                            {{ pl.name || ('Plate ' + (pl.index + 1)) }}
+                                            <span v-if="pl.object_ids && pl.object_ids.length" class="text-muted">· {{ pl.object_ids.length }} obj</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+
+                            <div class="disclosure">
+                                <button class="disclosure-head" @click="toggleSection('variants')"
+                                        :aria-expanded="String(!!openSections.variants)">
+                                    <span class="disclosure-label">Variants</span>
+                                    <span class="disclosure-count">{{ (selectedModel.variants || []).length || '' }}</span>
+                                    <span class="disclosure-chevron" :class="{ open: openSections.variants }" v-html="ICONS.chevron"></span>
+                                </button>
+                                <div v-if="openSections.variants" class="disclosure-body">
+                            <!-- Variants -->
+                            <div class="info-section">
+                                <div class="info-section-title" style="display:flex;align-items:center;justify-content:space-between">
+                                    Variants
+                                    <button class="btn-icon" style="width:20px;height:20px"
+                                            @click="emit('update:variantPickerOpen', !variantPickerOpen)"
+                                            :title="variantPickerOpen ? 'Close' : 'Link a variant'">
+                                        <span v-html="variantPickerOpen ? ICONS.close : ICONS.plus"></span>
+                                    </button>
+                                </div>
+
+                                <!-- Linked variants -->
+                                <div v-if="selectedModel.variants && selectedModel.variants.length"
+                                     class="related-models-grid">
+                                    <div v-for="v in selectedModel.variants" :key="v.id"
+                                         class="related-model-item variant-item"
+                                         @click="emit('openVariant', v.id)" :title="v.name">
+                                        <button class="variant-unlink" title="Unlink variant"
+                                                @click.stop="emit('unlinkVariant', v.id)">&times;</button>
+                                        <img v-if="v.thumbnail_path" :src="'/thumbnails/' + v.thumbnail_path"
+                                             class="related-model-thumb" loading="lazy" alt=""
+                                             @error="$event.target.style.display='none'; $event.target.nextElementSibling && ($event.target.nextElementSibling.style.display='flex')">
+                                        <div :style="v.thumbnail_path ? {display:'none'} : {}"
+                                             class="related-model-thumb related-model-thumb-placeholder">
+                                            <span v-html="ICONS.cube"></span>
+                                        </div>
+                                        <div class="related-model-name">{{ v.name }}</div>
+                                    </div>
+                                </div>
+                                <div v-else-if="!variantPickerOpen" class="text-muted text-sm">
+                                    No variants linked. Use + to link a related model.
+                                </div>
+
+                                <!-- Link picker -->
+                                <div v-if="variantPickerOpen" class="variant-picker">
+                                    <input type="text" class="variant-search-input"
+                                           :value="variantQuery" placeholder="Search models to link…"
+                                           @input="emit('update:variantQuery', $event.target.value); emit('searchVariants', $event.target.value)">
+                                    <div v-if="variantSearching" class="text-muted text-sm" style="padding:6px 2px">Searching…</div>
+                                    <div v-else-if="variantCandidates.length" class="variant-candidates">
+                                        <button v-for="c in variantCandidates" :key="c.id"
+                                                class="variant-candidate" @click="emit('linkVariant', c.id)">
+                                            <img v-if="c.thumbnail_path" :src="'/thumbnails/' + c.thumbnail_path"
+                                                 class="variant-candidate-thumb" loading="lazy" alt=""
+                                                 @error="$event.target.style.display='none'">
+                                            <span class="variant-candidate-name">{{ c.name }}</span>
+                                            <span class="format-badge" :class="formatClass(c.file_format)">{{ c.file_format }}</span>
+                                        </button>
+                                    </div>
+                                    <div v-else-if="variantQuery" class="text-muted text-sm" style="padding:6px 2px">
+                                        No matching models.
+                                    </div>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+
+                            <div class="disclosure" v-if="relatedModels.length > 0">
+                                <button class="disclosure-head" @click="toggleSection('related')"
+                                        :aria-expanded="String(!!openSections.related)">
+                                    <span class="disclosure-label">Other models here</span>
+                                    <span class="disclosure-count">{{ relatedModels.length }}</span>
+                                    <span class="disclosure-chevron" :class="{ open: openSections.related }" v-html="ICONS.chevron"></span>
+                                </button>
+                                <div v-if="openSections.related" class="disclosure-body">
+                            <!-- Related Models -->
+                            <div v-if="relatedModels.length > 0" class="info-section">
+                                <div class="info-section-title">
+                                    Related Models
+                                    <span class="text-muted" style="font-weight:normal;font-size:0.75rem;margin-left:6px">
+                                        {{ relatedModels.length }} in same {{ selectedModel.zip_path ? 'zip' : 'folder' }}
+                                    </span>
+                                </div>
+                                <div class="related-models-grid">
+                                    <div v-for="rm in relatedModels" :key="rm.id"
+                                         class="related-model-item"
+                                         @click="emit('openRelatedModel', rm.id)"
+                                         :title="rm.name">
+                                        <img v-if="rm.thumbnail_path"
+                                             :src="'/thumbnails/' + rm.thumbnail_path"
+                                             class="related-model-thumb"
+                                             loading="lazy" alt=""
+                                             @error="$event.target.style.display='none'; $event.target.nextElementSibling && ($event.target.nextElementSibling.style.display='flex')">
+                                        <div :style="rm.thumbnail_path ? {display:'none'} : {}"
+                                             class="related-model-thumb related-model-thumb-placeholder">
+                                            <span v-html="ICONS.cube"></span>
+                                        </div>
+                                        <div class="related-model-name">{{ rm.name }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
                         </template>
 
-                        <!-- ==================== TAGS TAB ==================== -->
-                        <template v-if="detailTab === 'tags'">
+                        <!-- ==================== ORGANISE ==================== -->
+                        <template v-if="detailTab === 'organise'">
                             <div class="info-section">
                                 <div class="tags-list">
                                     <span v-for="tag in (selectedModel.tags || [])" :key="tag"
@@ -608,52 +943,39 @@ function formatClass(fmt) {
                                     </div>
                                 </div>
                             </div>
-                        </template>
 
-                        <!-- ==================== MORE TAB ==================== -->
-                        <template v-if="detailTab === 'more'">
-                            <!-- Docs / README / photos -->
-                            <div v-if="modelDocs && (modelDocs.readme || (modelDocs.images && modelDocs.images.length) || (modelDocs.docs && modelDocs.docs.length))"
-                                 class="info-section">
-                                <div class="info-section-title">Docs &amp; Files</div>
-                                <div v-if="modelDocs.readme" class="doc-readme">
-                                    <div class="doc-readme-name">{{ modelDocs.readme.name }}</div>
-                                    <pre class="doc-readme-text">{{ modelDocs.readme.text }}<span v-if="modelDocs.readme.truncated" class="text-muted">
-… (truncated)</span></pre>
-                                </div>
-                                <div v-if="modelDocs.images && modelDocs.images.length" class="doc-image-grid">
-                                    <a v-for="img in modelDocs.images" :key="img.name"
-                                       :href="docFileUrl(img.name)" target="_blank" rel="noopener"
-                                       class="doc-image-thumb" :title="img.name">
-                                        <img :src="docFileUrl(img.name)" :alt="img.name" loading="lazy">
-                                    </a>
-                                </div>
-                                <div v-if="docLinks.length" class="doc-file-links">
-                                    <a v-for="f in docLinks" :key="f.name"
-                                       :href="docFileUrl(f.name)" target="_blank" rel="noopener"
-                                       class="doc-file-link">
-                                        <span v-html="ICONS.folder"></span> {{ f.name }}
-                                    </a>
+                            <!-- Categories -->
+                            <div class="info-section">
+                                <div class="info-section-title">Categories</div>
+                                <div class="tags-list">
+                                    <span v-for="cat in (selectedModel.categories || [])" :key="cat"
+                                          class="tag-chip" style="background:var(--bg-primary);color:var(--text-secondary);border:1px solid var(--border)">
+                                        {{ cat }}
+                                    </span>
+                                    <span v-if="!selectedModel.categories || !selectedModel.categories.length"
+                                          class="text-muted text-sm">Uncategorized</span>
                                 </div>
                             </div>
 
-                            <!-- Multi-plate 3MF (Bambu/Orca project) -->
-                            <div v-if="modelPlates.length > 1" class="info-section">
-                                <div class="info-section-title">Plates ({{ modelPlates.length }})</div>
-                                <div class="plate-grid">
-                                    <div v-for="pl in modelPlates" :key="pl.index" class="plate-cell"
-                                         :class="{ active: activePlate === pl.index }"
-                                         @click="emit('selectPlate', pl.index)"
-                                         title="Show this plate in the viewer">
-                                        <img v-if="pl.has_thumbnail"
-                                             :src="`/api/models/${selectedModel.id}/plates/${pl.index}/thumbnail`"
-                                             class="plate-thumb" alt="" loading="lazy">
-                                        <div v-else class="plate-thumb plate-thumb-empty"></div>
-                                        <div class="plate-label" :title="pl.name || ('Plate ' + (pl.index + 1))">
-                                            {{ pl.name || ('Plate ' + (pl.index + 1)) }}
-                                            <span v-if="pl.object_ids && pl.object_ids.length" class="text-muted">· {{ pl.object_ids.length }} obj</span>
-                                        </div>
-                                    </div>
+                            <!-- Collections -->
+                            <div class="info-section">
+                                <div class="info-section-title" style="display:flex;align-items:center;justify-content:space-between">
+                                    Collections
+                                    <button class="btn-icon" style="width:20px;height:20px"
+                                            @click="emit('openAddToCollection', selectedModel.id)" title="Add to collection">
+                                        <span v-html="ICONS.plus"></span>
+                                    </button>
+                                </div>
+                                <div class="tags-list">
+                                    <span v-for="col in (selectedModel.collections || [])" :key="col.name"
+                                          class="tag-chip" :style="{ background: (col.color || '#666') + '22', color: col.color || '#666', border: '1px solid ' + (col.color || '#666') + '44' }">
+                                        <span class="collection-dot" :style="{ background: col.color || '#666' }" style="width:8px;height:8px;margin-right:4px"></span>
+                                        <span v-if="col.is_smart" v-html="ICONS.zap" style="width:10px;height:10px;opacity:0.7;margin-right:2px"></span>
+                                        {{ col.name }}
+                                        <button v-if="!col.is_smart" class="tag-remove" @click="emit('removeModelFromCollection', col.id, selectedModel.id)" title="Remove from collection">&times;</button>
+                                    </span>
+                                    <span v-if="!selectedModel.collections || !selectedModel.collections.length"
+                                          class="text-muted text-sm">No collections</span>
                                 </div>
                             </div>
 
@@ -716,129 +1038,6 @@ function formatClass(fmt) {
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Variants -->
-                            <div class="info-section">
-                                <div class="info-section-title" style="display:flex;align-items:center;justify-content:space-between">
-                                    Variants
-                                    <button class="btn-icon" style="width:20px;height:20px"
-                                            @click="emit('update:variantPickerOpen', !variantPickerOpen)"
-                                            :title="variantPickerOpen ? 'Close' : 'Link a variant'">
-                                        <span v-html="variantPickerOpen ? ICONS.close : ICONS.plus"></span>
-                                    </button>
-                                </div>
-
-                                <!-- Linked variants -->
-                                <div v-if="selectedModel.variants && selectedModel.variants.length"
-                                     class="related-models-grid">
-                                    <div v-for="v in selectedModel.variants" :key="v.id"
-                                         class="related-model-item variant-item"
-                                         @click="emit('openVariant', v.id)" :title="v.name">
-                                        <button class="variant-unlink" title="Unlink variant"
-                                                @click.stop="emit('unlinkVariant', v.id)">&times;</button>
-                                        <img v-if="v.thumbnail_path" :src="'/thumbnails/' + v.thumbnail_path"
-                                             class="related-model-thumb" loading="lazy" alt=""
-                                             @error="$event.target.style.display='none'; $event.target.nextElementSibling && ($event.target.nextElementSibling.style.display='flex')">
-                                        <div :style="v.thumbnail_path ? {display:'none'} : {}"
-                                             class="related-model-thumb related-model-thumb-placeholder">
-                                            <span v-html="ICONS.cube"></span>
-                                        </div>
-                                        <div class="related-model-name">{{ v.name }}</div>
-                                    </div>
-                                </div>
-                                <div v-else-if="!variantPickerOpen" class="text-muted text-sm">
-                                    No variants linked. Use + to link a related model.
-                                </div>
-
-                                <!-- Link picker -->
-                                <div v-if="variantPickerOpen" class="variant-picker">
-                                    <input type="text" class="variant-search-input"
-                                           :value="variantQuery" placeholder="Search models to link…"
-                                           @input="emit('update:variantQuery', $event.target.value); emit('searchVariants', $event.target.value)">
-                                    <div v-if="variantSearching" class="text-muted text-sm" style="padding:6px 2px">Searching…</div>
-                                    <div v-else-if="variantCandidates.length" class="variant-candidates">
-                                        <button v-for="c in variantCandidates" :key="c.id"
-                                                class="variant-candidate" @click="emit('linkVariant', c.id)">
-                                            <img v-if="c.thumbnail_path" :src="'/thumbnails/' + c.thumbnail_path"
-                                                 class="variant-candidate-thumb" loading="lazy" alt=""
-                                                 @error="$event.target.style.display='none'">
-                                            <span class="variant-candidate-name">{{ c.name }}</span>
-                                            <span class="format-badge" :class="formatClass(c.file_format)">{{ c.file_format }}</span>
-                                        </button>
-                                    </div>
-                                    <div v-else-if="variantQuery" class="text-muted text-sm" style="padding:6px 2px">
-                                        No matching models.
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Duplicate Warning -->
-                            <div v-if="selectedModel.file_hash" class="duplicate-warning" style="display:none">
-                                <span v-html="ICONS.warning"></span>
-                                <span>This file has duplicates in the library.</span>
-                            </div>
-
-                            <!-- Categories -->
-                            <div class="info-section">
-                                <div class="info-section-title">Categories</div>
-                                <div class="tags-list">
-                                    <span v-for="cat in (selectedModel.categories || [])" :key="cat"
-                                          class="tag-chip" style="background:var(--bg-primary);color:var(--text-secondary);border:1px solid var(--border)">
-                                        {{ cat }}
-                                    </span>
-                                    <span v-if="!selectedModel.categories || !selectedModel.categories.length"
-                                          class="text-muted text-sm">Uncategorized</span>
-                                </div>
-                            </div>
-
-                            <!-- Collections -->
-                            <div class="info-section">
-                                <div class="info-section-title" style="display:flex;align-items:center;justify-content:space-between">
-                                    Collections
-                                    <button class="btn-icon" style="width:20px;height:20px"
-                                            @click="emit('openAddToCollection', selectedModel.id)" title="Add to collection">
-                                        <span v-html="ICONS.plus"></span>
-                                    </button>
-                                </div>
-                                <div class="tags-list">
-                                    <span v-for="col in (selectedModel.collections || [])" :key="col.name"
-                                          class="tag-chip" :style="{ background: (col.color || '#666') + '22', color: col.color || '#666', border: '1px solid ' + (col.color || '#666') + '44' }">
-                                        <span class="collection-dot" :style="{ background: col.color || '#666' }" style="width:8px;height:8px;margin-right:4px"></span>
-                                        <span v-if="col.is_smart" v-html="ICONS.zap" style="width:10px;height:10px;opacity:0.7;margin-right:2px"></span>
-                                        {{ col.name }}
-                                        <button v-if="!col.is_smart" class="tag-remove" @click="emit('removeModelFromCollection', col.id, selectedModel.id)" title="Remove from collection">&times;</button>
-                                    </span>
-                                    <span v-if="!selectedModel.collections || !selectedModel.collections.length"
-                                          class="text-muted text-sm">No collections</span>
-                                </div>
-                            </div>
-
-                            <!-- Related Models -->
-                            <div v-if="relatedModels.length > 0" class="info-section">
-                                <div class="info-section-title">
-                                    Related Models
-                                    <span class="text-muted" style="font-weight:normal;font-size:0.75rem;margin-left:6px">
-                                        {{ relatedModels.length }} in same {{ selectedModel.zip_path ? 'zip' : 'folder' }}
-                                    </span>
-                                </div>
-                                <div class="related-models-grid">
-                                    <div v-for="rm in relatedModels" :key="rm.id"
-                                         class="related-model-item"
-                                         @click="emit('openRelatedModel', rm.id)"
-                                         :title="rm.name">
-                                        <img v-if="rm.thumbnail_path"
-                                             :src="'/thumbnails/' + rm.thumbnail_path"
-                                             class="related-model-thumb"
-                                             loading="lazy" alt=""
-                                             @error="$event.target.style.display='none'; $event.target.nextElementSibling && ($event.target.nextElementSibling.style.display='flex')">
-                                        <div :style="rm.thumbnail_path ? {display:'none'} : {}"
-                                             class="related-model-thumb related-model-thumb-placeholder">
-                                            <span v-html="ICONS.cube"></span>
-                                        </div>
-                                        <div class="related-model-name">{{ rm.name }}</div>
-                                    </div>
-                                </div>
-                            </div>
                         </template>
 
                     </div>
@@ -855,13 +1054,14 @@ function formatClass(fmt) {
                         </a>
                         <a class="btn btn-secondary"
                            :href="'/api/models/' + selectedModel.id + '/download'"
-                           download>
+                           download title="Download the file" aria-label="Download the file">
                             <span v-html="ICONS.download"></span>
-                            Download
+                            <span class="btn-label">Download</span>
                         </a>
-                        <button class="btn btn-danger" @click="emit('deleteModel', selectedModel)">
+                        <button class="btn btn-danger" @click="emit('deleteModel', selectedModel)"
+                                title="Delete this model" aria-label="Delete this model">
                             <span v-html="ICONS.trash"></span>
-                            Delete
+                            <span class="btn-label">Delete</span>
                         </button>
                     </div>
                 </div>

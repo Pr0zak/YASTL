@@ -225,7 +225,7 @@ const isEditingSourceUrl = ref(false);
 const isEditingLicense = ref(false);
 
 // Detail panel tab state
-const detailTab = ref('info');
+const detailTab = ref('overview');
 const showFileDetails = ref(false);
 
 // Category expansion state (by category id)
@@ -990,7 +990,7 @@ async function viewModel(model) {
     printHistory.value = [];
     modelPlates.value = [];
     activePlate.value = null;
-    detailTab.value = 'info';
+    detailTab.value = 'overview';
     showFileDetails.value = false;
     showDetail.value = true;
     document.body.classList.add('modal-open');
@@ -1892,6 +1892,24 @@ function closeSettings() {
     settingsComposable.closeSettings(showDetail.value);
 }
 
+/**
+ * True when the event came from somewhere the user is typing.
+ *
+ * The arrow-key model navigation used to be gated on three specific editing
+ * flags, which missed the license field, the add-tag input and the variant
+ * search — pressing Left to fix a typo in any of those jumped to a different
+ * model and tore the panel down mid-edit. Asking the element is both shorter
+ * and complete: it covers every input the panel has now and any added later.
+ *
+ * @param {EventTarget|null} el
+ * @returns {boolean}
+ */
+function isTypingTarget(el) {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
 /* ---- Keyboard handler for modals ---- */
 function onKeydown(e) {
     if (e.key === 'Escape') {
@@ -1920,8 +1938,7 @@ function onKeydown(e) {
         } else if (showDetail.value) {
             closeDetail();
         }
-    } else if (showDetail.value && !isEditingName.value && !isEditingDesc.value
-               && !isEditingSourceUrl.value) {
+    } else if (showDetail.value && !isTypingTarget(e.target)) {
         // Arrow keys page through the current result list without closing.
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             e.preventDefault();

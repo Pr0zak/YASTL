@@ -224,7 +224,6 @@
     padding: 12px 20px;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
-    flex-wrap: wrap;
 }
 
 .detail-actions-pinned .btn {
@@ -232,6 +231,11 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 0 0 auto;
+}
+
+/* The primary action takes whatever is left, so the row stays one line. */
+.detail-actions-pinned .btn-primary {
     flex: 1 1 auto;
 }
 
@@ -263,7 +267,11 @@
 .viewer-tap-gate {
     position: absolute;
     inset: 0;
-    z-index: 6;
+    /* Below the toolbar and plate bar (z-index 7). The gate only needs to sit
+       above the canvas it is gating; painting it over the controls meant the
+       tap that looked like it pressed a button merely dismissed the gate, so
+       every control needed two taps and gave no feedback on the first. */
+    z-index: 4;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -294,7 +302,8 @@
     transform: translateX(-50%);
     display: flex;
     gap: 6px;
-    z-index: 5;
+    /* Above the tap-to-interact gate (z-index 4) so the first press lands. */
+    z-index: 7;
 }
 
 .viewer-toolbar .btn {
@@ -796,3 +805,338 @@
 }
 .doc-file-link:hover { color: var(--accent); border-color: var(--accent); }
 .doc-file-link svg { width: 12px; height: 12px; }
+
+/* ==========================================================================
+   Detail panel — Overview / Organise layout
+   ========================================================================== */
+
+/* ---- Header: the name leads, the paging collapses ---- */
+.detail-title-block {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The old title was a flex container, so its own text-overflow could never
+   apply to the child span — the name was hard-clipped mid-word instead of
+   ellipsised. Truncation belongs on the text node itself. */
+.detail-title-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.detail-title-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.detail-title-meta .format-badge {
+    font-size: 0.6rem;
+    padding: 1px 5px;
+}
+
+.detail-nav {
+    display: flex;
+    align-items: center;
+    /* Overrides the earlier .detail-nav rule's gap, which split the segmented
+       pill down the middle. */
+    gap: 0;
+    margin-right: 0;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.detail-nav .btn-icon {
+    border: none;
+    border-radius: 0;
+    width: 34px;
+    height: 38px;
+}
+
+.detail-nav .btn-icon + .btn-icon {
+    border-left: 1px solid var(--border);
+}
+
+.detail-tab-count {
+    margin-left: 5px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 0.65rem;
+    font-weight: 600;
+}
+
+/* ---- Size, stated plainly. It decides whether the model gets printed, and
+        used to be three levels down behind a collapsed "Details" toggle. ---- */
+.dims-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 18px;
+}
+
+.dim-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 9px 10px;
+}
+
+.dim-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.dim-value {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-top: 1px;
+}
+
+.dim-value span {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 2px;
+}
+
+/* ---- Disclosures: a heavy section becomes one row until asked for ---- */
+.disclosure {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.disclosure-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 12px;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+}
+
+.disclosure-head:hover {
+    background: var(--hover-wash);
+}
+
+.disclosure-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.disclosure-count {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.disclosure-chevron {
+    display: inline-flex;
+    color: var(--text-muted);
+    transition: transform var(--transition);
+}
+
+.disclosure-chevron.open {
+    transform: rotate(90deg);
+}
+
+.disclosure-body {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+}
+
+/* The sections inside a disclosure keep their own heading: several of them
+   carry content the row above does not — a "50 in same folder" qualifier, or
+   the Variants "+" button — so hiding them outright loses controls. */
+.disclosure-body > .info-section {
+    margin-bottom: 0;
+}
+
+/* ---- Inline-edit affordances ---- */
+.editable-value {
+    min-height: 36px;
+    padding: 6px 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: pre-wrap;
+}
+
+/* Replaces "Double-click to add …": names the action, works with one tap, and
+   is a real 44px target rather than a line of muted instructions. */
+.field-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 44px;
+    width: 100%;
+    padding: 0 12px;
+    background: var(--bg-input);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: border-color var(--transition), color var(--transition);
+}
+
+.field-add:hover {
+    border-color: var(--accent);
+    color: var(--text-secondary);
+}
+
+/* ---- Viewer toolbar: three verbs and an overflow ---- */
+.viewer-tool {
+    min-height: 38px;
+}
+
+.viewer-overflow {
+    position: relative;
+}
+
+.viewer-overflow-btn {
+    min-width: 42px;
+    justify-content: center;
+}
+
+.viewer-overflow-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 9;
+    min-width: 250px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 28px var(--shadow);
+    overflow: hidden;
+}
+
+.viewer-overflow-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 46px;
+    padding: 0 14px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.viewer-overflow-item:last-child {
+    border-bottom: none;
+}
+
+.viewer-overflow-item:hover {
+    background: var(--hover-wash);
+}
+
+.viewer-overflow-item.active {
+    color: var(--accent);
+}
+
+.viewer-overflow-state {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.viewer-overflow-slider {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+.viewer-overflow-slider .viewer-clip-slider {
+    width: 100%;
+}
+
+/* ---- Toolbar: which copy of the situational controls is shown ----
+   Below 769px the row has no room, so Measure / Slice / Bed live in the
+   overflow menu. From 769px up there is width to spare, and burying them
+   would cost desktop users a click they never had to make before. */
+.viewer-tool-wide {
+    display: none;
+}
+
+@media (min-width: 769px) {
+    .viewer-tool-wide {
+        display: inline-flex;
+    }
+
+    .viewer-overflow-narrow {
+        display: none;
+    }
+
+    /* The canvas was a fixed 500px inside a flex column that stretches to the
+       panel height, leaving ~210px of empty ground under the model. Let it
+       fill instead; the toolbar floats over its lower edge either way. */
+    .detail-viewer {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #viewer-container {
+        flex: 1;
+        height: auto;
+        min-height: 320px;
+    }
+
+    /* The info column is only 360px wide, so three full-width labels do not
+       fit on one line and the primary action was clipped mid-word. Wrapping is
+       the right answer here — it is the phone that needs a forced single row. */
+    .detail-actions-pinned {
+        flex-wrap: wrap;
+    }
+
+    .detail-actions-pinned .btn-primary {
+        flex: 1 1 100%;
+    }
+
+    .detail-actions-pinned .btn-secondary,
+    .detail-actions-pinned .btn-danger {
+        flex: 1 1 0;
+    }
+}
+
+/* Measurement readout sits beside the bed verdict, both read-only status. */
+.viewer-measure-readout {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+/* The menu opens upward from a toolbar pinned near the bottom of a 220px
+   viewer, so cap it and let it scroll rather than run off the top. */
+.viewer-overflow-menu {
+    max-height: 62vh;
+    overflow-y: auto;
+}
