@@ -943,6 +943,7 @@ async function applyTagSuggestion(tag) {
    ============================================================== */
 
 function toggleDuplicatesFilter() {
+    closeSidebarIfMobile();
     filters.duplicatesOnly = !filters.duplicatesOnly;
     pagination.offset = 0;
     fetchModels();
@@ -1448,6 +1449,7 @@ function setFormatFilter(fmt) {
 }
 
 function setLibraryFilter(libId) {
+    closeSidebarIfMobile();
     filters.library_id = filters.library_id === libId ? null : libId;
     pagination.offset = 0;
     refreshCurrentView();
@@ -1696,6 +1698,7 @@ async function fetchFavoritesCount() {
 }
 
 function setCollectionFilter(collectionId) {
+    closeSidebarIfMobile();
     if (filters.collection === collectionId) {
         // Deselect: if smart, clear applied rules too
         const col = collections.value.find(c => c.id === collectionId);
@@ -1820,6 +1823,7 @@ async function toggleFavorite(model, e) {
 }
 
 function toggleFavoritesFilter() {
+    closeSidebarIfMobile();
     filters.favoritesOnly = !filters.favoritesOnly;
     pagination.offset = 0;
     fetchModels();

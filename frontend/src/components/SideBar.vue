@@ -164,7 +164,12 @@ function onPick(item) {
     <!-- Sidebar backdrop (mobile) -->
     <div v-if="sidebarOpen" class="sidebar-backdrop" @click="emit('update:sidebarOpen', false)"></div>
 
-    <aside class="sidebar" :class="{ collapsed: !sidebarOpen }">
+    <!-- `open` drives the mobile drawer: below 769px the sidebar is a fixed
+         panel parked at translateX(-100%) with opacity 0, and .sidebar.open is
+         the only rule that brings it back. `collapsed` is the desktop
+         width-zero state. Both are needed; dropping either hides the sidebar
+         on one of the two layouts. -->
+    <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: !sidebarOpen }">
 
         <!-- What is applied right now. The app never showed this in one place;
              on a phone the filter was invisible once the drawer was closed. -->
