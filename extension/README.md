@@ -50,7 +50,7 @@ Connect → Options, or it opens itself on first install) and fill in:
 
 | Field | Value |
 |---|---|
-| YASTL address | The same URL you open YASTL at, including the port — e.g. `http://10.0.0.59:8000` |
+| YASTL address | The same URL you open YASTL at, including the port — e.g. `http://192.168.1.50:8000` |
 | Access token | The token you just generated |
 
 Press **Test connection**, then **Grant site access**, then pick a destination
