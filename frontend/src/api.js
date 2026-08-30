@@ -795,3 +795,10 @@ export async function apiFindNearDuplicates(limit = 25, offset = 0) {
     if (!res.ok) throw new Error('Failed to load near-duplicates');
     return res.json();
 }
+
+export async function apiRotateConnectToken() {
+    const res = await fetch('/api/connect/token', { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'Failed to generate a Connect token');
+    return json; // { token } — the only time the full token is returned
+}

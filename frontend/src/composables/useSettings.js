@@ -24,6 +24,7 @@ import {
     apiGetAutoTagStatus,
     apiExtractMetadata,
     apiGetMetadataStatus,
+    apiRotateConnectToken,
 } from '../api.js';
 
 import { ref, reactive } from 'vue';
@@ -103,6 +104,12 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     });
     const aiTesting = ref(false);
     const aiTestResult = ref(null); // { ok, detail } | null
+
+    // Connect browser extension. The token arrives masked, exactly like the AI
+    // keys; `connectFullToken` holds the one plaintext copy the server ever
+    // returns, so the user can copy it into the extension before it is gone.
+    const connect = reactive({ enabled: false, token: '' });
+    const connectFullToken = ref('');
     const buildingEmbeddings = ref(false);
     const embedProgress = reactive({ running: false, total: 0, completed: 0, embedded: 0, in_memory: 0 });
     let embedPollTimer = null;
@@ -192,6 +199,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             // Automation
             scanIntervalMinutes.value = data.scan_interval_minutes || '0';
             webhookUrl.value = data.webhook_url || '';
+            connect.enabled = data.connect_enabled === 'true';
+            connect.token = data.connect_token || '';   // masked if set
             applyAiFromData(data);
         } catch (err) {
             console.error('fetchSettings error:', err);
@@ -285,6 +294,31 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         ai.embed_model = data.ai_embed_model || '';
         ai.vocab_mode = data.ai_autotag_vocab_mode || 'controlled';
         ai.monthly_cost_cap_usd = data.ai_monthly_cost_cap_usd || '0';
+    }
+
+    async function saveConnectSettings() {
+        try {
+            const data = await apiUpdateSettings({
+                connect_enabled: connect.enabled ? 'true' : 'false',
+            });
+            connect.enabled = data.connect_enabled === 'true';
+            connect.token = data.connect_token || '';
+            showToast('Connect settings saved', 'success');
+        } catch (err) {
+            showToast(err.message || 'Failed to save Connect settings', 'error');
+        }
+    }
+
+    async function rotateConnectToken() {
+        try {
+            const { token } = await apiRotateConnectToken();
+            // Shown once and never again — every later read comes back masked.
+            connectFullToken.value = token;
+            connect.token = token;
+            showToast('New Connect token generated', 'success');
+        } catch (err) {
+            showToast(err.message || 'Failed to generate a token', 'error');
+        }
     }
 
     async function saveAiSettings() {
@@ -674,6 +708,10 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         setScanInterval,
         setWebhookUrl,
         testWebhook,
+        connect,
+        connectFullToken,
+        saveConnectSettings,
+        rotateConnectToken,
         ai,
         aiTesting,
         aiTestResult,

@@ -36,6 +36,8 @@ defineProps({
     autoTagOnScan: { type: Boolean, default: false },
     scanIntervalMinutes: { type: String, default: '0' },
     webhookUrl: { type: String, default: '' },
+    connect: { type: Object, default: () => ({ enabled: false, token: '' }) },
+    connectFullToken: { type: String, default: '' },
     ai: { type: Object, default: () => ({}) },
     aiTesting: { type: Boolean, default: false },
     aiTestResult: { type: Object, default: null },
@@ -75,6 +77,9 @@ const emit = defineEmits([
     'setScanInterval',
     'setWebhookUrl',
     'testWebhook',
+    'saveConnectSettings',
+    'rotateConnectToken',
+    'copyConnectToken',
     'saveAiSettings',
     'testAi',
     'buildEmbeddings',
@@ -567,7 +572,69 @@ function timeAgo(dateStr) {
                     </div>
                 </div>
 
-                <!-- ========== 5. Advanced (collapsible) ========== -->
+
+                <!-- ========== 5. Connect (browser extension) ========== -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.link"></span>
+                        Connect <span class="settings-optional-tag">optional · browser extension</span>
+                    </div>
+                    <div class="settings-hint" style="margin-bottom:10px">
+                        Off by default. Lets the YASTL Connect browser extension push model
+                        downloads from Printables, Thingiverse, MakerWorld, Thangs,
+                        MyMiniFactory and Cults3D straight into a library, with the source
+                        page&rsquo;s title, description, tags and licence attached. Your browser
+                        does the downloading, so files behind a site login work.
+                    </div>
+
+                    <label class="checkbox-item" style="margin-bottom:10px">
+                        <input type="checkbox" v-model="connect.enabled"
+                               @change="emit('saveConnectSettings')">
+                        <span>Enable Connect</span>
+                    </label>
+
+                    <div v-if="connect.enabled">
+                        <label class="form-label">Access token</label>
+                        <div class="settings-btn-row" style="align-items:center">
+                            <input type="text" class="form-input" readonly
+                                   :value="connectFullToken || connect.token"
+                                   placeholder="No token yet — generate one"
+                                   style="flex:1;min-width:0;font-family:monospace;font-size:12px">
+                            <button class="btn btn-secondary"
+                                    :disabled="!connectFullToken"
+                                    @click="emit('copyConnectToken')">
+                                <span v-html="ICONS.copy"></span> Copy
+                            </button>
+                            <button class="btn btn-primary" @click="emit('rotateConnectToken')">
+                                {{ connect.token ? 'Regenerate' : 'Generate' }}
+                            </button>
+                        </div>
+                        <div class="settings-hint" style="margin-top:6px">
+                            <template v-if="connectFullToken">
+                                Copy this now &mdash; it is shown once and masked from here on.
+                                Paste it into the extension&rsquo;s options along with this
+                                server&rsquo;s address.
+                            </template>
+                            <template v-else-if="connect.token">
+                                A token is set but hidden. Regenerating shows a new one and
+                                immediately stops any browser still using the old one.
+                            </template>
+                            <template v-else>
+                                Generate a token, then paste it into the extension&rsquo;s options.
+                            </template>
+                        </div>
+
+                        <div class="settings-hint" style="margin-top:10px">
+                            <strong>Worth knowing:</strong> the token is a shared secret sent
+                            with every capture. Over plain <code>http://</code> on your LAN it is
+                            readable by anything already watching that network &mdash; it stops a
+                            web page writing into your library, not someone on your own wire.
+                            Regenerate to revoke a browser that has it.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========== 6. Advanced (collapsible) ========== -->
                 <div class="settings-section" :class="{ 'settings-section-collapsed': !showAdvanced }">
                     <div class="settings-advanced-header" @click="showAdvanced = !showAdvanced">
                         <div class="settings-section-title">

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>YASTL Connect</title>
+    <link rel="stylesheet" href="../common.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>
+        <img src="../../icons/icon-32.png" alt="" />
+        YASTL Connect
+      </h1>
+      <button id="openOptions" class="ghost" type="button" title="Options">
+        Options
+      </button>
+    </header>
+
+    <div id="setupNeeded" class="pane" hidden>
+      <p>Connect is not set up yet.</p>
+      <p class="hint">
+        Add your YASTL address and an access token, then pick a destination
+        library.
+      </p>
+      <button id="goToOptions" type="button">Open options</button>
+    </div>
+
+    <div id="main" class="pane" hidden>
+      <section class="destination">
+        <label>
+          <span>Library</span>
+          <select id="libraryId"></select>
+        </label>
+        <label>
+          <span>Subfolder</span>
+          <input id="subfolder" type="text" placeholder="optional" />
+        </label>
+      </section>
+
+      <section class="queue-head">
+        <h2>Captures</h2>
+        <button id="clearFinished" class="ghost" type="button">
+          Clear finished
+        </button>
+      </section>
+
+      <ul id="queue" class="queue"></ul>
+
+      <p id="empty" class="hint empty" hidden>
+        No captures yet. Download a model from Printables, Thingiverse,
+        MakerWorld, Thangs, MyMiniFactory or Cults3D and it will appear here.
+      </p>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

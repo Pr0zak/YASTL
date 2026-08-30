@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>YASTL Connect — Options</title>
+    <link rel="stylesheet" href="../common.css" />
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>
+          <img src="../../icons/icon-48.png" alt="" />
+          YASTL Connect
+        </h1>
+        <p class="hint">
+          Captures model downloads from supported sites into your YASTL library,
+          with the source page's title, description and tags attached.
+        </p>
+      </header>
+
+      <section class="card">
+        <h2>Server</h2>
+
+        <label>
+          <span>YASTL address</span>
+          <input
+            id="serverUrl"
+            type="url"
+            placeholder="http://10.0.0.59:8000"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <p class="hint">
+            The same address you open YASTL at. Include the port.
+          </p>
+        </label>
+
+        <label>
+          <span>Access token</span>
+          <div class="row">
+            <input
+              id="token"
+              type="password"
+              placeholder="Paste from YASTL Settings → Connect"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="reveal" class="secondary" type="button">Show</button>
+          </div>
+          <p class="hint">
+            Generate this in YASTL under <strong>Settings → Connect</strong>.
+            Connect stays disabled until you do.
+          </p>
+        </label>
+
+        <div class="row">
+          <button id="test" type="button">Test connection</button>
+          <button id="grant" class="secondary" type="button">
+            Grant site access
+          </button>
+        </div>
+        <div id="testStatus" class="status"></div>
+        <p class="hint">
+          <strong>Grant site access</strong> lets the extension reach your YASTL
+          server and any CDN a site redirects downloads to. Chrome only allows
+          this from a button, so it cannot be requested automatically later.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Destination</h2>
+
+        <label>
+          <span>Library</span>
+          <select id="libraryId">
+            <option value="">Test the connection to load libraries</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Subfolder (optional)</span>
+          <input id="subfolder" type="text" placeholder="e.g. imported/2026" />
+          <p class="hint">Created inside the library if it does not exist.</p>
+        </label>
+
+        <label>
+          <span>Add to collection (optional)</span>
+          <select id="collectionId">
+            <option value="">None</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="card">
+        <h2>Capture</h2>
+
+        <div class="check">
+          <input id="autoCapture" type="checkbox" />
+          <span>
+            <strong>Capture downloads automatically</strong><br />
+            Watch for model downloads on supported sites. Turn this off to
+            capture only from the toolbar popup.
+          </span>
+        </div>
+
+        <label>
+          <span>Capture mode</span>
+          <select id="captureMode">
+            <option value="copy">Copy — keep the browser's download too</option>
+            <option value="intercept">
+              Intercept — cancel the browser's download
+            </option>
+          </select>
+        </label>
+
+        <div class="note">
+          An extension cannot read a file off your disk, so the download has to
+          be fetched a second time to reach YASTL.
+          <strong>Copy</strong> lets your normal download finish and fetches its
+          own copy — you keep the file whatever happens, at the cost of
+          downloading twice. Some sites issue links that only work once, and on
+          those the second fetch fails; <strong>Intercept</strong> cancels the
+          browser's download so the link is spent exactly once, but if the
+          capture then fails you will need to click Download again.
+        </div>
+
+        <div class="check" style="margin-top: 14px">
+          <input id="notifyOnCapture" type="checkbox" />
+          <span>Show a notification for each capture</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>About the token</h2>
+        <div class="note">
+          The token is a shared secret sent with every capture. Over plain
+          <code>http://</code> on your LAN it is visible to anything already
+          watching that network — it stops a random web page writing into your
+          library, not a determined attacker on your own wire. Rotate it in
+          YASTL Settings to revoke a browser that has it.
+        </div>
+      </section>
+
+      <footer>
+        <button id="save" type="button">Save</button>
+        <span id="saveStatus" class="hint"></span>
+      </footer>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

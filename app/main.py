@@ -16,6 +16,7 @@ from app.api.routes_categories import router as categories_router
 from app.api.routes_import import router as import_router
 from app.api.routes_backup import router as backup_router
 from app.api.routes_collections import router as collections_router
+from app.api.routes_connect import router as connect_router
 from app.api.routes_favorites import router as favorites_router
 from app.api.routes_filament import router as filament_router
 from app.api.routes_prints import router as prints_router
@@ -210,6 +211,7 @@ app.include_router(filament_router)
 app.include_router(prints_router)
 app.include_router(queue_router)
 app.include_router(collections_router)
+app.include_router(connect_router)
 app.include_router(saved_searches_router)
 app.include_router(bulk_router)
 app.include_router(import_router)

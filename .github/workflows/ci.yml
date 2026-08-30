@@ -50,3 +50,18 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The extension has no dependencies and no build step, so this is just
+      # node's own test runner over the pure metadata normalizers.
+      - name: Test Connect normalizers
+        run: node --test extension/tests/
