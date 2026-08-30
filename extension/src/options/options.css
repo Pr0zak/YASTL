@@ -1,0 +1,30 @@
+main {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 28px 22px 40px;
+}
+
+header {
+  margin-bottom: 20px;
+}
+
+header .hint {
+  max-width: 52ch;
+}
+
+footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  bottom: 0;
+  padding: 14px 0;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+
+code {
+  padding: 1px 4px;
+  background: var(--bg);
+  border-radius: 3px;
+  font-size: 12px;
+}

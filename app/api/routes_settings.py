@@ -53,6 +53,11 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "allowed": ["true", "false"],
         "default": "false",
     },
+    # --- Connect browser extension (off by default; see routes_connect.py) ---
+    "connect_enabled": {
+        "allowed": ["true", "false"],
+        "default": "false",
+    },
     # --- AI (optional, bring-your-own-key; all off by default) ---
     "ai_enabled": {
         "allowed": ["true", "false"],
@@ -91,10 +96,13 @@ STRING_SETTINGS: dict[str, dict] = {
     "ai_embed_key": {"default": "", "max_len": 300},
     "ai_vision_model": {"default": "", "max_len": 100},
     "ai_embed_model": {"default": "", "max_len": 100},
+    # Shared secret the Connect browser extension sends as X-YASTL-Token.
+    # Generated via POST /api/connect/token; only ever read back masked.
+    "connect_token": {"default": "", "max_len": 200},
 }
 
 # Secret settings masked when read back (never echo the full value).
-_MASKED_SETTINGS = {"ai_api_key", "ai_embed_key"}
+_MASKED_SETTINGS = {"ai_api_key", "ai_embed_key", "connect_token"}
 
 
 def _mask_secret(value: str) -> str:

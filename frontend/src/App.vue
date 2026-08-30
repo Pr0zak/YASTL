@@ -136,6 +136,24 @@ function onClipPosition(t) {
 }
 function setViewPreset(preset) { viewer?.setView(preset); }
 
+/**
+ * Copy the freshly generated Connect token to the clipboard.
+ *
+ * navigator.clipboard is unavailable on an insecure origin, which is the normal
+ * case for a LAN deployment over plain http. Select the field instead so the
+ * user can copy it by hand rather than being told nothing happened.
+ */
+async function copyConnectToken() {
+    const token = connectFullToken.value;
+    if (!token) return;
+    try {
+        await navigator.clipboard.writeText(token);
+        showToast('Token copied to clipboard', 'success');
+    } catch {
+        showToast('Could not copy automatically — select the token and copy it', 'warning');
+    }
+}
+
 function toastIcon(type) {
     if (type === 'error') return ICONS.warning;
     if (type === 'info') return ICONS.activity;
@@ -329,6 +347,7 @@ const {
     extractingMetadata, metadataProgress,
     generatingPreviews, previewProgress, generatePreviews,
     scanIntervalMinutes, webhookUrl, setScanInterval, setWebhookUrl, testWebhook,
+    connect, connectFullToken, saveConnectSettings, rotateConnectToken,
     ai, aiTesting, aiTestResult, saveAiSettings, testAiConnection,
     buildingEmbeddings, embedProgress, buildEmbeddings,
     aiTaggingAll, aiTagProgress, aiAutoTagAll,
@@ -2699,6 +2718,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :previewProgress="previewProgress"
         :scanIntervalMinutes="scanIntervalMinutes"
         :webhookUrl="webhookUrl"
+        :connect="connect"
+        :connect-full-token="connectFullToken"
         :ai="ai"
         :aiTesting="aiTesting"
         :aiTestResult="aiTestResult"
@@ -2734,6 +2755,9 @@ const { pickNextCollectionColor } = collectionsComposable;
         @setScanInterval="setScanInterval"
         @setWebhookUrl="setWebhookUrl"
         @testWebhook="testWebhook"
+        @saveConnectSettings="saveConnectSettings"
+        @rotateConnectToken="rotateConnectToken"
+        @copyConnectToken="copyConnectToken"
         @saveAiSettings="saveAiSettings"
         @testAi="testAiConnection"
         @buildEmbeddings="buildEmbeddings"
