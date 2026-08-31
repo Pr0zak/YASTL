@@ -101,6 +101,23 @@ JavaScript there can be nothing to match on.
 Those captures wait in the popup rather than landing without metadata. Open the
 model's page in the active tab and press **Use this tab**.
 
+## When a capture arrives with no metadata
+
+If a model lands in your library named after the download's own filename — a
+UUID on MakerWorld, `files.zip` elsewhere — with no title, tags or source URL,
+the extension had no harvested page to draw on.
+
+The usual cause is that **the extension was reloaded or installed while the
+model page was already open.** Manifest-declared content scripts only run when a
+page loads, so a tab that was already sitting there has no harvester in it. The
+extension now sweeps open tabs and injects on install and update, but a tab that
+was mid-load or discarded at that moment can still be missed. Reloading the
+model page always fixes it.
+
+"Use this tab" refuses rather than uploading in this state, so a capture parked
+as "No source page found" will tell you when the tab it is pointed at has no
+page data.
+
 ## About the token
 
 The token is a shared secret sent with every capture. Over plain `http://` on a

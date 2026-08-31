@@ -14,7 +14,7 @@
  * single constraint is what the two capture modes below exist to manage.
  */
 
-import { buildMetadata, isServerScraped } from './sites.js';
+import { buildMetadata, isServerScraped, storageFilename } from './sites.js';
 import {
   ConnectError,
   fetchInfo,
@@ -258,7 +258,7 @@ async function runCapture(captureId) {
       serverUrl: settings.serverUrl,
       token: settings.token,
       blob,
-      filename: capture.filename,
+      filename: storageFilename(capture.filename, capture.metadata && capture.metadata.title),
       libraryId: capture.libraryId || settings.libraryId,
       subfolder: capture.subfolder ?? settings.subfolder,
       collectionId: capture.collectionId ?? settings.collectionId,
@@ -432,6 +432,15 @@ async function handleMessage(msg, sender) {
       // The user picked a source page for a capture we could not correlate.
       const settings = await getSettings();
       const context = msg.tabId != null ? await getPageContext(msg.tabId) : null;
+      if (!context) {
+        // Uploading anyway would put the file in the library named after its
+        // download URL with no title, tags or source — the exact outcome the
+        // user pressed this button to avoid. Refuse and say why instead.
+        throw new ConnectError(
+          'No page data for that tab. The extension was probably reloaded after ' +
+            'that tab was opened — reload the model page, then try again.',
+        );
+      }
       const metadata = await resolveMetadata(context, settings);
       await updateCapture(msg.id, {
         metadata,
@@ -490,10 +499,51 @@ async function handleMessage(msg, sender) {
   }
 }
 
+/**
+ * Inject the harvester into tabs that are already open.
+ *
+ * Manifest-declared content scripts only run when a page loads. Installing or
+ * reloading the extension therefore leaves every tab already sitting on a model
+ * page with no harvester in it — and because a capture with no page context
+ * still uploads the file, the result is a model in the library named after the
+ * download's opaque filename with no title, tags or source URL. That is exactly
+ * what happened on the first real-world capture, so this runs on install and on
+ * every update.
+ */
+async function injectIntoOpenTabs() {
+  const manifest = chrome.runtime.getManifest();
+  const spec = (manifest.content_scripts || [])[0];
+  if (!spec) return;
+
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({ url: spec.matches });
+  } catch (e) {
+    console.warn('[YASTL] could not enumerate open tabs', e);
+    return;
+  }
+
+  for (const tab of tabs) {
+    if (tab.id == null) continue;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: spec.js,
+      });
+      console.log('[YASTL] harvester injected into open tab:', tab.url);
+    } catch (e) {
+      // A discarded tab, a page still loading, or one the browser will not let
+      // us touch. Its next navigation injects normally, so this is not fatal.
+      console.warn('[YASTL] could not inject into tab', tab.url, e.message);
+    }
+  }
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     chrome.runtime.openOptionsPage().catch(() => {});
   }
+  injectIntoOpenTabs().catch((e) => console.error('[YASTL] injection sweep failed', e));
   refreshBadge().catch(() => {});
 });
 
