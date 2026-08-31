@@ -12,6 +12,10 @@ richer, the contract needs to version independently of the SPA, and — most
 importantly — the token check below must not leak onto the routes the web UI
 depends on.
 
+The extension reaches these routes cross-origin, so ``connect_cors_middleware``
+at the bottom of this file answers preflights and stamps responses for
+extension origins only.  Do not widen it to the rest of the API.
+
 Security posture, stated plainly because it matters: this is a shared-secret
 bearer token sent over whatever transport the user has configured, which on a
 typical LAN deployment is plain HTTP.  It stops an arbitrary web page from
@@ -21,6 +25,7 @@ has to be turned on explicitly in Settings.
 """
 
 import logging
+import re
 import secrets
 from pathlib import Path
 
@@ -35,6 +40,7 @@ from fastapi import (
     Request,
     UploadFile,
 )
+from fastapi.responses import Response
 
 from app.api._helpers import _get_db_path, open_db
 from app.database import get_db, get_setting, set_setting
@@ -405,3 +411,63 @@ async def rotate_connect_token():
     token = secrets.token_urlsafe(32)
     await set_setting("connect_token", token)
     return {"token": token}
+
+
+# ---------------------------------------------------------------------------
+# CORS for the extension origin
+# ---------------------------------------------------------------------------
+
+# Chrome extension IDs are 32 characters drawn from a-p; Firefox uses a UUID.
+# Anchoring the pattern means a page cannot reach these routes by claiming an
+# extension-shaped origin of arbitrary shape.
+_EXTENSION_ORIGIN = re.compile(
+    r"^(chrome-extension://[a-p]{32}"
+    r"|moz-extension://[0-9a-f-]{36})$"
+)
+
+_CORS_HEADERS = "content-type, x-yastl-token"
+_CORS_METHODS = "GET, POST, OPTIONS"
+
+
+async def connect_cors_middleware(request: Request, call_next):
+    """Answer CORS preflights and stamp responses for the browser extension.
+
+    This is needed, contrary to what an earlier version of this file claimed. An
+    MV3 service worker is *not* reliably exempt from CORS when calling a host it
+    holds an optional permission for: Chrome sends the request, the server
+    handles it, and then the response is discarded before it reaches the
+    extension's JavaScript. The symptom is maddening — clean 200s in the server
+    log and a CORS error in the extension console — so the fix belongs here
+    rather than in a permissions workaround on the extension side.
+
+    Scoped deliberately to ``/api/connect``. YASTL has no authentication, so
+    granting extension origins access to the whole API would let any installed
+    extension read the entire library. The Connect routes are the only ones that
+    demand a token, which makes them the only ones safe to expose this way.
+
+    ``X-YASTL-Token`` is a custom header, so every capture is preceded by an
+    ``OPTIONS`` preflight that carries no token of its own. That preflight has to
+    be answered before the auth dependency runs, which is why this is middleware
+    and not a route dependency.
+    """
+    origin = request.headers.get("origin")
+    is_connect = request.url.path.startswith("/api/connect")
+    allowed = bool(origin) and is_connect and bool(_EXTENSION_ORIGIN.match(origin))
+
+    if allowed and request.method == "OPTIONS":
+        return Response(
+            status_code=204,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": _CORS_METHODS,
+                "Access-Control-Allow-Headers": _CORS_HEADERS,
+                "Access-Control-Max-Age": "600",
+                "Vary": "Origin",
+            },
+        )
+
+    response = await call_next(request)
+    if allowed:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    return response

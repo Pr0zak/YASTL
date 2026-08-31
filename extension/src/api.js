@@ -1,11 +1,15 @@
 /**
  * YASTL server client.
  *
- * Every call in here runs in the service worker and nowhere else. A worker with
- * a matching host permission is exempt from CORS; extension pages and content
- * scripts are not reliably exempt, so the popup and options page ask the worker
- * to make these calls rather than calling fetch themselves. Moving one of these
- * into a page will appear to work on some Chrome versions and fail on others.
+ * Every call in here runs in the service worker and nowhere else. Content
+ * scripts get no CORS exemption at all and extension pages are inconsistent
+ * across builds, so the popup and options page ask the worker to make these
+ * calls rather than calling fetch themselves.
+ *
+ * The worker is not exempt either, as far as the YASTL server is concerned —
+ * that is what the CORS middleware in app/api/routes_connect.py is for. If
+ * every request here fails with a CORS error while the server log shows clean
+ * 200s, the server is running a build from before that middleware existed.
  */
 
 /** The protocol version this build of the extension was written against. */
@@ -54,8 +58,15 @@ export async function fetchInfo(serverUrl) {
   try {
     resp = await fetch(`${base}/api/connect/info`, { method: 'GET' });
   } catch (e) {
+    // fetch() rejects identically for DNS failure, connection refused and a
+    // CORS-blocked response, so the message has to name all three rather than
+    // assert one. The real cause is always printed in full in the service
+    // worker console; say so, because that is where the answer is.
     throw new ConnectError(
-      `Could not reach ${base}. Check the address, that YASTL is running, and that you granted this extension access to that host.`,
+      `Could not reach ${base}. Either the address is wrong or YASTL is not ` +
+        `running, or YASTL is running a build without Connect CORS support ` +
+        `(the server log would show a clean 200 while this fails). Open the ` +
+        `service worker console from chrome://extensions for the exact error.`,
       { kind: 'unreachable' },
     );
   }
