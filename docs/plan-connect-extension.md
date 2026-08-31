@@ -124,13 +124,34 @@ web page from silently writing to the library; it is not protection against
 someone already on the network sniffing traffic. That limitation gets stated
 plainly in the Settings UI and the extension README rather than papered over.
 
-### No CORS middleware
+### CORS — required, and scoped
 
-None is needed and none will be added. All network calls happen in the service
-worker, which bypasses CORS for origins covered by `host_permissions`. The popup
-and options page message the worker rather than fetching directly, precisely so
-this stays true — content scripts and extension pages do *not* reliably get the
-same exemption.
+**This section originally said no CORS middleware was needed. That was wrong,
+and it cost a debugging session.** An MV3 service worker is *not* reliably
+exempt from CORS when calling a host it holds an optional permission for. Chrome
+sends the request, the server handles it and logs a clean 200, and the response
+is then discarded before the extension's JavaScript can read it — so the server
+log looks perfect while the extension reports a CORS error.
+
+`connect_cors_middleware` in `routes_connect.py` answers preflights and stamps
+responses, scoped two ways:
+
+- **Path:** `/api/connect` only. YASTL has no authentication, so allowing
+  extension origins against the whole API would let any installed extension read
+  the entire library. The Connect routes are the only ones demanding a token,
+  which makes them the only ones safe to open.
+- **Origin:** an anchored pattern matching a real Chrome extension ID
+  (`[a-p]{32}`) or a Firefox UUID. An ordinary web page's origin never matches.
+
+It is middleware rather than a route dependency because `X-YASTL-Token` is a
+custom header: every capture is preceded by an `OPTIONS` preflight that carries
+no token, and that has to be answered before the auth dependency runs.
+
+Failure responses are stamped too. Without that, a wrong token surfaces in the
+extension as an opaque CORS error rather than "YASTL rejected the access token".
+
+All network calls still belong in the worker — content scripts get no exemption
+under any configuration.
 
 ## 4. Extension layout
 

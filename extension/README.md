@@ -128,11 +128,16 @@ tests/sites.test.mjs   node --test extension/tests/
 
 Two structural notes for anyone editing this.
 
-**All network calls belong in the service worker.** It is exempt from CORS for
-hosts it has permission for; extension pages and content scripts are not
-reliably exempt. The popup and options page message the worker instead. Moving a
-`fetch` into a page will appear to work and then fail on a different Chrome
-build.
+**All network calls belong in the service worker.** Content scripts get no
+CORS exemption at all, and extension pages are inconsistent across builds. The
+popup and options page message the worker instead.
+
+Note that the worker is *not* itself exempt from CORS when calling your YASTL
+server, which is why `app/api/routes_connect.py` carries a CORS middleware. The
+first release shipped without one on the opposite assumption, and the symptom
+was thoroughly misleading: clean `200 OK` lines in the server log, because the
+request really did arrive and was handled, paired with a CORS error in the
+extension console, because Chrome discarded the response on the way back.
 
 **Nothing may live in a module-level variable.** Chrome recycles an MV3 service
 worker after roughly 30 seconds idle and re-evaluates every module from scratch,

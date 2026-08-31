@@ -16,7 +16,10 @@ from app.api.routes_categories import router as categories_router
 from app.api.routes_import import router as import_router
 from app.api.routes_backup import router as backup_router
 from app.api.routes_collections import router as collections_router
-from app.api.routes_connect import router as connect_router
+from app.api.routes_connect import (
+    connect_cors_middleware,
+    router as connect_router,
+)
 from app.api.routes_favorites import router as favorites_router
 from app.api.routes_filament import router as filament_router
 from app.api.routes_prints import router as prints_router
@@ -216,6 +219,16 @@ app.include_router(saved_searches_router)
 app.include_router(bulk_router)
 app.include_router(import_router)
 app.include_router(backup_router)
+
+# CORS for the YASTL Connect browser extension.
+#
+# Registered before the slow-request logger so it is the outermost of the two:
+# a preflight is answered without being timed, and every Connect response picks
+# up its Access-Control-Allow-Origin header on the way out. Scoped inside the
+# middleware to /api/connect and to extension origins only — see
+# app/api/routes_connect.py for why widening it would be a mistake.
+app.middleware("http")(connect_cors_middleware)
+
 
 # Log slow requests (>1s) with timing info
 SLOW_REQUEST_THRESHOLD = 1.0  # seconds

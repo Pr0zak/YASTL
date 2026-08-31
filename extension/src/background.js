@@ -235,6 +235,7 @@ async function runCapture(captureId) {
       status: 'failed',
       error: 'YASTL Connect is not configured yet. Open the extension options.',
     });
+    console.warn('[YASTL] no server address or token configured');
     await refreshBadge();
     return;
   }
@@ -243,6 +244,7 @@ async function runCapture(captureId) {
       status: 'failed',
       error: 'No destination library chosen. Pick one in the extension options.',
     });
+    console.warn('[YASTL] no destination library selected');
     await refreshBadge();
     return;
   }
@@ -275,6 +277,7 @@ async function runCapture(captureId) {
       `${capture.metadata?.title || capture.filename} — ${result.detail}`,
     );
   } catch (e) {
+    console.error('[YASTL] capture failed:', capture.filename, e);
     await updateCapture(captureId, {
       status: 'failed',
       error: e instanceof ConnectError ? e.message : String(e && e.message ? e.message : e),
@@ -286,7 +289,10 @@ async function runCapture(captureId) {
 
 async function beginCapture(item) {
   const settings = await getSettings();
-  if (!settings.autoCapture) return;
+  if (!settings.autoCapture) {
+    console.log('[YASTL] automatic capture is switched off in options; skipping');
+    return;
+  }
 
   const match = await correlate(item);
   const metadata = await resolveMetadata(match && match.context, settings);
@@ -334,7 +340,17 @@ async function beginCapture(item) {
 // ---------------------------------------------------------------------------
 
 chrome.downloads.onCreated.addListener((item) => {
-  if (!looksCapturable(item)) return;
+  // Log every download we see and what we decided. A capture that silently
+  // does nothing is the worst failure this extension has, because there is no
+  // surface anywhere that says why — not the popup, not the server log.
+  if (!looksCapturable(item)) {
+    console.log(
+      '[YASTL] ignoring download (not a model file):',
+      item.filename || item.finalUrl || item.url,
+    );
+    return;
+  }
+  console.log('[YASTL] capturing download:', item.filename || item.finalUrl || item.url);
   beginCapture(item).catch((e) => console.error('[YASTL] capture start failed', e));
 });
 

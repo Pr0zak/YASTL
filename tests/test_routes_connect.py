@@ -243,3 +243,81 @@ class TestConnectCapture:
             },
         )
         assert resp.status_code == 400
+
+
+class TestConnectCors:
+    """Cross-origin access for the browser extension.
+
+    These exist because the first version of Connect shipped without CORS on the
+    belief that an MV3 service worker is exempt for hosts it holds a permission
+    for. It is not: Chrome sent the request, the server logged a clean 200, and
+    the response was discarded before the extension could read it.
+    """
+
+    EXT = "chrome-extension://" + "a" * 32
+    FIREFOX = "moz-extension://12345678-1234-1234-1234-123456789abc"
+
+    async def test_preflight_is_answered_without_a_token(self, client):
+        """The preflight carries no custom headers, so it must pass auth-free."""
+        resp = await client.request(
+            "OPTIONS",
+            "/api/connect/capture",
+            headers={
+                "Origin": self.EXT,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "x-yastl-token",
+            },
+        )
+        assert resp.status_code == 204
+        assert resp.headers["access-control-allow-origin"] == self.EXT
+        assert "x-yastl-token" in resp.headers["access-control-allow-headers"].lower()
+
+    async def test_response_carries_the_allow_origin_header(self, client):
+        resp = await client.get("/api/connect/info", headers={"Origin": self.EXT})
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == self.EXT
+
+    async def test_firefox_extension_origin_is_allowed(self, client):
+        resp = await client.get("/api/connect/info", headers={"Origin": self.FIREFOX})
+        assert resp.headers["access-control-allow-origin"] == self.FIREFOX
+
+    async def test_authenticated_route_is_also_stamped(self, client):
+        token = await _enable_connect(client)
+        resp = await client.get(
+            "/api/connect/targets",
+            headers={"Origin": self.EXT, "X-YASTL-Token": token},
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == self.EXT
+
+    async def test_a_rejected_request_is_still_stamped(self, client):
+        """Without the header the extension sees a CORS error, not the 401.
+
+        A misconfigured token has to surface as "wrong token", so even the
+        failure response needs to be readable cross-origin.
+        """
+        await _enable_connect(client)
+        resp = await client.get(
+            "/api/connect/targets",
+            headers={"Origin": self.EXT, "X-YASTL-Token": "wrong"},
+        )
+        assert resp.status_code == 401
+        assert resp.headers["access-control-allow-origin"] == self.EXT
+
+    async def test_ordinary_web_origins_are_refused(self, client):
+        resp = await client.get(
+            "/api/connect/info", headers={"Origin": "https://evil.example.com"}
+        )
+        assert "access-control-allow-origin" not in resp.headers
+
+    async def test_extension_shaped_but_invalid_origin_is_refused(self, client):
+        resp = await client.get(
+            "/api/connect/info", headers={"Origin": "chrome-extension://short"}
+        )
+        assert "access-control-allow-origin" not in resp.headers
+
+    async def test_cors_does_not_leak_onto_the_rest_of_the_api(self, client):
+        """YASTL has no auth, so any other route must stay closed to extensions."""
+        for path in ("/api/libraries", "/api/settings", "/api/status"):
+            resp = await client.get(path, headers={"Origin": self.EXT})
+            assert "access-control-allow-origin" not in resp.headers, path
