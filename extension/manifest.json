@@ -13,7 +13,8 @@
     "downloads",
     "storage",
     "tabs",
-    "notifications"
+    "notifications",
+    "scripting"
   ],
   "host_permissions": [
     "*://*.printables.com/*",
@@ -55,7 +56,9 @@
         "*://*.myminifactory.com/*",
         "*://*.cults3d.com/*"
       ],
-      "js": ["src/content.js"],
+      "js": [
+        "src/content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }

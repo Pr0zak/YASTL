@@ -280,3 +280,27 @@ export function buildMetadata(context, server = null) {
     gallery: context.gallery || [],
   };
 }
+
+/**
+ * Choose the filename a capture is stored under.
+ *
+ * Sites increasingly serve downloads from opaque URLs — MakerWorld hands out
+ * `<uuid>.3mf` — which leaves a library full of files nobody can identify on
+ * disk. When the page gave us a title, use that and keep the real extension.
+ * With no title we have nothing better than what the download was called.
+ */
+export function storageFilename(originalName, title) {
+  const original = originalName || 'capture.stl';
+  if (!title) return original;
+
+  const match = /(\.[a-z0-9]+)$/i.exec(original);
+  const ext = match ? match[1].toLowerCase() : '';
+  const stem = String(title)
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .slice(0, 120)
+    .trim()
+    .replace(/[. ]+$/, '');
+  return stem ? `${stem}${ext}` : original;
+}

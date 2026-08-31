@@ -19,6 +19,7 @@ import {
   normaliseLicense,
   normaliseTags,
   siteTag,
+  storageFilename,
 } from '../src/sites.js';
 
 test('hostSlug strips the www prefix', () => {
@@ -226,4 +227,34 @@ test('normaliseLicense keeps ND and SA from combining', () => {
   // "CC-BY-ND-SA" would invent a licence that does not exist.
   const name = normaliseLicense('Attribution No Derivatives Share Alike');
   assert.ok(!/ND-SA|SA-ND/.test(name), name);
+});
+
+test('storageFilename prefers the model title over an opaque download name', () => {
+  // The first real capture landed as f29762eb-8583-49fa-8468-3c8096e48416.3mf
+  // because MakerWorld serves downloads under a UUID.
+  assert.equal(
+    storageFilename('f29762eb-8583-49fa-8468-3c8096e48416.3mf', 'Cable Clip'),
+    'Cable Clip.3mf',
+  );
+});
+
+test('storageFilename keeps the download name when there is no title', () => {
+  assert.equal(storageFilename('thing.stl', null), 'thing.stl');
+  assert.equal(storageFilename(null, null), 'capture.stl');
+});
+
+test('storageFilename strips characters that are illegal in a filename', () => {
+  const name = storageFilename('x.stl', 'A/B: "weird" <name>?');
+  assert.ok(!/[<>:"/\\|?*]/.test(name), name);
+  assert.ok(name.endsWith('.stl'));
+});
+
+test('storageFilename does not leave a trailing dot or space', () => {
+  // Windows silently rejects both, and the library may be on a CIFS share.
+  assert.equal(storageFilename('x.stl', 'Widget v2. '), 'Widget v2.stl');
+});
+
+test('storageFilename falls back when the title sanitises to nothing', () => {
+  assert.equal(storageFilename('thing.3mf', '///'), '___.3mf');
+  assert.equal(storageFilename('thing.3mf', '   '), 'thing.3mf');
 });
