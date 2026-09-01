@@ -229,6 +229,10 @@ async function runCapture(captureId) {
   const queue = await getQueue();
   const capture = queue.find((c) => c.id === captureId);
   if (!capture) return;
+  // Both the completion event and beginCapture's own state check can arrive for
+  // the same capture. Whichever gets here first claims it below by moving it to
+  // 'uploading'; the loser stops here rather than uploading the file twice.
+  if (capture.status !== 'pending') return;
 
   if (!settings.serverUrl || !settings.token) {
     await updateCapture(captureId, {
@@ -294,8 +298,18 @@ async function beginCapture(item) {
     return;
   }
 
+  // Correlation is a storage read and returns immediately. Metadata resolution
+  // is not — it calls the server to scrape the source page, which can take
+  // seconds. So the capture is written to storage *first*, in a 'preparing'
+  // state, and only promoted to 'pending' once its metadata is attached.
+  //
+  // Doing this the obvious way round loses small downloads entirely: the file
+  // finishes in well under a second, downloads.onChanged fires against an empty
+  // queue, and by the time the capture is written there is no completion event
+  // left to trigger it. The capture then sits on "Waiting for the download"
+  // forever. 'preparing' also keeps onChanged from grabbing the capture early
+  // and uploading it before it has any metadata.
   const match = await correlate(item);
-  const metadata = await resolveMetadata(match && match.context, settings);
 
   const capture = {
     id: newCaptureId(),
@@ -305,19 +319,23 @@ async function beginCapture(item) {
     createdAt: Date.now(),
     confidence: match ? match.confidence : 'none',
     sourceUrl: match ? match.context.url : null,
-    metadata,
+    metadata: null,
     libraryId: settings.libraryId,
     subfolder: settings.subfolder,
     collectionId: settings.collectionId,
-    // Without a source page there is no metadata worth attaching, so the file
-    // waits for the user to say where it came from rather than landing bare.
-    status: match ? 'pending' : 'needs-page',
+    status: 'preparing',
   };
-
   await pushCapture(capture);
   await refreshBadge();
 
-  if (capture.status !== 'pending') return;
+  const metadata = match ? await resolveMetadata(match.context, settings) : null;
+  // Without a source page there is no metadata worth attaching, so the file
+  // waits for the user to say where it came from rather than landing bare.
+  const status = match ? 'pending' : 'needs-page';
+  await updateCapture(capture.id, { metadata, status });
+  await refreshBadge();
+
+  if (status !== 'pending') return;
 
   if (settings.captureMode === 'intercept') {
     // Cancel the browser's copy so the download token is spent exactly once —
@@ -330,9 +348,44 @@ async function beginCapture(item) {
       /* already finished, or the user cancelled it first */
     }
     await runCapture(capture.id);
+    return;
   }
-  // In 'copy' mode we wait for the browser's download to finish before
-  // re-fetching, so we are not competing with it for the same connection.
+
+  // Copy mode waits for the browser's download to finish before re-fetching,
+  // rather than competing with it for the same connection. Ask where that
+  // download actually got to, because it may well have finished while the
+  // metadata scrape above was in flight.
+  await resumeIfDownloadSettled(capture.id, item.id);
+}
+
+/**
+ * Run or fail a pending capture according to the download's current state.
+ *
+ * Covers the completion that happened while we were busy, and the interrupted
+ * download that would otherwise leave a capture waiting on an event that is
+ * never coming.
+ */
+async function resumeIfDownloadSettled(captureId, downloadId) {
+  let live = null;
+  try {
+    [live] = await chrome.downloads.search({ id: downloadId });
+  } catch (e) {
+    console.warn('[YASTL] could not read download state', e);
+    return;
+  }
+  if (!live) return;
+
+  if (live.state === 'complete') {
+    console.log('[YASTL] download already finished; capturing now');
+    await runCapture(captureId);
+  } else if (live.state === 'interrupted') {
+    console.warn('[YASTL] browser download was interrupted:', live.error);
+    await updateCapture(captureId, {
+      status: 'failed',
+      error: `The browser's download failed (${live.error || 'interrupted'}), so there is nothing to capture. Try downloading again.`,
+    });
+    await refreshBadge();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -355,15 +408,19 @@ chrome.downloads.onCreated.addListener((item) => {
 });
 
 chrome.downloads.onChanged.addListener((delta) => {
-  if (!delta.state || delta.state.current !== 'complete') return;
+  if (!delta.state) return;
+  const settled = delta.state.current;
+  if (settled !== 'complete' && settled !== 'interrupted') return;
   (async () => {
     const settings = await getSettings();
     if (settings.captureMode !== 'copy') return;
     const queue = await getQueue();
+    // Only 'pending' — a capture still 'preparing' has no metadata yet, and
+    // beginCapture checks the download state itself once it is ready.
     const capture = queue.find(
       (c) => c.downloadId === delta.id && c.status === 'pending',
     );
-    if (capture) await runCapture(capture.id);
+    if (capture) await resumeIfDownloadSettled(capture.id, delta.id);
   })().catch((e) => console.error('[YASTL] capture finish failed', e));
 });
 
