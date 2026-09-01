@@ -101,6 +101,16 @@ JavaScript there can be nothing to match on.
 Those captures wait in the popup rather than landing without metadata. Open the
 model's page in the active tab and press **Use this tab**.
 
+## When a capture sits on "Waiting for the download"
+
+That state means the file was detected and its page read, but the browser never
+reported the download finishing. Press **Capture now** on the entry to fetch and
+upload it immediately.
+
+If it happens consistently, the download is probably being interrupted rather
+than completing — the extension marks that case as failed with the browser's own
+error, so check the popup for a red entry.
+
 ## When a capture arrives with no metadata
 
 If a model lands in your library named after the download's own filename — a

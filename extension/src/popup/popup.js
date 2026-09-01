@@ -53,6 +53,7 @@ function formatSize(bytes) {
  * alone — the stripe is a scanning aid, not the information itself.
  */
 const STATUS_LABEL = {
+  preparing: 'Reading the page',
   pending: 'Waiting for the download',
   uploading: 'Uploading',
   done: 'In your library',
@@ -115,10 +116,18 @@ function captureRow(capture, activeTabId) {
   const actions = document.createElement('div');
   actions.className = 'actions';
 
-  if (capture.status === 'failed') {
+  // Retry is offered for a stalled capture as well as a failed one: a capture
+  // waiting on a download event that never arrives has no other way out.
+  // 'preparing' is deliberately excluded — it lasts a second or two and has no
+  // metadata attached yet, so capturing from it would upload the file bare.
+  if (capture.status === 'failed' || capture.status === 'pending') {
     const retry = document.createElement('button');
     retry.className = 'secondary';
-    retry.textContent = 'Retry';
+    retry.textContent = capture.status === 'failed' ? 'Retry' : 'Capture now';
+    retry.title =
+      capture.status === 'failed'
+        ? 'Try this capture again'
+        : 'Fetch and upload now instead of waiting for the download to finish';
     retry.addEventListener('click', () => act({ type: 'retry-capture', id: capture.id }));
     actions.append(retry);
   }
