@@ -41,3 +41,7 @@ app/static/dist/
 # minified React bundle apiece — 5 MB for two files — and are working material
 # rather than anything the application needs. Keep them locally, out of git.
 design/
+
+# Local planning backlog. Working notes rather than documentation of what YASTL
+# is, and referenced from the private memory index rather than from the repo.
+docs/ideas-meshory.md
