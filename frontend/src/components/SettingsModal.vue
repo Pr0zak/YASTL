@@ -622,6 +622,9 @@ function timeAgo(dateStr) {
                                            placeholder="No token yet"
                                            @focus="$event.target.select()">
                                     <button class="btn btn-secondary" :disabled="!connectFullToken"
+                                            :title="connectFullToken
+                                                ? 'Copy the token to the clipboard'
+                                                : 'The stored token is masked and cannot be copied. Regenerate to get a new one you can copy.'"
                                             @click="emit('copyText', { text: connectFullToken, label: 'Token' })">
                                         <span v-html="ICONS.copy"></span> Copy
                                     </button>

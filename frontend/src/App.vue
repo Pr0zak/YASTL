@@ -137,20 +137,54 @@ function onClipPosition(t) {
 function setViewPreset(preset) { viewer?.setView(preset); }
 
 /**
- * Copy a Connect setup value to the clipboard.
+ * Copy text on an insecure origin, where navigator.clipboard does not exist.
  *
- * navigator.clipboard is unavailable on an insecure origin, which is the normal
- * case for a LAN deployment over plain http. Say so plainly rather than
- * failing quietly — the field is read-only and selects on focus, so copying by
- * hand is a click and a keystroke away.
+ * Browsers only expose the async clipboard API over HTTPS or on localhost, so
+ * on a typical LAN deployment it is simply absent. The old execCommand path
+ * still works there, but only from inside a user gesture — which is why the
+ * caller must reach it without awaiting anything first.
+ */
+function copyViaSelection(text) {
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    // Off-screen rather than hidden: a display:none element cannot be selected.
+    field.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0';
+    document.body.appendChild(field);
+    try {
+        field.select();
+        field.setSelectionRange(0, text.length);
+        return document.execCommand('copy');
+    } catch {
+        return false;
+    } finally {
+        document.body.removeChild(field);
+    }
+}
+
+/**
+ * Copy a Connect setup value to the clipboard.
  */
 async function copyText({ text, label = 'Value' }) {
     if (!text) return;
+
+    const done = (ok) => showToast(
+        ok ? `${label} copied` : 'Could not copy — click the field and press Ctrl+C',
+        ok ? 'success' : 'warning',
+    );
+
+    // No await before this branch: execCommand is only honoured inside the
+    // click that triggered it, and awaiting first loses the gesture.
+    if (!window.isSecureContext || !navigator.clipboard) {
+        done(copyViaSelection(text));
+        return;
+    }
+
     try {
         await navigator.clipboard.writeText(text);
-        showToast(`${label} copied`, 'success');
+        done(true);
     } catch {
-        showToast(`Could not copy automatically — click the field and copy it`, 'warning');
+        done(copyViaSelection(text));
     }
 }
 
