@@ -15,6 +15,7 @@ import {
   buildMetadata,
   cleanText,
   hostSlug,
+  isModelPage,
   isServerScraped,
   normaliseLicense,
   normaliseTags,
@@ -257,4 +258,42 @@ test('storageFilename does not leave a trailing dot or space', () => {
 test('storageFilename falls back when the title sanitises to nothing', () => {
   assert.equal(storageFilename('thing.3mf', '///'), '___.3mf');
   assert.equal(storageFilename('thing.3mf', '   '), 'thing.3mf');
+});
+
+test('isModelPage accepts real model URLs on every supported site', () => {
+  const pages = [
+    'https://www.printables.com/model/12345-cable-clip',
+    'https://www.thingiverse.com/thing:4567890',
+    'https://makerworld.com/en/models/198362-vernier-caliper-ruler-two-lengths',
+    'https://www.myminifactory.com/object/3d-print-dragon-12345',
+    'https://cults3d.com/en/3d-model/gadget/thing',
+    'https://thangs.com/designer/someone/3d-model/widget-98765',
+  ];
+  for (const url of pages) assert.ok(isModelPage(url), url);
+});
+
+test('isModelPage rejects the pages that caused a mis-titled capture', () => {
+  // A capture was attributed to "ProZac | Visit History" because the harvester
+  // remembered a browsing-history page on a supported host.
+  const notModels = [
+    'https://makerworld.com/en/@user_1834999983/browsing-history',
+    'https://makerworld.com/en/models',
+    'https://www.printables.com/search/models?q=clip',
+    'https://www.printables.com/@someone',
+    'https://www.thingiverse.com/thing:4567890/comments'.replace('/thing:4567890', '/search'),
+    'https://cults3d.com/en/users/someone',
+    'https://www.myminifactory.com/users/someone',
+  ];
+  for (const url of notModels) assert.ok(!isModelPage(url), url);
+});
+
+test('isModelPage ignores a locale prefix and a query string', () => {
+  assert.ok(isModelPage('https://makerworld.com/en/models/198362-name?from=recommend#p-1'));
+  assert.ok(isModelPage('https://cults3d.com/de/3d-model/spiel/ding'));
+});
+
+test('isModelPage gives an unknown host the benefit of the doubt', () => {
+  // A bad title beats refusing to capture from a site we have no rules for.
+  assert.ok(isModelPage('https://example.com/whatever'));
+  assert.ok(!isModelPage('not a url'));
 });

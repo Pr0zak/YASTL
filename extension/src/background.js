@@ -14,7 +14,12 @@
  * single constraint is what the two capture modes below exist to manage.
  */
 
-import { buildMetadata, isServerScraped, storageFilename } from './sites.js';
+import {
+  buildMetadata,
+  isModelPage,
+  isServerScraped,
+  storageFilename,
+} from './sites.js';
 import {
   ConnectError,
   fetchInfo,
@@ -444,6 +449,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function handleMessage(msg, sender) {
   switch (msg && msg.type) {
     case 'page-context': {
+      const url = msg.context && msg.context.url;
+      // Search results, profiles and browsing history all live on the same
+      // hosts as the models. Remembering them lets a download be attributed to
+      // whichever of them happened to be visited most recently, which is how a
+      // capture ended up titled "ProZac | Visit History".
+      if (!isModelPage(url)) {
+        console.log('[YASTL] not a model page, not remembering it:', url);
+        return { stored: false, reason: 'not-a-model-page' };
+      }
       if (sender.tab && sender.tab.id != null) {
         await putPageContext(sender.tab.id, msg.context);
       }
