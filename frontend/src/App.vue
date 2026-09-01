@@ -137,20 +137,20 @@ function onClipPosition(t) {
 function setViewPreset(preset) { viewer?.setView(preset); }
 
 /**
- * Copy the freshly generated Connect token to the clipboard.
+ * Copy a Connect setup value to the clipboard.
  *
  * navigator.clipboard is unavailable on an insecure origin, which is the normal
- * case for a LAN deployment over plain http. Select the field instead so the
- * user can copy it by hand rather than being told nothing happened.
+ * case for a LAN deployment over plain http. Say so plainly rather than
+ * failing quietly — the field is read-only and selects on focus, so copying by
+ * hand is a click and a keystroke away.
  */
-async function copyConnectToken() {
-    const token = connectFullToken.value;
-    if (!token) return;
+async function copyText({ text, label = 'Value' }) {
+    if (!text) return;
     try {
-        await navigator.clipboard.writeText(token);
-        showToast('Token copied to clipboard', 'success');
+        await navigator.clipboard.writeText(text);
+        showToast(`${label} copied`, 'success');
     } catch {
-        showToast('Could not copy automatically — select the token and copy it', 'warning');
+        showToast(`Could not copy automatically — click the field and copy it`, 'warning');
     }
 }
 
@@ -2757,7 +2757,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @testWebhook="testWebhook"
         @saveConnectSettings="saveConnectSettings"
         @rotateConnectToken="rotateConnectToken"
-        @copyConnectToken="copyConnectToken"
+        @copyText="copyText"
         @saveAiSettings="saveAiSettings"
         @testAi="testAiConnection"
         @buildEmbeddings="buildEmbeddings"

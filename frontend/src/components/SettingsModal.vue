@@ -2,13 +2,18 @@
 /**
  * SettingsModal - Settings panel: Libraries, Appearance, Printing, Maintenance, Advanced.
  */
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { ICONS } from '../icons.js';
 import { BED_PRESETS } from '../composables/useSettings.js';
 
 const showAdvanced = ref(false);
+const showConnectSteps = ref(false);
 
-defineProps({
+// The address to paste into the extension is simply where this page is served
+// from, so show it rather than asking the user to work it out.
+const serverOrigin = window.location.origin;
+
+const props = defineProps({
     showSettings: { type: Boolean, default: false },
     libraries: { type: Array, default: () => [] },
     newLibName: { type: String, default: '' },
@@ -47,6 +52,10 @@ defineProps({
     aiTagProgress: { type: Object, default: () => ({ running: false, total: 0, completed: 0, tags_added: 0 }) },
 });
 
+// Steps start open until a token exists, since that is the first-run case, and
+// collapse to a single line once Connect is set up.
+const stepsOpen = computed(() => showConnectSteps.value || !props.connect?.token);
+
 const emit = defineEmits([
     'close',
     'update:newLibName',
@@ -79,7 +88,7 @@ const emit = defineEmits([
     'testWebhook',
     'saveConnectSettings',
     'rotateConnectToken',
-    'copyConnectToken',
+    'copyText',
     'saveAiSettings',
     'testAi',
     'buildEmbeddings',
@@ -583,8 +592,10 @@ function timeAgo(dateStr) {
                         Off by default. Lets the YASTL Connect browser extension push model
                         downloads from Printables, Thingiverse, MakerWorld, Thangs,
                         MyMiniFactory and Cults3D straight into a library, with the source
-                        page&rsquo;s title, description, tags and licence attached. Your browser
-                        does the downloading, so files behind a site login work.
+                        page&rsquo;s title, description, tags and licence attached.
+                        <strong>Your browser does the downloading</strong>, so files behind a
+                        site login, or on sites that block servers, work the same as clicking
+                        Download yourself.
                     </div>
 
                     <label class="checkbox-item" style="margin-bottom:10px">
@@ -594,42 +605,130 @@ function timeAgo(dateStr) {
                     </label>
 
                     <div v-if="connect.enabled">
-                        <label class="form-label">Access token</label>
-                        <div class="settings-btn-row" style="align-items:center">
-                            <input type="text" class="form-input" readonly
-                                   :value="connectFullToken || connect.token"
-                                   placeholder="No token yet — generate one"
-                                   style="flex:1;min-width:0;font-family:monospace;font-size:12px">
-                            <button class="btn btn-secondary"
-                                    :disabled="!connectFullToken"
-                                    @click="emit('copyConnectToken')">
-                                <span v-html="ICONS.copy"></span> Copy
+                        <div class="connect-steps-head">
+                            <div class="settings-subsection-title">Setup</div>
+                            <button class="btn-link" type="button"
+                                    @click="showConnectSteps = !showConnectSteps">
+                                {{ stepsOpen ? 'Hide steps' : 'Show steps' }}
                             </button>
-                            <button class="btn btn-primary" @click="emit('rotateConnectToken')">
-                                {{ connect.token ? 'Regenerate' : 'Generate' }}
-                            </button>
-                        </div>
-                        <div class="settings-hint" style="margin-top:6px">
-                            <template v-if="connectFullToken">
-                                Copy this now &mdash; it is shown once and masked from here on.
-                                Paste it into the extension&rsquo;s options along with this
-                                server&rsquo;s address.
-                            </template>
-                            <template v-else-if="connect.token">
-                                A token is set but hidden. Regenerating shows a new one and
-                                immediately stops any browser still using the old one.
-                            </template>
-                            <template v-else>
-                                Generate a token, then paste it into the extension&rsquo;s options.
-                            </template>
                         </div>
 
-                        <div class="settings-hint" style="margin-top:10px">
-                            <strong>Worth knowing:</strong> the token is a shared secret sent
-                            with every capture. Over plain <code>http://</code> on your LAN it is
-                            readable by anything already watching that network &mdash; it stops a
-                            web page writing into your library, not someone on your own wire.
-                            Regenerate to revoke a browser that has it.
+                        <ol v-if="stepsOpen" class="connect-steps">
+                            <li>
+                                <div class="connect-step-title">Generate an access token</div>
+                                <div class="settings-btn-row" style="align-items:center">
+                                    <input type="text" class="form-input mono" readonly
+                                           :value="connectFullToken || connect.token"
+                                           placeholder="No token yet"
+                                           @focus="$event.target.select()">
+                                    <button class="btn btn-secondary" :disabled="!connectFullToken"
+                                            @click="emit('copyText', { text: connectFullToken, label: 'Token' })">
+                                        <span v-html="ICONS.copy"></span> Copy
+                                    </button>
+                                    <button class="btn btn-primary" @click="emit('rotateConnectToken')">
+                                        {{ connect.token ? 'Regenerate' : 'Generate' }}
+                                    </button>
+                                </div>
+                                <div class="connect-step-hint">
+                                    <template v-if="connectFullToken">
+                                        <strong>Copy it now.</strong> This is the only time the full
+                                        token is shown &mdash; from here on it reads back masked.
+                                    </template>
+                                    <template v-else-if="connect.token">
+                                        A token is set but hidden. Regenerate to see a new one; that
+                                        immediately stops any browser still using the old one.
+                                    </template>
+                                    <template v-else>
+                                        Press Generate. You will paste this into the extension in
+                                        step&nbsp;4.
+                                    </template>
+                                </div>
+                            </li>
+
+                            <li>
+                                <div class="connect-step-title">Load the extension into your browser</div>
+                                <div class="connect-step-hint">
+                                    The extension is the <code>extension/</code> folder of the YASTL
+                                    source, and needs no build step. In Chrome, Edge or Brave, open
+                                    <code>chrome://extensions</code>, turn on
+                                    <strong>Developer mode</strong>, choose
+                                    <strong>Load unpacked</strong>, and select that folder &mdash; the
+                                    one containing <code>manifest.json</code>, not the folder inside
+                                    it.
+                                    <br><br>
+                                    In Firefox, open <code>about:debugging#/runtime/this-firefox</code>
+                                    and choose <strong>Load Temporary Add-on</strong>, then pick
+                                    <code>manifest.json</code>. Firefox drops a temporary add-on when
+                                    it closes.
+                                    <br><br>
+                                    If YASTL runs on a different machine from your browser, copy the
+                                    folder across first &mdash; the browser loads it from local disk.
+                                </div>
+                            </li>
+
+                            <li>
+                                <div class="connect-step-title">Give it this server&rsquo;s address</div>
+                                <div class="settings-btn-row" style="align-items:center">
+                                    <input type="text" class="form-input mono" readonly
+                                           :value="serverOrigin" @focus="$event.target.select()">
+                                    <button class="btn btn-secondary"
+                                            @click="emit('copyText', { text: serverOrigin, label: 'Address' })">
+                                        <span v-html="ICONS.copy"></span> Copy
+                                    </button>
+                                </div>
+                                <div class="connect-step-hint">
+                                    That is the address you are reading this page on. If your browser
+                                    is on another machine, use one that machine can reach &mdash;
+                                    <code>localhost</code> will not work from elsewhere.
+                                </div>
+                            </li>
+
+                            <li>
+                                <div class="connect-step-title">Configure the extension</div>
+                                <div class="connect-step-hint">
+                                    Open its options page (the puzzle-piece menu &rarr; YASTL Connect
+                                    &rarr; Options; it also opens itself on first install), then:
+                                    <ol class="connect-substeps">
+                                        <li>Paste the address from step&nbsp;3 and the token from step&nbsp;1.</li>
+                                        <li>Press <strong>Test connection</strong>.</li>
+                                        <li>
+                                            Press <strong>Grant site access</strong> and accept the
+                                            prompt. <strong>Do not skip this.</strong> Model sites
+                                            redirect downloads to a CDN on another host, and the
+                                            extension can only fetch from hosts it has permission for.
+                                            Your browser only grants that from a button press, so it
+                                            cannot be asked for later while a download is in flight.
+                                        </li>
+                                        <li>Choose a destination <strong>Library</strong>, then press <strong>Save</strong>.</li>
+                                    </ol>
+                                </div>
+                            </li>
+
+                            <li>
+                                <div class="connect-step-title">Capture something</div>
+                                <div class="connect-step-hint">
+                                    Open a model page on a supported site and click the site&rsquo;s own
+                                    Download button. The capture appears in the extension&rsquo;s popup
+                                    and the model lands here a few seconds later. The toolbar badge
+                                    counts captures in flight in blue, and anything needing you in red.
+                                </div>
+                            </li>
+                        </ol>
+
+                        <div class="settings-hint connect-note">
+                            <strong>After updating the extension</strong>, reload it at
+                            <code>chrome://extensions</code> and reload any model page you already
+                            had open. Browsers only inject an extension&rsquo;s page reader when a
+                            page loads, so a tab opened beforehand has none &mdash; captures from it
+                            arrive with no title or tags.
+                        </div>
+
+                        <div class="settings-hint connect-note warn">
+                            <strong>About the token.</strong> It is a shared secret sent with every
+                            capture. Over plain <code>http://</code> on your LAN it is readable by
+                            anything already watching that network &mdash; it stops a web page
+                            writing into your library, not someone already on your own wire.
+                            Regenerate it to revoke a browser that has it.
                         </div>
                     </div>
                 </div>
