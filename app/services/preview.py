@@ -22,9 +22,14 @@ logger = logging.getLogger("yastl")
 # reasonably small, and previews look much closer to the full mesh.
 DEFAULT_MAX_FACES = 500_000
 
-# Bump when the preview generation changes (e.g. face target) so cached
-# GLBs regenerate instead of serving a stale, lower-detail version.
-PREVIEW_CACHE_VERSION = 2
+# Bump when the preview generation changes — the face target, the attributes
+# written, anything that alters the bytes — so cached GLBs regenerate instead of
+# serving a stale version. Forgetting this is silent: the new code is deployed,
+# the cache keeps answering, and the fix appears not to have worked.
+#
+# v3: normals are no longer written, so the client flat-shades instead of
+#     rounding off every hard edge.
+PREVIEW_CACHE_VERSION = 3
 
 
 def preview_cache_name(model_id: int) -> str:

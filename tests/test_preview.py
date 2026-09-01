@@ -110,3 +110,19 @@ class TestPreviewShading:
         assert len(build_preview_glb(str(src))) < len(
             with_normals.export(file_type="glb")
         )
+
+
+def test_cache_name_carries_the_current_version():
+    """A cached GLB from an older generation must not be reachable by name.
+
+    The cache is keyed by version precisely so a change to the output — the face
+    target, the attributes written — invalidates it everywhere rather than only
+    where someone remembered to delete the files. Getting this wrong is silent:
+    the new code deploys, the cache keeps answering, and the fix looks broken.
+    """
+    from app.services.preview import PREVIEW_CACHE_VERSION, preview_cache_name
+
+    assert preview_cache_name(42) == f"42.v{PREVIEW_CACHE_VERSION}.glb"
+    assert PREVIEW_CACHE_VERSION >= 3, (
+        "v3 dropped vertex normals; a lower version would serve smoothed GLBs."
+    )
