@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><script src="./support.js"></script></head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }
+    a { color:#12b5a6; } a:hover { color:#0f9b8e; }
+    .sec { font-size:.7rem; letter-spacing:.09em; text-transform:uppercase; color:#6b7a94; font-weight:700;
+           padding:0 0 7px; border-bottom:1px solid #2a3a5c; display:flex; align-items:center; }
+    .row { display:flex; align-items:center; gap:8px; min-height:44px; font-size:.85rem; color:#e0e0e0; }
+    .cnt { margin-left:auto; font-size:.7rem; color:#a0a0a0; background:#131b2e; border-radius:10px; padding:2px 8px; }
+    .flag { background:#e74c3c; color:#fff; font-size:9px; font-weight:700; padding:2px 5px; border-radius:3px; }
+  </style>
+</helmet>
+<div style="width:300px; height:1180px; background:#1a1a2e; padding:16px 20px; box-sizing:border-box; display:flex; flex-direction:column; gap:18px; overflow:hidden">
+
+  <div>
+    <div class="sec">Libraries</div>
+    <div class="row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a0a0a0" stroke-width="2" style="opacity:.6"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>3d<span class="cnt">2438</span></div>
+    <div class="row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a0a0a0" stroke-width="2" style="opacity:.6"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Sample Models<span class="cnt">22</span></div>
+  </div>
+
+  <div>
+    <div class="sec">Format <span style="margin-left:auto; color:#6b7a94">›</span></div>
+    <div style="display:flex; flex-direction:column">
+      <div class="row"><span style="width:16px;height:16px;border:1px solid #2a3a5c;border-radius:3px"></span><span style="padding:1px 7px;border:1px solid #61afef;color:#61afef;border-radius:4px;font-size:.65rem;font-weight:700">STL</span></div>
+      <div class="row"><span style="width:16px;height:16px;border:1px solid #2a3a5c;border-radius:3px"></span><span style="padding:1px 7px;border:1px solid #f39c12;color:#f39c12;border-radius:4px;font-size:.65rem;font-weight:700">OBJ</span></div>
+      <div class="row"><span style="width:16px;height:16px;border:1px solid #2a3a5c;border-radius:3px"></span><span style="padding:1px 7px;border:1px solid #27ae60;color:#27ae60;border-radius:4px;font-size:.65rem;font-weight:700">GLTF</span><span class="flag" style="margin-left:auto">0 models</span></div>
+      <div class="row"><span style="width:16px;height:16px;border:1px solid #2a3a5c;border-radius:3px"></span><span style="padding:1px 7px;border:1px solid #a06cd5;color:#a06cd5;border-radius:4px;font-size:.65rem;font-weight:700">FBX</span><span class="flag" style="margin-left:auto">0 models</span></div>
+      <div style="font-size:.7rem;color:#6b7a94;padding:6px 0">…11 rows, 516&nbsp;px, 5 of them match nothing</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec">Tags <span style="margin-left:auto; color:#6b7a94">›</span></div>
+    <div style="margin:8px 0"><div style="height:32px;background:#131b2e;border:1px solid #2a3a5c;border-radius:8px;display:flex;align-items:center;padding:0 10px;font-size:.78rem;color:#6b7a94">Filter tags…</div></div>
+    <div class="row">(1)<span class="cnt">31</span></div>
+    <div class="row">(12u<span class="cnt">1</span></div>
+    <div class="row">(3<span class="cnt">6</span></div>
+    <div class="row">(bishop)<span class="cnt">8</span></div>
+    <div class="row">(gearwall)<span class="cnt">2</span></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 0"><span class="flag">30 of 30 junk</span>
+      <span style="font-size:.7rem;color:#6b7a94">useful tags are below the fold</span></div>
+  </div>
+
+  <div>
+    <div class="sec">Categories <span style="margin-left:auto; color:#6b7a94">›</span></div>
+    <div class="row" style="padding-left:0">› 2_x 2_ Furring Str…<span class="cnt">1</span></div>
+    <div class="row" style="padding-left:12px">Breeze+Buddy+Pro<span class="cnt">2</span></div>
+    <div class="row" style="padding-left:0">› Garage and Tools<span class="cnt">329</span></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span class="flag">counts wrong</span>
+      <span style="font-size:.7rem;color:#6b7a94">329 → returns 501</span></div>
+  </div>
+
+  <div>
+    <div class="sec">Collections <span style="margin-left:auto; color:#6b7a94">+</span></div>
+    <div class="row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a0a0a0" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 000-7.8z"/></svg>Favorites<span class="cnt">13</span></div>
+    <div class="row"><span style="width:20px;height:20px;border:1px solid #98c379;border-radius:3px;background:#2a3a2a"></span>RC …<span style="color:#6b7a94">⚡</span><span class="cnt">109</span></div>
+    <div class="row"><span style="width:20px;height:20px;border:1px solid #e5c07b;border-radius:3px;background:#3a3628"></span>Dino<span class="cnt">35</span></div>
+    <div class="row"><span style="width:10px;height:10px;border-radius:50%;background:#e06c75"></span>Gara…<span style="color:#6b7a94">⚡</span><span class="cnt">338</span></div>
+    <div class="row"><span style="width:10px;height:10px;border-radius:50%;background:#2ec4b6"></span>Art<span style="color:#6b7a94">⚡</span><span class="cnt">795</span></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span class="flag">thumb vs dot</span>
+      <span style="font-size:.7rem;color:#6b7a94">encodes leftover manual rows</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

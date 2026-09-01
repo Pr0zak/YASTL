@@ -321,3 +321,66 @@ class TestConnectCors:
         for path in ("/api/libraries", "/api/settings", "/api/status"):
             resp = await client.get(path, headers={"Origin": self.EXT})
             assert "access-control-allow-origin" not in resp.headers, path
+
+
+class TestExtensionDownload:
+    """Serving the extension itself.
+
+    The download is deliberately unauthenticated: it is a plain <a download>
+    link from the Settings page, which cannot attach a token header, and the
+    archive holds only what is already public in the repository.
+    """
+
+    async def test_download_returns_a_zip(self, client):
+        resp = await client.get("/api/connect/extension.zip")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/zip"
+        assert "attachment" in resp.headers["content-disposition"]
+        assert resp.content[:2] == b"PK"
+
+    async def test_download_needs_no_token(self, client):
+        """Requiring one would be circular — the extension is what it is for."""
+        resp = await client.get("/api/connect/extension.zip")
+        assert resp.status_code == 200
+
+    async def test_zip_contains_a_loadable_extension(self, client):
+        import io
+        import zipfile
+
+        resp = await client.get("/api/connect/extension.zip")
+        names = zipfile.ZipFile(io.BytesIO(resp.content)).namelist()
+
+        # A browser refuses an unpacked directory whose manifest is not at the
+        # root, so the archive must not be nested inside a folder.
+        assert "manifest.json" in names
+        assert "src/background.js" in names
+        assert "icons/icon-128.png" in names
+
+    async def test_zip_excludes_the_test_suite(self, client):
+        import io
+        import zipfile
+
+        resp = await client.get("/api/connect/extension.zip")
+        names = zipfile.ZipFile(io.BytesIO(resp.content)).namelist()
+        assert not any(n.startswith("tests/") for n in names), names
+
+    async def test_filename_carries_the_version(self, client):
+        resp = await client.get("/api/connect/extension.zip")
+        assert "yastl-connect-" in resp.headers["content-disposition"]
+
+    async def test_info_advertises_the_packaged_version(self, client):
+        """So an installed copy can notice it is stale — it never self-updates."""
+        body = (await client.get("/api/connect/info")).json()
+        assert body["extension_version"]
+        assert body["extension_download"] == "/api/connect/extension.zip"
+
+    async def test_advertised_version_matches_the_manifest(self, client):
+        import io
+        import json
+        import zipfile
+
+        info = (await client.get("/api/connect/info")).json()
+        resp = await client.get("/api/connect/extension.zip")
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+        assert manifest["version"] == info["extension_version"]

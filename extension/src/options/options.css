@@ -28,3 +28,15 @@ code {
   border-radius: 3px;
   font-size: 12px;
 }
+
+/* Shown when the server is offering a newer build than the one loaded. An
+   unpacked extension never updates itself, so this is the only way a user
+   finds out. */
+.note.update {
+  margin-top: 10px;
+  border-left-color: var(--accent);
+}
+
+.note.update a {
+  color: var(--accent);
+}

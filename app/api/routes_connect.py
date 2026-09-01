@@ -24,9 +24,12 @@ already on the network and reading traffic.  Connect is disabled by default and
 has to be turned on explicitly in Settings.
 """
 
+import io
+import json
 import logging
 import re
 import secrets
+import zipfile
 from pathlib import Path
 
 import aiosqlite
@@ -118,6 +121,11 @@ async def connect_info():
         "protocol": CONNECT_PROTOCOL_VERSION,
         "connect_enabled": enabled,
         "token_configured": bool(token),
+        # Lets an installed extension notice it is older than the copy this
+        # server is offering, which matters because an unpacked extension has
+        # no auto-update path at all.
+        "extension_version": _extension_version(),
+        "extension_download": "/api/connect/extension.zip",
     }
 
 
@@ -411,6 +419,89 @@ async def rotate_connect_token():
     token = secrets.token_urlsafe(32)
     await set_setting("connect_token", token)
     return {"token": token}
+
+
+# ---------------------------------------------------------------------------
+# Serving the extension itself
+# ---------------------------------------------------------------------------
+
+# app/api/routes_connect.py -> app/api -> app -> repo root
+_EXTENSION_DIR = Path(__file__).resolve().parents[2] / "extension"
+
+# Excluded from the download: the test suite is for developing the extension,
+# not running it, and a browser refuses to load an unpacked directory
+# containing anything it does not recognise as part of an extension.
+_EXTENSION_SKIP_DIRS = {"tests", "node_modules", "__pycache__", ".git"}
+_EXTENSION_SKIP_FILES = {".DS_Store", "Thumbs.db"}
+
+
+def _extension_version() -> str | None:
+    """Read the version out of the extension's manifest, if it is present."""
+    manifest = _EXTENSION_DIR / "manifest.json"
+    try:
+        return json.loads(manifest.read_text()).get("version")
+    except (OSError, ValueError):
+        return None
+
+
+def _build_extension_zip() -> bytes:
+    """Package the extension directory into a zip, in memory.
+
+    A few hundred kilobytes of text and four PNGs, so building it per request
+    costs nothing worth caching and avoids serving a stale copy after an update.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(_EXTENSION_DIR.rglob("*")):
+            rel = path.relative_to(_EXTENSION_DIR)
+            if any(part in _EXTENSION_SKIP_DIRS for part in rel.parts):
+                continue
+            if path.name in _EXTENSION_SKIP_FILES:
+                continue
+            if path.is_file():
+                zf.write(path, arcname=str(rel))
+    return buffer.getvalue()
+
+
+@router.get("/extension.zip")
+async def download_extension():
+    """Serve the browser extension as a zip.
+
+    Deliberately unauthenticated. It is a plain ``<a download>`` link from the
+    Settings page, which cannot attach a token header, and the archive holds
+    only what is already public in the repository — no keys, no library
+    contents, no configuration. Requiring a token here would also be circular:
+    the extension is what the token is for.
+    """
+    if not (_EXTENSION_DIR / "manifest.json").is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "The extension source is not present in this installation. "
+                "Download it from the YASTL repository instead: "
+                "https://github.com/Pr0zak/YASTL/tree/main/extension"
+            ),
+        )
+
+    try:
+        payload = _build_extension_zip()
+    except OSError as e:
+        logger.warning("Could not package the Connect extension: %s", e)
+        raise HTTPException(status_code=500, detail=f"Could not package the extension: {e}")
+
+    version = _extension_version() or "0"
+    filename = f"yastl-connect-{version}.zip"
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(payload)),
+            # The contents change only when the extension is updated, and the
+            # version moves with it.
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

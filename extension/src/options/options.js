@@ -105,12 +105,48 @@ async function save() {
   setTimeout(() => ($('saveStatus').textContent = ''), 2500);
 }
 
+/**
+ * Tell the user when the server has a newer extension than the one they loaded.
+ *
+ * An unpacked extension has no auto-update path whatsoever — the browser reads
+ * whatever is on disk and never checks anywhere. Without this, a stale copy
+ * keeps running indefinitely and its bugs look like server bugs.
+ */
+function showUpdateNotice(info) {
+  const el = $('updateNotice');
+  const installed = chrome.runtime.getManifest().version;
+  const offered = info && info.extension_version;
+  if (!offered || offered === installed) {
+    el.hidden = true;
+    return;
+  }
+
+  const base = $('serverUrl').value.trim().replace(/\/+$/, '');
+  el.innerHTML = '';
+  const text = document.createElement('span');
+  text.textContent =
+    `This server offers YASTL Connect ${offered}; you have ${installed}. ` +
+    'Download it, replace the folder you loaded, then reload the extension ' +
+    'at chrome://extensions and reload any model pages you have open. ';
+  const link = document.createElement('a');
+  link.href = `${base}${info.extension_download || '/api/connect/extension.zip'}`;
+  link.textContent = `Download ${offered}`;
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  el.append(text, link);
+  el.hidden = false;
+}
+
 $('test').addEventListener('click', async () => {
   const button = $('test');
   button.disabled = true;
   showStatus($('testStatus'), 'Connecting…', 'ok');
   try {
-    await send({ type: 'test-connection', serverUrl: $('serverUrl').value.trim() });
+    const info = await send({
+      type: 'test-connection',
+      serverUrl: $('serverUrl').value.trim(),
+    });
+    showUpdateNotice(info);
     // Persist before loading targets so the worker uses the address just typed.
     await send({
       type: 'set-settings',
