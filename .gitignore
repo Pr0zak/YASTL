@@ -36,3 +36,8 @@ app/static/dist/
 # Environment
 .env
 .env.local
+
+# Local design mockups. These are Claude Design / Stitch canvases that vendor a
+# minified React bundle apiece — 5 MB for two files — and are working material
+# rather than anything the application needs. Keep them locally, out of git.
+design/
