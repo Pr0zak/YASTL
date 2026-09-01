@@ -38,6 +38,47 @@ export function isServerScraped(url) {
   return SERVER_SCRAPED_HOSTS.some((h) => host.endsWith(h));
 }
 
+
+/**
+ * Does this URL look like a model's own page?
+ *
+ * The harvester runs on every page of a supported site, which includes search
+ * results, profiles and browsing history. Storing context for those is what let
+ * a capture be attributed to a page called "ProZac | Visit History" — the
+ * download's referrer gave nothing usable, correlation fell back to the most
+ * recent page seen, and that was a history page rather than the model.
+ *
+ * So only model pages are worth remembering. Patterns are kept loose about
+ * locale prefixes and trailing slugs, which vary, and strict about the shape
+ * that identifies a model.
+ */
+const MODEL_PAGE_PATTERNS = [
+  ['printables.com', /\/model\/\d+/],
+  ['thingiverse.com', /\/thing:\d+/],
+  ['makerworld.com', /\/models\/\d+/],
+  ['myminifactory.com', /\/object\//],
+  ['cults3d.com', /\/3d-model\//],
+  ['thangs.com', /\/3d-model\/|\/m\/\d+/],
+];
+
+export function isModelPage(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.replace(/^www\./, '');
+  const path = parsed.pathname;
+
+  for (const [suffix, pattern] of MODEL_PAGE_PATTERNS) {
+    if (host.endsWith(suffix)) return pattern.test(path);
+  }
+  // An unrecognised host gets the benefit of the doubt: the user may be on a
+  // site we have no rules for, and a bad title beats no capture at all.
+  return true;
+}
+
 /** A short site tag, so captures are filterable by origin in YASTL. */
 export function siteTag(url) {
   const host = hostSlug(url);
