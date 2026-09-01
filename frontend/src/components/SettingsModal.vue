@@ -640,29 +640,42 @@ function timeAgo(dateStr) {
                                     </template>
                                     <template v-else>
                                         Press Generate. You will paste this into the extension in
-                                        step&nbsp;4.
+                                        step&nbsp;5.
                                     </template>
                                 </div>
                             </li>
 
                             <li>
-                                <div class="connect-step-title">Load the extension into your browser</div>
+                                <div class="connect-step-title">Download and unpack the extension</div>
+                                <div class="settings-btn-row">
+                                    <a class="btn btn-primary" href="/api/connect/extension.zip" download>
+                                        <span v-html="ICONS.download"></span> Download extension (.zip)
+                                    </a>
+                                </div>
                                 <div class="connect-step-hint">
-                                    The extension is the <code>extension/</code> folder of the YASTL
-                                    source, and needs no build step. In Chrome, Edge or Brave, open
+                                    Save it on <strong>the machine your browser runs on</strong>, and
+                                    unzip it somewhere it can stay &mdash; your browser reads the
+                                    folder from disk every time it starts, so moving or deleting it
+                                    later breaks the extension. Your Documents folder is fine; a
+                                    temporary or Downloads folder is not.
+                                </div>
+                            </li>
+
+                            <li>
+                                <div class="connect-step-title">Load it into your browser</div>
+                                <div class="connect-step-hint">
+                                    In <strong>Chrome, Edge or Brave</strong>: open
                                     <code>chrome://extensions</code>, turn on
-                                    <strong>Developer mode</strong>, choose
-                                    <strong>Load unpacked</strong>, and select that folder &mdash; the
-                                    one containing <code>manifest.json</code>, not the folder inside
-                                    it.
+                                    <strong>Developer mode</strong> (top right), choose
+                                    <strong>Load unpacked</strong>, and select the unzipped folder
+                                    &mdash; the one that <em>contains</em> <code>manifest.json</code>,
+                                    not the file itself and not the <code>src</code> folder inside it.
                                     <br><br>
-                                    In Firefox, open <code>about:debugging#/runtime/this-firefox</code>
-                                    and choose <strong>Load Temporary Add-on</strong>, then pick
+                                    In <strong>Firefox</strong>: open
+                                    <code>about:debugging#/runtime/this-firefox</code>, choose
+                                    <strong>Load Temporary Add-on</strong>, and pick
                                     <code>manifest.json</code>. Firefox drops a temporary add-on when
-                                    it closes.
-                                    <br><br>
-                                    If YASTL runs on a different machine from your browser, copy the
-                                    folder across first &mdash; the browser loads it from local disk.
+                                    it closes, so this has to be repeated each session.
                                 </div>
                             </li>
 
@@ -689,7 +702,7 @@ function timeAgo(dateStr) {
                                     Open its options page (the puzzle-piece menu &rarr; YASTL Connect
                                     &rarr; Options; it also opens itself on first install), then:
                                     <ol class="connect-substeps">
-                                        <li>Paste the address from step&nbsp;3 and the token from step&nbsp;1.</li>
+                                        <li>Paste the address from step&nbsp;4 and the token from step&nbsp;1.</li>
                                         <li>Press <strong>Test connection</strong>.</li>
                                         <li>
                                             Press <strong>Grant site access</strong> and accept the
@@ -716,10 +729,15 @@ function timeAgo(dateStr) {
                         </ol>
 
                         <div class="settings-hint connect-note">
-                            <strong>After updating the extension</strong>, reload it at
-                            <code>chrome://extensions</code> and reload any model page you already
-                            had open. Browsers only inject an extension&rsquo;s page reader when a
-                            page loads, so a tab opened beforehand has none &mdash; captures from it
+                            <strong>Keeping it up to date.</strong> An unpacked extension never
+                            updates itself. When you update YASTL, download the zip again, replace
+                            the folder, then reload the extension at
+                            <code>chrome://extensions</code> &mdash; its options page also tells you
+                            when this server is offering a newer build than the one you have loaded.
+                            <br><br>
+                            After any reload, <strong>reload any model page you already had
+                            open</strong>. Browsers only inject an extension&rsquo;s page reader when
+                            a page loads, so a tab opened beforehand has none, and captures from it
                             arrive with no title or tags.
                         </div>
 

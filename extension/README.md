@@ -24,13 +24,19 @@ reach:
 ## Install
 
 There is no build step and no dependencies — the source directory *is* the
-extension.
+extension. A running YASTL also serves it as a zip, from **Settings → Connect**
+or directly at `/api/connect/extension.zip`, which is the easier route when
+YASTL and your browser are on different machines.
+
+Unzip it somewhere it can stay. Your browser reads the folder from disk every
+time it starts, so moving or deleting it later breaks the extension.
 
 **Chrome / Edge / Brave**
 
 1. Open `chrome://extensions` (or `edge://extensions`).
 2. Turn on **Developer mode**.
-3. **Load unpacked**, and select this `extension/` directory.
+3. **Load unpacked**, and select the folder that *contains* `manifest.json` —
+   not the file, and not the `src` folder inside it.
 
 **Firefox**
 
@@ -39,6 +45,17 @@ extension.
 
 Firefox unloads a temporary add-on when the browser closes. For a permanent
 install you would need to package and sign it through addons.mozilla.org.
+
+## Updating
+
+An unpacked extension never updates itself — the browser reads whatever is on
+disk and checks nowhere. Download the zip again, replace the folder, and reload
+the extension at `chrome://extensions`. Its options page compares its own
+version against the one the server offers and tells you when you are behind.
+
+After any reload, **reload any model page you already had open**. Content
+scripts only run when a page loads, so a tab opened beforehand has no harvester
+in it.
 
 ## Set up
 

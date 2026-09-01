@@ -24,6 +24,11 @@ COPY pyproject.toml .
 COPY app/ app/
 RUN pip install --no-cache-dir ".[step]"
 
+# The browser extension is served as a zip from /api/connect/extension.zip, so
+# its source has to be in the image. It is static files only — nothing is built
+# or installed from it.
+COPY extension/ extension/
+
 # Copy built frontend from the frontend stage
 COPY --from=frontend /app/app/static/dist ./app/static/dist
 

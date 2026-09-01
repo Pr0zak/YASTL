@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }
+    a { color:#12b5a6; } a:hover { color:#0f9b8e; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#12182a; color:#e0e0e0; display:flex; flex-direction:column; overflow:hidden; position:relative">
+
+  <!-- viewer owns the screen -->
+  <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center">
+    <div style="width:132px; height:172px; background:linear-gradient(160deg,#2ec4b6,#12897f); border-radius:4px; margin-bottom:120px"></div>
+  </div>
+
+  <div style="position:relative; display:flex; align-items:center; gap:10px; padding:12px; flex-shrink:0">
+    <div style="width:40px; height:40px; border-radius:50%; background:rgba(22,33,62,.85); border:1px solid #2a3a5c; display:flex; align-items:center; justify-content:center; color:#e0e0e0; font-size:18px">×</div>
+    <div style="flex:1; min-width:0; text-align:center">
+      <div style="font-size:.9rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Tarlaarlo Remote Wall Mount</div>
+    </div>
+    <div style="width:40px; height:40px; border-radius:50%; background:rgba(22,33,62,.85); border:1px solid #2a3a5c; display:flex; align-items:center; justify-content:center; color:#a0a0a0">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 000-7.8z"/></svg></div>
+  </div>
+
+  <!-- floating viewer tools, thumb-reachable, right edge -->
+  <div style="position:absolute; right:12px; top:50%; transform:translateY(-60%); display:flex; flex-direction:column; gap:8px">
+    <div style="width:44px; height:44px; border-radius:10px; background:rgba(30,42,69,.9); border:1px solid #2a3a5c; display:flex; align-items:center; justify-content:center; color:#e0e0e0">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 019-9 9 9 0 016.7 3M21 12a9 9 0 01-9 9 9 9 0 01-6.7-3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg></div>
+    <div style="width:44px; height:44px; border-radius:10px; background:rgba(30,42,69,.9); border:1px solid #2a3a5c; display:flex; align-items:center; justify-content:center; color:#e0e0e0">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 12l9-5M12 12v10M12 12L3 7"/></svg></div>
+    <div style="width:44px; height:44px; border-radius:10px; background:rgba(30,42,69,.9); border:1px solid #2a3a5c; display:flex; align-items:center; justify-content:center; color:#e0e0e0">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg></div>
+    <div style="width:44px; height:44px; border-radius:10px; background:rgba(30,42,69,.9); border:1px solid #2a3a5c; display:flex; align-items:center; justify-content:center; color:#a0a0a0">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></div>
+  </div>
+
+  <div style="flex:1"></div>
+
+  <!-- peek sheet: essentials + actions, drag up for the rest -->
+  <div style="position:relative; background:#16213e; border-top:1px solid #2a3a5c; border-radius:12px 12px 0 0; flex-shrink:0; padding:10px 16px 16px; display:flex; flex-direction:column; gap:12px">
+    <div style="width:36px; height:4px; background:#344868; border-radius:2px; align-self:center"></div>
+
+    <div style="display:flex; align-items:center; gap:10px">
+      <div style="flex:1">
+        <div style="font-size:1rem; font-weight:600">92 × 46 × 30 mm</div>
+        <div style="font-size:.72rem; color:#6b7a94; margin-top:2px">3MF · 14.6 MB · never printed</div>
+      </div>
+      <div style="padding:6px 11px; background:rgba(39,174,96,.2); color:#27ae60; border-radius:6px; font-size:.75rem; font-weight:600">Fits your bed</div>
+    </div>
+
+    <div style="display:flex; gap:8px">
+      <div style="flex:1; min-height:48px; display:flex; align-items:center; justify-content:center; gap:7px; background:#0f9b8e; color:#fff; border-radius:8px; font-size:.88rem; font-weight:600">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/></svg>Open in slicer</div>
+      <div style="min-width:48px; min-height:48px; display:flex; align-items:center; justify-content:center; border:1px solid #2a3a5c; border-radius:8px; color:#a0a0a0">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:6px; justify-content:center; color:#6b7a94; font-size:.75rem">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg>
+      Notes, tags, files, print log</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

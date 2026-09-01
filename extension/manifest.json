@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YASTL Connect",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Capture 3D model downloads from Printables, Thingiverse, MakerWorld and others straight into your YASTL library, with the page's metadata attached.",
   "icons": {
     "16": "icons/icon-16.png",
