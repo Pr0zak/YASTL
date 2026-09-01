@@ -99,12 +99,23 @@ def build_preview_glb(file_path: str, max_faces: int = DEFAULT_MAX_FACES) -> byt
                     file_path, original, e,
                 )
 
-        # Access vertex_normals so they bake into the GLB — the client then
-        # skips its own (expensive, main-thread) computeVertexNormals.
-        try:
-            _ = mesh.vertex_normals
-        except Exception:  # noqa: BLE001 - normals are best-effort
-            pass
+        # Do NOT touch mesh.vertex_normals here.
+        #
+        # Reading it makes trimesh average adjacent face normals at every shared
+        # vertex, with no crease-angle threshold, and export the result as the
+        # GLB's NORMAL attribute. On a hard-surface print model that is wrong by
+        # a wide margin: measured on a real 10,768-face wall bracket, 89% of the
+        # resulting normals pointed more than 30 degrees away from the face they
+        # shaded, averaging 42 degrees. The mesh reads as soft and inflated —
+        # the shading is describing a different surface from the geometry.
+        #
+        # Leaving NORMAL out entirely is both correct and cheaper. glTF requires
+        # a client to flat-shade a primitive with no normals, which is what the
+        # facets of a printed part actually look like and what YASTL already
+        # shows for STL. It also drops a third of the file (259 KB -> 194 KB on
+        # that bracket) and costs the GPU nothing, since it derives the normal
+        # per fragment. An earlier comment here claimed baking them saved the
+        # client an expensive computeVertexNormals; that call never ran for GLB.
 
         return mesh.export(file_type="glb")
     finally:
@@ -189,10 +200,7 @@ def build_plate_glb(file_path: str, object_ids: list[int],
                 mesh = mesh.simplify_quadric_decimation(face_count=max_faces)
             except Exception:  # noqa: BLE001 - keep full on failure
                 pass
-        try:
-            _ = mesh.vertex_normals
-        except Exception:  # noqa: BLE001
-            pass
+        # No vertex_normals here either — see build_preview_glb above.
         return mesh.export(file_type="glb")
     finally:
         if scene is not None and hasattr(scene, "_cache"):

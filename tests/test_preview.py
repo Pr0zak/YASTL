@@ -54,3 +54,59 @@ def test_unloadable_file_raises(tmp_path):
     bad.write_bytes(b"not a mesh")
     with pytest.raises(Exception):
         build_preview_glb(str(bad))
+
+
+class TestPreviewShading:
+    """The preview GLB must not carry smoothed vertex normals.
+
+    trimesh averages face normals across every shared vertex with no crease
+    threshold. On a hard-surface print model that describes a different surface
+    from the geometry — measured at 42 degrees of average error on a real wall
+    bracket — and renders soft and inflated. Omitting NORMAL makes a glTF client
+    flat-shade, which is both truthful and smaller.
+    """
+
+    @staticmethod
+    def _gltf_attributes(glb: bytes) -> set[str]:
+        import json
+        import struct
+
+        json_len = struct.unpack_from("<I", glb, 12)[0]
+        doc = json.loads(glb[20 : 20 + json_len])
+        attrs: set[str] = set()
+        for mesh in doc.get("meshes", []):
+            for primitive in mesh.get("primitives", []):
+                attrs |= set(primitive.get("attributes", {}).keys())
+        return attrs
+
+    def test_preview_glb_has_positions_but_no_normals(self, tmp_path):
+        import trimesh
+
+        from app.services.preview import build_preview_glb
+
+        # A cube is the clearest case: every vertex is shared by faces that are
+        # 90 degrees apart, so smoothing would be maximally wrong.
+        src = tmp_path / "cube.stl"
+        trimesh.creation.box(extents=(10, 10, 10)).export(str(src))
+
+        attrs = self._gltf_attributes(build_preview_glb(str(src)))
+        assert "POSITION" in attrs
+        assert "NORMAL" not in attrs, (
+            "Smoothed normals are back in the preview GLB; hard edges will "
+            "render rounded."
+        )
+
+    def test_omitting_normals_makes_the_glb_smaller(self, tmp_path):
+        import trimesh
+
+        from app.services.preview import build_preview_glb
+
+        src = tmp_path / "cube.stl"
+        mesh = trimesh.creation.box(extents=(10, 10, 10))
+        mesh.export(str(src))
+
+        with_normals = trimesh.load(str(src), force="mesh")
+        _ = with_normals.vertex_normals
+        assert len(build_preview_glb(str(src))) < len(
+            with_normals.export(file_type="glb")
+        )
