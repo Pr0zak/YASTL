@@ -1533,3 +1533,114 @@ textarea.import-textarea {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ---- Connect setup steps ---- */
+.connect-steps-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.connect-steps-head .settings-subsection-title {
+    margin-bottom: 0;
+}
+
+.btn-link {
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.btn-link:hover {
+    text-decoration: underline;
+}
+
+.connect-steps {
+    margin: 10px 0 4px;
+    padding-left: 0;
+    list-style: none;
+    counter-reset: connect-step;
+}
+
+.connect-steps > li {
+    position: relative;
+    counter-increment: connect-step;
+    padding: 0 0 16px 34px;
+}
+
+/* A left rule joining the step numbers reads as a sequence rather than a
+   loose list. It stops short of the final step so the run does not dangle. */
+.connect-steps > li::before {
+    content: counter(connect-step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--bg-primary, #1a1a2e);
+    font-size: 0.72rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.connect-steps > li:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 10.5px;
+    top: 26px;
+    bottom: 6px;
+    width: 1px;
+    background: var(--border-color, #2a3a5c);
+}
+
+.connect-step-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+    padding-top: 2px;
+}
+
+.connect-step-hint {
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.connect-substeps {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
+.connect-substeps li {
+    margin-bottom: 6px;
+}
+
+.connect-note {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--border-color, #2a3a5c);
+    border-radius: 4px;
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.15));
+}
+
+.connect-note.warn {
+    border-left-color: var(--warning, #e5c07b);
+}
+
+.form-input.mono {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+}
