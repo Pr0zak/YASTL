@@ -736,6 +736,18 @@ export function useViewer() {
                             if (!hasRealColor) {
                                 child.material = DEFAULT_MATERIAL.clone();
                             }
+                            // Server-converted GLBs carry no NORMAL attribute,
+                            // because averaging normals across a hard-surface
+                            // model's shared vertices rounds off every edge and
+                            // renders it soft and inflated. glTF says to flat-
+                            // shade in that case, and GLTFLoader does — but the
+                            // material swap above throws that flag away, and a
+                            // smooth material with no normals renders unlit.
+                            // Restore it from the geometry, which is the real
+                            // authority either way.
+                            child.material.flatShading =
+                                !child.geometry.getAttribute('normal');
+                            child.material.needsUpdate = true;
                             child.castShadow = true;
                             child.receiveShadow = true;
                         }
