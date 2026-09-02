@@ -302,3 +302,67 @@ class TestGenerateThumbnail:
 
         assert result is not None
         assert (thumb_dir / "55.png").exists()
+
+
+class TestSolidShadingIsFlat:
+    """Both solid renderers must shade per face, not per smoothed vertex.
+
+    Averaging adjacent face normals at a shared vertex rounds every hard edge
+    off, and print models are mostly hard edges. `_render_solid_fast` always did
+    the right thing — it derives a normal per triangle by cross product — but
+    `_render_solid` used trimesh's smoothed vertex normals, so the two disagreed
+    about the shape of the same object. Only `render_quality == "quality"`
+    reaches the latter, which nothing in the UI sets, so this was invisible
+    rather than harmless.
+    """
+
+    @staticmethod
+    def _cube_meshes():
+        import trimesh
+
+        # A cube is the sharpest test: every vertex is shared by faces 90
+        # degrees apart, so smoothing is maximally wrong.
+        return [trimesh.creation.box(extents=(10, 10, 10))]
+
+    def test_a_cube_renders_as_flat_faces(self, tmp_path):
+        import numpy as np
+        from PIL import Image
+
+        from app.services.thumbnail_render import _render_solid
+
+        out = tmp_path / "cube.png"
+        assert _render_solid(self._cube_meshes(), str(out))
+
+        pixels = np.asarray(Image.open(out).convert("L"))
+        lit = pixels[pixels > 0]
+        assert lit.size > 0
+
+        # Three faces are visible from the fixed camera and flat shading gives
+        # each exactly one tone, so a correct render has three greys. Smoothed
+        # normals turn every face into a gradient: the same cube measured 62
+        # distinct greys before this was fixed. Eight leaves room for edge
+        # pixels without coming close to that.
+        tones = np.unique(lit)
+        assert len(tones) <= 8, (
+            f"{len(tones)} distinct tones on a cube — the render is gradient-"
+            "shaded, so hard edges are being rounded off."
+        )
+
+    def test_both_solid_renderers_agree_on_a_cube(self, tmp_path):
+        import numpy as np
+        from PIL import Image
+
+        from app.services.thumbnail_render import _render_solid, _render_solid_fast
+
+        slow, fast = tmp_path / "slow.png", tmp_path / "fast.png"
+        assert _render_solid(self._cube_meshes(), str(slow))
+        assert _render_solid_fast(self._cube_meshes(), str(fast))
+
+        a = np.asarray(Image.open(slow).convert("L")).astype(int)
+        b = np.asarray(Image.open(fast).convert("L")).astype(int)
+
+        # Different rasterisers, so not pixel-identical; what matters is that
+        # neither is describing a rounder object than the other.
+        both_lit = (a > 0) & (b > 0)
+        assert both_lit.sum() > 0
+        assert np.abs(a[both_lit] - b[both_lit]).mean() < 20
