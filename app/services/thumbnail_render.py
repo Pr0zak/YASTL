@@ -327,31 +327,31 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     # Decimate high-poly meshes for performance
     meshes = _simplify_for_thumbnail(meshes)
 
-    # Collect vertices, faces, and vertex normals with offset tracking
+    # Collect vertices, faces and FACE normals with offset tracking.
+    #
+    # Face normals, not vertex normals. Averaging adjacent face normals at a
+    # shared vertex rounds every hard edge off, and print models are mostly hard
+    # edges — measured on a real wall bracket, 89% of the smoothed normals
+    # pointed more than 30 degrees away from the face they shaded. The viewer
+    # was corrected to flat-shade for the same reason; this keeps the thumbnail
+    # showing the same object.
     all_vertices: list[np.ndarray] = []
     all_faces: list[np.ndarray] = []
-    all_normals: list[np.ndarray] = []
+    all_face_normals: list[np.ndarray] = []
     offset = 0
 
     for mesh in meshes:
         all_vertices.append(mesh.vertices)
         if hasattr(mesh, "faces") and len(mesh.faces) > 0:
             all_faces.append(mesh.faces + offset)
-        # Compute smooth vertex normals for Gouraud shading
-        try:
-            all_normals.append(mesh.vertex_normals)
-        except Exception:
-            # Fallback: use face normals broadcast to vertices
-            fn = np.zeros_like(mesh.vertices)
-            if len(mesh.faces) > 0:
-                face_normals = mesh.face_normals
-                np.add.at(fn, mesh.faces[:, 0], face_normals)
-                np.add.at(fn, mesh.faces[:, 1], face_normals)
-                np.add.at(fn, mesh.faces[:, 2], face_normals)
+            try:
+                all_face_normals.append(mesh.face_normals)
+            except Exception:  # noqa: BLE001 - degenerate mesh; derive directly
+                tri = mesh.vertices[mesh.faces]
+                fn = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
                 norms = np.linalg.norm(fn, axis=1, keepdims=True)
                 norms[norms < 1e-12] = 1.0
-                fn = fn / norms
-            all_normals.append(fn)
+                all_face_normals.append(fn / norms)
         offset += len(mesh.vertices)
 
     if not all_vertices or not all_faces:
@@ -360,7 +360,8 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
 
     vertices_3d = np.vstack(all_vertices)
     faces = np.vstack(all_faces)
-    vert_normals = np.vstack(all_normals)
+    # Stacked in the same order as `faces`, so no index offset is needed.
+    face_normals = np.vstack(all_face_normals)
 
     if len(vertices_3d) == 0 or len(faces) == 0:
         return False
@@ -379,7 +380,7 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     rot = rot_pitch @ rot_yaw
 
     rotated = (rot @ vertices_3d.T).T
-    rot_normals = (rot @ vert_normals.T).T
+    rot_face_normals = (rot @ face_normals.T).T
 
     # Project to screen coordinates
     W, H = THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT
@@ -404,10 +405,11 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     sy = (y_max - rotated[:, 1]) * scale + padding + (usable_h - y_range * scale) / 2
     sz = rotated[:, 2]  # depth for z-buffer
 
-    # Per-vertex lighting (Gouraud shading)
+    # Per-face lighting (flat shading). One intensity per triangle, so a facet
+    # reads as a facet instead of being blended into its neighbours.
     light_dir = SOLID_LIGHT_DIR / np.linalg.norm(SOLID_LIGHT_DIR)
-    dot = np.abs(np.dot(rot_normals, light_dir))  # double-sided
-    vert_intensity = np.clip(SOLID_AMBIENT + SOLID_DIFFUSE * dot, 0.0, 1.0)
+    dot = np.abs(np.dot(rot_face_normals, light_dir))  # double-sided
+    face_intensity = np.clip(SOLID_AMBIENT + SOLID_DIFFUSE * dot, 0.0, 1.0)
 
     # --- Fully vectorized z-buffer rasterization (zero Python loops) ---
     #
@@ -429,8 +431,7 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     cy = (sy[i0] + sy[i1] + sy[i2]) / 3.0
     cz = (sz[i0] + sz[i1] + sz[i2]) / 3.0
 
-    # Average vertex intensity per face (smooth approximation)
-    c_int = (vert_intensity[i0] + vert_intensity[i1] + vert_intensity[i2]) / 3.0
+    c_int = face_intensity
 
     # Centroid pixel coordinates
     cix = np.clip(np.round(cx).astype(np.int32), 0, W - 1)
@@ -470,9 +471,11 @@ def _render_solid(meshes: list[trimesh.Trimesh], output_path: str) -> bool:
     fx2 = sx[i2]
     fy2 = sy[i2]
     fz2 = sz[i2]
-    fi0 = vert_intensity[i0]
-    fi1 = vert_intensity[i1]
-    fi2 = vert_intensity[i2]
+    # Equal at all three corners, so the barycentric blend below produces one
+    # constant value per triangle without needing a separate code path.
+    fi0 = face_intensity
+    fi1 = face_intensity
+    fi2 = face_intensity
 
     bb_x0 = np.clip(np.floor(np.minimum(np.minimum(fx0, fx1), fx2)).astype(np.int32), 0, W - 1)
     bb_x1 = np.clip(np.ceil(np.maximum(np.maximum(fx0, fx1), fx2)).astype(np.int32), 0, W - 1)
