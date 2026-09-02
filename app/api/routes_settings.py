@@ -10,7 +10,12 @@ from app.config import settings as app_settings
 from app.database import get_all_settings, get_db, get_setting, set_setting, update_fts_for_model
 from app.services import thumbnail
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
-from app.services.preview import build_preview_glb, detail_max_faces, preview_cache_name
+from app.services.preview import (
+    build_preview_glb,
+    detail_max_faces,
+    preview_cache_name,
+    write_preview_cache,
+)
 from app.api._helpers import apply_auto_tags
 from app.workers import get_pool, log_memory, tick_job, maybe_recycle, run_cpu_job
 
@@ -389,8 +394,7 @@ async def _generate_all_previews() -> None:
                     glb = await run_cpu_job(
                         build_preview_glb, resolved, detail_max_faces(detail), recycle=True
                     )
-                    with open(cache_path, "wb") as f:
-                        f.write(glb)
+                    write_preview_cache(cache_path, glb)
                     _preview_progress["generated"] += 1
             except Exception as e:  # noqa: BLE001 - skip and continue
                 logger.warning("Preview generation failed for model %d: %s", model_id, e)
