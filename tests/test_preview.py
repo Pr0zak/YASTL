@@ -182,3 +182,35 @@ class TestPreviewDetail:
         small = build_preview_glb(str(src), max_faces=20_000)
         large = build_preview_glb(str(src), max_faces=detail_max_faces("detailed"))
         assert len(small) < len(large)
+
+
+class TestStaleCacheEviction:
+    """Entries from a previous cache version can never be served again.
+
+    They still occupy the size budget, and with previews running to 9 MB apiece
+    an LRU that waits its turn leaves most of the cache holding files nothing
+    will ever ask for.
+    """
+
+    def test_stale_version_entries_are_removed(self, tmp_path):
+        from app.api.routes_model_files import _evict_glb_cache
+        from app.services.preview import PREVIEW_CACHE_VERSION, preview_cache_name
+
+        stale = tmp_path / f"1.v{PREVIEW_CACHE_VERSION - 1}-detailed.glb"
+        current = tmp_path / preview_cache_name(2)
+        for f in (stale, current):
+            f.write_bytes(b"glb")
+
+        _evict_glb_cache(str(tmp_path))
+
+        assert not stale.exists(), "stale-version entry was kept"
+        assert current.exists(), "current entry was wrongly removed"
+
+    def test_non_glb_files_are_left_alone(self, tmp_path):
+        from app.api.routes_model_files import _evict_glb_cache
+
+        other = tmp_path / "notes.txt"
+        other.write_bytes(b"keep me")
+
+        _evict_glb_cache(str(tmp_path))
+        assert other.exists()
