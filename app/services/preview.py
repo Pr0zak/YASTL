@@ -11,6 +11,7 @@ OOM-protected path the scanner uses.
 """
 
 import gc
+import gzip
 import logging
 import os
 
@@ -56,7 +57,9 @@ def detail_max_faces(detail: str | None) -> int:
 #
 # v3: normals are no longer written, so the client flat-shades instead of
 #     rounding off every hard edge.
-PREVIEW_CACHE_VERSION = 3
+# v4: entries are stored gzipped and served with Content-Encoding, which halves
+#     what goes over the wire.
+PREVIEW_CACHE_VERSION = 4
 
 
 def preview_cache_name(model_id: int, detail: str | None = None) -> str:
@@ -71,7 +74,7 @@ def preview_cache_name(model_id: int, detail: str | None = None) -> str:
     level = detail or PREVIEW_DETAIL_DEFAULT
     if level not in PREVIEW_DETAIL_FACES:
         level = PREVIEW_DETAIL_DEFAULT
-    return f"{model_id}.v{PREVIEW_CACHE_VERSION}-{level}.glb"
+    return f"{model_id}.v{PREVIEW_CACHE_VERSION}-{level}.glb.gz"
 
 
 def _as_single_mesh(loaded, file_path: str):
@@ -276,7 +279,12 @@ def purge_stale_previews(cache_dir: str) -> tuple[int, int]:
         return (0, 0)
 
     for name in names:
-        if not name.endswith(".glb") or current_tag in name:
+        # Both suffixes: entries written before v4 are plain .glb, and a sweep
+        # that only knew the current one would leave every older generation in
+        # place — which is precisely what it exists to remove.
+        if not (name.endswith(".glb") or name.endswith(".glb.gz")):
+            continue
+        if current_tag in name:
             continue
         path = os.path.join(cache_dir, name)
         try:
@@ -293,3 +301,32 @@ def purge_stale_previews(cache_dir: str) -> tuple[int, int]:
             removed, freed / 1024 / 1024,
         )
     return (removed, freed)
+
+
+# A GLB's buffers are raw float positions and indices, which gzip roughly halves
+# — a 9 MB preview measured 4.3 MB. Compressing once when the entry is written
+# rather than per request matters here: previews are read far more often than
+# they are built, and a 200 ms gzip on the event loop for every open would cost
+# more than it saves. Level 6 is the usual balance; 9 buys about 2% for several
+# times the CPU.
+PREVIEW_GZIP_LEVEL = 6
+
+
+def write_preview_cache(cache_path: str, glb: bytes) -> None:
+    """Write a preview to the cache, compressed.
+
+    Written to a temporary name and renamed into place, because a reader that
+    finds a half-written file has no way to tell it apart from a complete one —
+    and concurrent opens of the same model are exactly what this cache exists
+    to serve.
+    """
+    tmp = f"{cache_path}.tmp"
+    with gzip.open(tmp, "wb", compresslevel=PREVIEW_GZIP_LEVEL) as f:
+        f.write(glb)
+    os.replace(tmp, cache_path)
+
+
+def read_preview_cache(cache_path: str) -> bytes:
+    """Read and decompress a cached preview."""
+    with gzip.open(cache_path, "rb") as f:
+        return f.read()

@@ -12,11 +12,19 @@ import aiosqlite
 from app.config import settings
 from app.database import get_setting
 from app.services import thumbnail
-from app.services.preview import build_preview_glb
+from app.services.preview import (
+    build_preview_glb,
+    read_preview_cache,
+    write_preview_cache,
+)
 from app.workers import run_cpu_job
 from app.api._helpers import open_db, _get_db_path, _resolve_model_file, resolve_thumbnail, MIME_TYPES
 
 logger = logging.getLogger(__name__)
+
+# Cached previews are gzipped GLBs since v4. Both suffixes are recognised so a
+# cache written by an older version is still evictable rather than immortal.
+_PREVIEW_SUFFIXES = (".glb", ".glb.gz")
 
 router = APIRouter(prefix="/api/models", tags=["model-files"])
 
@@ -41,7 +49,7 @@ def _evict_glb_cache(cache_dir: str) -> None:
         entries = []
         total_size = 0
         for name in os.listdir(cache_dir):
-            if not name.endswith(".glb"):
+            if not name.endswith(_PREVIEW_SUFFIXES):
                 continue
             path = os.path.join(cache_dir, name)
             if current_tag not in name:
@@ -221,11 +229,31 @@ async def serve_model_glb(request: Request, model_id: int):
 
     src_mtime = os.path.getmtime(file_path)
 
-    def _hit() -> FileResponse:
-        return FileResponse(
-            path=cache_path,
+    download_name = f"{os.path.splitext(model['name'])[0]}.glb"
+
+    def _hit():
+        """Serve the cached preview, compressed where the client allows it.
+
+        Entries are stored gzipped, so a client that advertises gzip — every
+        browser — gets the file exactly as it sits on disk, halving what goes
+        over the wire at no per-request cost. Anything else is decompressed
+        here; that path is rare enough not to be worth optimising, and being
+        correct for it matters more than being fast.
+        """
+        accepts = request.headers.get("accept-encoding", "")
+        if "gzip" in accepts.lower():
+            return FileResponse(
+                path=cache_path,
+                media_type="model/gltf-binary",
+                filename=download_name,
+                headers={"Content-Encoding": "gzip"},
+            )
+        return Response(
+            content=read_preview_cache(cache_path),
             media_type="model/gltf-binary",
-            filename=f"{os.path.splitext(model['name'])[0]}.glb",
+            headers={
+                "Content-Disposition": f'attachment; filename="{download_name}"'
+            },
         )
 
     if os.path.exists(cache_path) and src_mtime <= os.path.getmtime(cache_path):
@@ -291,8 +319,7 @@ async def serve_model_glb(request: Request, model_id: int):
 
             # Write to cache before releasing, so a waiter finds the result
             # rather than starting the same conversion again.
-            with open(cache_path, "wb") as f:
-                f.write(glb_data)
+            write_preview_cache(cache_path, glb_data)
     finally:
         # Only the last holder clears the entry; a waiter that is still queued
         # re-creates it, which is harmless because the cache check above will
