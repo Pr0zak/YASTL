@@ -97,6 +97,19 @@ async def lifespan(app: FastAPI):
     except Exception:
         logging.getLogger("yastl").exception("Failed to load embeddings at startup")
 
+    # Drop cached previews left behind by an older PREVIEW_CACHE_VERSION.
+    # Startup is the moment a bump takes effect, and a cache hit returns before
+    # eviction runs, so on a library that is mostly re-read these orphans are
+    # otherwise never considered at all.
+    try:
+        from app.services.preview import purge_stale_previews
+
+        purge_stale_previews(
+            os.path.join(str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache")
+        )
+    except Exception:  # noqa: BLE001 - a cleanup must never block startup
+        logging.getLogger("yastl").exception("Stale preview purge failed")
+
     # Start process pool for CPU-bound work (thumbnails, metadata, hashing).
     # Single worker: avoids OOM on CT333 (4GB) while still freeing the event
     # loop core — CPU work runs on core 1, asyncio on core 0.

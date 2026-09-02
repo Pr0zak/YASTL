@@ -12,6 +12,7 @@ OOM-protected path the scanner uses.
 
 import gc
 import logging
+import os
 
 import trimesh
 
@@ -251,3 +252,44 @@ def build_plate_glb(file_path: str, object_ids: list[int],
                 pass
         del scene
         gc.collect()
+
+
+def purge_stale_previews(cache_dir: str) -> tuple[int, int]:
+    """Delete cached previews written by a superseded cache version.
+
+    Returns ``(files_removed, bytes_freed)``.
+
+    Called at startup, because that is exactly when a version bump takes
+    effect: the deploy restarts the service, and every entry the previous
+    version wrote becomes unreachable at that moment. Leaving them to the LRU
+    does not work — a cache hit returns before eviction runs, so on a library
+    that is mostly being re-read the orphans are never even considered, and
+    with previews running to 9 MB apiece they crowd out the entries that can
+    actually be served.
+    """
+    current_tag = f".v{PREVIEW_CACHE_VERSION}"
+    removed = 0
+    freed = 0
+    try:
+        names = os.listdir(cache_dir)
+    except OSError:
+        return (0, 0)
+
+    for name in names:
+        if not name.endswith(".glb") or current_tag in name:
+            continue
+        path = os.path.join(cache_dir, name)
+        try:
+            size = os.path.getsize(path)
+            os.remove(path)
+            removed += 1
+            freed += size
+        except OSError:  # noqa: PERF203 - a file vanishing mid-sweep is fine
+            continue
+
+    if removed:
+        logger.info(
+            "Purged %d stale preview cache entries (%.1f MB freed)",
+            removed, freed / 1024 / 1024,
+        )
+    return (removed, freed)

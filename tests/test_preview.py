@@ -214,3 +214,44 @@ class TestStaleCacheEviction:
 
         _evict_glb_cache(str(tmp_path))
         assert other.exists()
+
+
+class TestPurgeStalePreviews:
+    """Startup sweep for entries a superseded cache version wrote."""
+
+    def test_removes_only_the_stale_version(self, tmp_path):
+        from app.services.preview import (
+            PREVIEW_CACHE_VERSION,
+            preview_cache_name,
+            purge_stale_previews,
+        )
+
+        stale = tmp_path / f"1.v{PREVIEW_CACHE_VERSION - 1}-detailed.glb"
+        stale.write_bytes(b"x" * 100)
+        current = tmp_path / preview_cache_name(2)
+        current.write_bytes(b"y" * 50)
+        unrelated = tmp_path / "keep.txt"
+        unrelated.write_bytes(b"z")
+
+        removed, freed = purge_stale_previews(str(tmp_path))
+
+        assert removed == 1
+        assert freed == 100
+        assert not stale.exists()
+        assert current.exists()
+        assert unrelated.exists()
+
+    def test_every_detail_level_of_the_current_version_survives(self, tmp_path):
+        from app.services.preview import preview_cache_name, purge_stale_previews
+
+        for detail in ("fast", "balanced", "detailed"):
+            (tmp_path / preview_cache_name(3, detail)).write_bytes(b"g")
+
+        removed, _ = purge_stale_previews(str(tmp_path))
+        assert removed == 0
+        assert len(list(tmp_path.glob("*.glb"))) == 3
+
+    def test_a_missing_directory_is_not_an_error(self, tmp_path):
+        from app.services.preview import purge_stale_previews
+
+        assert purge_stale_previews(str(tmp_path / "nope")) == (0, 0)
