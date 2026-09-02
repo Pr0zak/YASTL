@@ -25,7 +25,18 @@ _GLB_CACHE_MAX_BYTES = 500 * 1024 * 1024
 
 
 def _evict_glb_cache(cache_dir: str) -> None:
-    """Evict oldest GLB cache entries if total size exceeds the limit."""
+    """Drop stale-version GLB entries, then evict oldest until under the limit.
+
+    Bumping PREVIEW_CACHE_VERSION orphans every entry written by the previous
+    version: nothing will ever ask for those names again, but they still count
+    against the size limit and are evicted only once they happen to be the
+    oldest. With previews running to 9 MB apiece that wastes a lot of the
+    budget on files that can never be served, so they go first and
+    unconditionally rather than waiting their turn in the LRU.
+    """
+    from app.services.preview import PREVIEW_CACHE_VERSION
+
+    current_tag = f".v{PREVIEW_CACHE_VERSION}"
     try:
         entries = []
         total_size = 0
@@ -33,6 +44,17 @@ def _evict_glb_cache(cache_dir: str) -> None:
             if not name.endswith(".glb"):
                 continue
             path = os.path.join(cache_dir, name)
+            if current_tag not in name:
+                try:
+                    size = os.path.getsize(path)
+                    os.remove(path)
+                    logger.info(
+                        "Removed stale-version preview cache entry: %s (%.1f MB)",
+                        name, size / 1024 / 1024,
+                    )
+                except OSError:
+                    pass
+                continue
             try:
                 stat = os.stat(path)
                 entries.append((path, stat.st_mtime, stat.st_size))

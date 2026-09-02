@@ -511,9 +511,20 @@ export function useViewer() {
      * @param {{ onProgress?: (fraction: number) => void, flat?: boolean }} [opts]
      * @returns {Promise<void>}
      */
+    // The in-flight download, so opening another model can stop it. Without
+    // this, clicking through a few large models leaves every one of their
+    // downloads running and competing for the same connection: the previews
+    // here are 8-9 MB apiece, so the model actually being looked at can wait a
+    // long time behind ones already abandoned.
+    let _loadAbort = null;
+
     async function loadModel(url, format, opts = {}) {
         clearCurrentModel();
         viewerError.value = null;
+
+        if (_loadAbort) _loadAbort.abort();
+        const abort = new AbortController();
+        _loadAbort = abort;
 
         const fmt = (format || '').toLowerCase().replace(/^\./, '');
         const gen = ++loadGeneration;
@@ -525,7 +536,7 @@ export function useViewer() {
         };
 
         try {
-            const buffer = await fetchBuffer(url, onProgress);
+            const buffer = await fetchBuffer(url, onProgress, abort.signal);
             if (gen !== loadGeneration) return; // superseded during download
 
             const object = await parseBuffer(buffer, fmt, opts);
@@ -542,6 +553,12 @@ export function useViewer() {
             if (gen === loadGeneration) viewerProgress.value = null;
         } catch (err) {
             if (gen !== loadGeneration) return; // superseded; swallow
+            // An abort raised for the load we are still on means the caller
+            // asked to stop, not that anything failed.
+            if (err && err.name === 'AbortError') {
+                viewerProgress.value = null;
+                return;
+            }
             viewerProgress.value = null;
             console.error(`YASTL viewer: failed to load ${fmt} model:`, err);
             viewerError.value = `Failed to load ${fmt} model`;
@@ -556,13 +573,13 @@ export function useViewer() {
     const _bufferCache = new Map();
     const _BUFFER_CACHE_MAX = 6;
 
-    async function fetchBuffer(url, onProgress) {
+    async function fetchBuffer(url, onProgress, signal) {
         const cached = _bufferCache.get(url);
         if (cached) {
             onProgress(1);
             return cached;
         }
-        const res = await fetch(url);
+        const res = await fetch(url, { signal });
         if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
 
         const total = Number(res.headers.get('content-length')) || 0;
