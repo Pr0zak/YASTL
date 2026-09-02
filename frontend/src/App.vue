@@ -381,6 +381,7 @@ const {
     extractingMetadata, metadataProgress,
     generatingPreviews, previewProgress, generatePreviews,
     scanIntervalMinutes, webhookUrl, setScanInterval, setWebhookUrl, testWebhook,
+    previewDetail, setPreviewDetail,
     connect, connectFullToken, saveConnectSettings, rotateConnectToken,
     ai, aiTesting, aiTestResult, saveAiSettings, testAiConnection,
     buildingEmbeddings, embedProgress, buildEmbeddings,
@@ -2752,6 +2753,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :previewProgress="previewProgress"
         :scanIntervalMinutes="scanIntervalMinutes"
         :webhookUrl="webhookUrl"
+        :preview-detail="previewDetail"
         :connect="connect"
         :connect-full-token="connectFullToken"
         :ai="ai"
@@ -2789,6 +2791,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         @setScanInterval="setScanInterval"
         @setWebhookUrl="setWebhookUrl"
         @testWebhook="testWebhook"
+        @setPreviewDetail="setPreviewDetail"
         @saveConnectSettings="saveConnectSettings"
         @rotateConnectToken="rotateConnectToken"
         @copyText="copyText"

@@ -22,6 +22,32 @@ logger = logging.getLogger("yastl")
 # reasonably small, and previews look much closer to the full mesh.
 DEFAULT_MAX_FACES = 500_000
 
+# How much detail a preview keeps, and what that costs to produce and to load.
+#
+# Decimation time is driven mostly by the size of the mesh coming in, so a lower
+# target saves less server time than it looks like it should. What it does save
+# is everything after: bytes over the network and parse time in the browser,
+# which is where a phone actually struggles. A 1.1M-face model here decimates to
+# 500k in about 6 seconds and lands as a file several times the size of the same
+# model at 150k.
+#
+# Only the 5% or so of a typical library above the threshold is affected at all;
+# everything below it is served whole regardless of the setting.
+PREVIEW_DETAIL_FACES: dict[str, int] = {
+    "fast": 150_000,
+    "balanced": 300_000,
+    "detailed": DEFAULT_MAX_FACES,
+}
+
+PREVIEW_DETAIL_DEFAULT = "detailed"
+
+
+def detail_max_faces(detail: str | None) -> int:
+    """Face target for a detail level, falling back to the default."""
+    return PREVIEW_DETAIL_FACES.get(
+        detail or PREVIEW_DETAIL_DEFAULT, PREVIEW_DETAIL_FACES[PREVIEW_DETAIL_DEFAULT]
+    )
+
 # Bump when the preview generation changes — the face target, the attributes
 # written, anything that alters the bytes — so cached GLBs regenerate instead of
 # serving a stale version. Forgetting this is silent: the new code is deployed,
@@ -32,9 +58,19 @@ DEFAULT_MAX_FACES = 500_000
 PREVIEW_CACHE_VERSION = 3
 
 
-def preview_cache_name(model_id: int) -> str:
-    """Filename for a model's cached preview GLB (version-tagged)."""
-    return f"{model_id}.v{PREVIEW_CACHE_VERSION}.glb"
+def preview_cache_name(model_id: int, detail: str | None = None) -> str:
+    """Filename for a model's cached preview GLB (version- and detail-tagged).
+
+    The detail level is part of the name, not just the version: changing the
+    setting has to serve a differently decimated file, and a cache keyed only by
+    version would keep answering with the previous one. Entries for other levels
+    are left alone rather than deleted, so switching back is instant and the LRU
+    eviction handles the rest.
+    """
+    level = detail or PREVIEW_DETAIL_DEFAULT
+    if level not in PREVIEW_DETAIL_FACES:
+        level = PREVIEW_DETAIL_DEFAULT
+    return f"{model_id}.v{PREVIEW_CACHE_VERSION}-{level}.glb"
 
 
 def _as_single_mesh(loaded, file_path: str):

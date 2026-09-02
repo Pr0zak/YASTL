@@ -10,7 +10,7 @@ from app.config import settings as app_settings
 from app.database import get_all_settings, get_db, get_setting, set_setting, update_fts_for_model
 from app.services import thumbnail
 from app.services.importer import extract_zip_metadata, extract_folder_metadata
-from app.services.preview import build_preview_glb, preview_cache_name
+from app.services.preview import build_preview_glb, detail_max_faces, preview_cache_name
 from app.api._helpers import apply_auto_tags
 from app.workers import get_pool, log_memory, tick_job, maybe_recycle, run_cpu_job
 
@@ -52,6 +52,12 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "auto_tag_on_scan": {
         "allowed": ["true", "false"],
         "default": "false",
+    },
+    # How much detail the 3D preview keeps for meshes large enough to need
+    # decimating. Only affects those; smaller models are served whole.
+    "preview_detail": {
+        "allowed": ["fast", "balanced", "detailed"],
+        "default": "detailed",
     },
     # --- Connect browser extension (off by default; see routes_connect.py) ---
     "connect_enabled": {
@@ -362,12 +368,15 @@ async def _generate_all_previews() -> None:
     _preview_progress.update(
         running=True, total=len(rows), completed=0, generated=0
     )
-    logger.info("Preview generation: %d large models", len(rows))
+    # Warm the cache at whatever detail the app will actually ask for, or
+    # every entry written here is a miss.
+    detail = await get_setting("preview_detail", "detailed")
+    logger.info("Preview generation: %d large models (detail=%s)", len(rows), detail)
 
     try:
         for row in rows:
             model_id = row["id"]
-            cache_path = os.path.join(cache_dir, preview_cache_name(model_id))
+            cache_path = os.path.join(cache_dir, preview_cache_name(model_id, detail))
             resolved = _resolve_model_file(row)
             try:
                 if resolved and not (
@@ -377,7 +386,9 @@ async def _generate_all_previews() -> None:
                     # recycle=True: every preview here is a large mesh, so give
                     # each a fresh worker instead of letting memory accumulate
                     # across the batch until loads hit RLIMIT_AS.
-                    glb = await run_cpu_job(build_preview_glb, resolved, recycle=True)
+                    glb = await run_cpu_job(
+                        build_preview_glb, resolved, detail_max_faces(detail), recycle=True
+                    )
                     with open(cache_path, "wb") as f:
                         f.write(glb)
                     _preview_progress["generated"] += 1

@@ -86,6 +86,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     // Auto-tag on scan
     const autoTagOnScan = ref(false);
 
+    // How much detail the 3D preview keeps for meshes large enough to decimate.
+    const previewDetail = ref('detailed');
+
     // Automation: scheduled scans + webhook
     const scanIntervalMinutes = ref('0');
     const webhookUrl = ref('');
@@ -196,6 +199,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             preferredSlicer.value = data.preferred_slicer || 'none';
             // Auto-tag on scan
             autoTagOnScan.value = data.auto_tag_on_scan === 'true';
+            previewDetail.value = data.preview_detail || 'detailed';
             // Automation
             scanIntervalMinutes.value = data.scan_interval_minutes || '0';
             webhookUrl.value = data.webhook_url || '';
@@ -294,6 +298,20 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         ai.embed_model = data.ai_embed_model || '';
         ai.vocab_mode = data.ai_autotag_vocab_mode || 'controlled';
         ai.monthly_cost_cap_usd = data.ai_monthly_cost_cap_usd || '0';
+    }
+
+    async function setPreviewDetail(value) {
+        const previous = previewDetail.value;
+        previewDetail.value = value;
+        try {
+            await apiUpdateSettings({ preview_detail: value });
+            // Each level is cached under its own name, so nothing is discarded
+            // and an already-warmed level comes back instantly.
+            showToast('Preview detail updated', 'success');
+        } catch (err) {
+            previewDetail.value = previous;
+            showToast(err.message || 'Failed to update preview detail', 'error');
+        }
     }
 
     async function saveConnectSettings() {
@@ -708,6 +726,8 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         setScanInterval,
         setWebhookUrl,
         testWebhook,
+        previewDetail,
+        setPreviewDetail,
         connect,
         connectFullToken,
         saveConnectSettings,
