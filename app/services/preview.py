@@ -330,3 +330,23 @@ def read_preview_cache(cache_path: str) -> bytes:
     """Read and decompress a cached preview."""
     with gzip.open(cache_path, "rb") as f:
         return f.read()
+
+
+def uncompressed_size(cache_path: str) -> int | None:
+    """Decompressed size of a gzipped cache entry, from its trailer.
+
+    gzip records the original size in the last four bytes, so this costs one
+    small seek rather than a decompression. It is sent as a header because the
+    viewer draws a progress bar from Content-Length, and that describes the
+    compressed stream while the bytes the client counts are decompressed —
+    without this the bar fills at about half the download and then sits there.
+
+    The field is modulo 2^32, so it is wrong for anything above 4 GB. A preview
+    is capped at 500,000 faces and cannot approach that.
+    """
+    try:
+        with open(cache_path, "rb") as f:
+            f.seek(-4, os.SEEK_END)
+            return int.from_bytes(f.read(4), "little")
+    except OSError:
+        return None

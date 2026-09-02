@@ -319,3 +319,24 @@ class TestCompressedPreviewCache:
         assert not old_plain.exists()
         assert not old_gz.exists()
         assert current.exists()
+
+
+class TestUncompressedSize:
+    """The viewer needs the decompressed size to draw an honest progress bar."""
+
+    def test_reports_the_original_size(self, tmp_path):
+        from app.services.preview import uncompressed_size, write_preview_cache
+
+        payload = b"\x00\x01\x02\x03" * 5_000
+        path = tmp_path / "1.glb.gz"
+        write_preview_cache(str(path), payload)
+
+        assert uncompressed_size(str(path)) == len(payload)
+        # And it is genuinely different from what Content-Length would report,
+        # which is the whole reason the header exists.
+        assert path.stat().st_size != len(payload)
+
+    def test_missing_file_returns_none_rather_than_raising(self, tmp_path):
+        from app.services.preview import uncompressed_size
+
+        assert uncompressed_size(str(tmp_path / "absent.glb.gz")) is None

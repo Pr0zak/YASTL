@@ -15,6 +15,7 @@ from app.services import thumbnail
 from app.services.preview import (
     build_preview_glb,
     read_preview_cache,
+    uncompressed_size,
     write_preview_cache,
 )
 from app.workers import run_cpu_job
@@ -242,11 +243,19 @@ async def serve_model_glb(request: Request, model_id: int):
         """
         accepts = request.headers.get("accept-encoding", "")
         if "gzip" in accepts.lower():
+            headers = {"Content-Encoding": "gzip"}
+            # Content-Length describes the compressed stream, but the client
+            # counts decompressed bytes as they arrive. Give the viewer the real
+            # total so its progress bar tracks the download instead of filling
+            # halfway through and stalling.
+            raw = uncompressed_size(cache_path)
+            if raw:
+                headers["X-Uncompressed-Length"] = str(raw)
             return FileResponse(
                 path=cache_path,
                 media_type="model/gltf-binary",
                 filename=download_name,
-                headers={"Content-Encoding": "gzip"},
+                headers=headers,
             )
         return Response(
             content=read_preview_cache(cache_path),

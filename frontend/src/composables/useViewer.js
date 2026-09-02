@@ -582,7 +582,13 @@ export function useViewer() {
         const res = await fetch(url, { signal });
         if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
 
-        const total = Number(res.headers.get('content-length')) || 0;
+        // Content-Length is the compressed size when the server sends the
+        // preview gzipped, while the bytes counted below are decompressed —
+        // dividing by it fills the bar at about half the download. The server
+        // sends the real size alongside; fall back for responses without it.
+        const total = Number(res.headers.get('x-uncompressed-length'))
+            || Number(res.headers.get('content-length'))
+            || 0;
         let buffer;
         if (res.body && total > 0) {
             const reader = res.body.getReader();
