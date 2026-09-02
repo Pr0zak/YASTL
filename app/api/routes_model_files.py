@@ -192,9 +192,10 @@ async def serve_model_glb(request: Request, model_id: int):
         str(settings.MODEL_LIBRARY_THUMBNAIL_PATH), "preview_cache"
     )
     os.makedirs(cache_dir, exist_ok=True)
-    from app.services.preview import preview_cache_name
+    from app.services.preview import detail_max_faces, preview_cache_name
 
-    cache_path = os.path.join(cache_dir, preview_cache_name(model_id))
+    detail = await get_setting("preview_detail", "detailed")
+    cache_path = os.path.join(cache_dir, preview_cache_name(model_id, detail))
 
     src_mtime = os.path.getmtime(file_path)
 
@@ -249,7 +250,9 @@ async def serve_model_glb(request: Request, model_id: int):
             face_count = model.get("face_count")
             heavy = face_count is None or face_count > 200_000
             try:
-                glb_data = await run_cpu_job(build_preview_glb, file_path, recycle=heavy)
+                glb_data = await run_cpu_job(
+                    build_preview_glb, file_path, detail_max_faces(detail), recycle=heavy
+                )
             except Exception as e:
                 logger.warning(
                     "GLB conversion failed for model %d (%s): %s", model_id, file_path, e

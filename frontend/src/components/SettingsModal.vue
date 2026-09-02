@@ -20,6 +20,7 @@ const props = defineProps({
     newLibPath: { type: String, default: '' },
     addingLibrary: { type: Boolean, default: false },
     thumbnailMode: { type: String, default: 'solid' },
+    previewDetail: { type: String, default: 'detailed' },
     regeneratingThumbnails: { type: Boolean, default: false },
     regenProgress: { type: Object, default: () => ({ completed: 0, total: 0 }) },
     generatingPreviews: { type: Boolean, default: false },
@@ -65,6 +66,7 @@ const emit = defineEmits([
     'triggerScan',
     'scanLibrary',
     'setThumbnailMode',
+    'setPreviewDetail',
     'regenerateThumbnails',
     'generatePreviews',
     'autoTagAll',
@@ -243,6 +245,25 @@ function timeAgo(dateStr) {
                                 <div class="thumbnail-mode-desc">Filled faces with lighting</div>
                             </div>
                         </label>
+                    </div>
+
+                    <div style="margin-bottom:14px">
+                        <label class="form-label">3D preview detail</label>
+                        <select class="form-input" :value="previewDetail"
+                                @change="emit('setPreviewDetail', $event.target.value)">
+                            <option value="fast">Fast — 150k faces</option>
+                            <option value="balanced">Balanced — 300k faces</option>
+                            <option value="detailed">Detailed — 500k faces</option>
+                        </select>
+                        <div class="settings-hint" style="margin-top:6px">
+                            How much detail the 3D viewer keeps for models too large to
+                            show whole. Only affects those &mdash; most models are well
+                            under the threshold and are always shown in full. A lower
+                            setting mainly cuts download and phone-side load time, since
+                            the conversion itself is dominated by reading the original
+                            file. Each level is cached separately, so switching back is
+                            instant.
+                        </div>
                     </div>
 
                     <label class="settings-toggle-row">

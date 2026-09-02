@@ -120,9 +120,65 @@ def test_cache_name_carries_the_current_version():
     where someone remembered to delete the files. Getting this wrong is silent:
     the new code deploys, the cache keeps answering, and the fix looks broken.
     """
-    from app.services.preview import PREVIEW_CACHE_VERSION, preview_cache_name
+    from app.services.preview import (
+        PREVIEW_CACHE_VERSION,
+        PREVIEW_DETAIL_DEFAULT,
+        preview_cache_name,
+    )
 
-    assert preview_cache_name(42) == f"42.v{PREVIEW_CACHE_VERSION}.glb"
+    assert preview_cache_name(42) == (
+        f"42.v{PREVIEW_CACHE_VERSION}-{PREVIEW_DETAIL_DEFAULT}.glb"
+    )
     assert PREVIEW_CACHE_VERSION >= 3, (
         "v3 dropped vertex normals; a lower version would serve smoothed GLBs."
     )
+
+
+class TestPreviewDetail:
+    """The detail setting must reach both the face target and the cache key."""
+
+    def test_each_level_maps_to_its_face_target(self):
+        from app.services.preview import PREVIEW_DETAIL_FACES, detail_max_faces
+
+        assert detail_max_faces("fast") < detail_max_faces("balanced")
+        assert detail_max_faces("balanced") < detail_max_faces("detailed")
+        assert set(PREVIEW_DETAIL_FACES) == {"fast", "balanced", "detailed"}
+
+    def test_an_unknown_level_falls_back_rather_than_raising(self):
+        from app.services.preview import PREVIEW_DETAIL_DEFAULT, detail_max_faces
+
+        assert detail_max_faces(None) == detail_max_faces(PREVIEW_DETAIL_DEFAULT)
+        assert detail_max_faces("nonsense") == detail_max_faces(PREVIEW_DETAIL_DEFAULT)
+
+    def test_cache_name_is_distinct_per_level(self):
+        """Otherwise changing the setting keeps serving the previous file."""
+        from app.services.preview import preview_cache_name
+
+        names = {preview_cache_name(7, d) for d in ("fast", "balanced", "detailed")}
+        assert len(names) == 3, names
+        for name in names:
+            assert name.startswith("7.v")
+            assert name.endswith(".glb")
+
+    def test_unknown_level_reuses_the_default_cache_entry(self):
+        from app.services.preview import PREVIEW_DETAIL_DEFAULT, preview_cache_name
+
+        assert preview_cache_name(7, "nonsense") == preview_cache_name(
+            7, PREVIEW_DETAIL_DEFAULT
+        )
+
+    def test_a_lower_level_produces_a_smaller_glb(self, tmp_path):
+        import trimesh
+
+        from app.services.preview import build_preview_glb, detail_max_faces
+
+        # An icosphere subdivided enough to exceed the "fast" target, so the
+        # levels genuinely differ rather than both serving the mesh whole.
+        src = tmp_path / "sphere.stl"
+        mesh = trimesh.creation.icosphere(subdivisions=6)
+        mesh.export(str(src))
+        assert len(mesh.faces) > 80_000
+
+        small = build_preview_glb(str(src), max_faces=20_000)
+        large = build_preview_glb(str(src), max_faces=detail_max_faces("detailed"))
+        assert len(small) < len(large)
