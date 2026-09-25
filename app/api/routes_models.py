@@ -214,11 +214,19 @@ async def list_models(
                 }
 
             if rep_ids:
-                # Hide non-representative zip models
+                # Hide the non-representative members of each grouped zip.
+                # Only zips with more than one model are grouped; a zip holding
+                # a single model must stay visible as an ordinary card. The
+                # old clause kept only representatives, so every single-model
+                # zip vanished from the grid (31 models in the live library).
+                grouped_paths = [g["zip_path"] for g in zip_group_map.values()]
+                path_placeholders = ", ".join("?" for _ in grouped_paths)
                 rep_placeholders = ", ".join("?" for _ in rep_ids)
                 where_clauses.append(
-                    f"(m.zip_path IS NULL OR m.id IN ({rep_placeholders}))"
+                    f"(m.zip_path IS NULL OR m.zip_path NOT IN ({path_placeholders})"
+                    f" OR m.id IN ({rep_placeholders}))"
                 )
+                params.extend(grouped_paths)
                 params.extend(rep_ids)
 
         where_sql = ""

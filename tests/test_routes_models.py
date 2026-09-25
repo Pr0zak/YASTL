@@ -66,16 +66,24 @@ class TestListModels:
                 zip_path="/tmp/kit.zip",
             )
 
+        await insert_test_model(
+            db_path, name="solo", file_path="/tmp/solo.zip/solo.stl",
+            zip_path="/tmp/solo.zip",
+        )
+
         resp = await client.get("/api/models?group_zips=true")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total"] == 2
-        assert data["total_files"] == 4
+        # loose file + one card for kit.zip + the single-model zip, which
+        # must not be hidden just because it is inside an archive
+        assert data["total"] == 3
+        assert data["total_files"] == 5
+        assert "solo" in {m["name"] for m in data["models"]}
 
         resp = await client.get("/api/models")
         data = resp.json()
-        assert data["total"] == 4
-        assert data["total_files"] == 4
+        assert data["total"] == 5
+        assert data["total_files"] == 5
 
     async def test_filter_by_format(self, client):
         """GET /api/models?format=OBJ should filter by format."""
