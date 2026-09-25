@@ -321,9 +321,9 @@
 }
 
 .viewer-toolbar .btn-active {
-    background: rgba(68, 170, 204, 0.2);
-    border-color: #44aacc;
-    color: #44aacc;
+    background: var(--accent-dim);
+    border-color: var(--accent-hover);
+    color: var(--accent-hover);
 }
 
 .viewer-toolbar .viewer-view-select {
@@ -353,13 +353,13 @@
 }
 
 .bed-fits {
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
+    background: var(--success-dim);
+    color: var(--success);
 }
 
 .bed-too-large {
-    background: rgba(255, 102, 51, 0.15);
-    color: #ff6633;
+    background: var(--danger-dim);
+    color: var(--danger);
 }
 
 .viewer-loading {
@@ -399,7 +399,7 @@
 
 .viewer-progress-fill {
     height: 100%;
-    background: var(--accent, #2ec4b6);
+    background: var(--accent);
     transition: width 0.15s ease;
 }
 
@@ -482,7 +482,7 @@
     align-items: center;
     gap: 6px;
     font-size: 0.8rem;
-    color: var(--color-primary, #4f8cff);
+    color: var(--accent-hover);
     text-decoration: none;
     word-break: break-all;
 }
@@ -568,8 +568,8 @@
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    background: rgba(243, 156, 18, 0.1);
-    border: 1px solid rgba(243, 156, 18, 0.3);
+    background: var(--warning-dim);
+    border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
     border-radius: var(--radius);
     color: var(--warning);
     font-size: 0.8rem;
@@ -638,8 +638,11 @@
     top: 2px;
     right: 2px;
     z-index: 2;
-    width: 18px;
-    height: 18px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 50%;
     border: none;
     background: var(--overlay-bg);
@@ -651,8 +654,20 @@
     transition: opacity var(--transition), background var(--transition);
 }
 
-.variant-item:hover .variant-unlink {
+.variant-item:hover .variant-unlink,
+.variant-unlink:focus-visible {
     opacity: 1;
+}
+
+.variant-unlink svg {
+    width: 12px;
+    height: 12px;
+}
+
+@media (hover: none) {
+    .variant-unlink {
+        opacity: 1;
+    }
 }
 
 .variant-unlink:hover {
@@ -1122,8 +1137,7 @@
         flex: 1 1 100%;
     }
 
-    .detail-actions-pinned .btn-secondary,
-    .detail-actions-pinned .btn-danger {
+    .detail-actions-pinned > .btn-secondary {
         flex: 1 1 0;
     }
 }
@@ -1148,4 +1162,288 @@
     font-size: 0.68rem;
     font-weight: 400;
     color: var(--text-muted);
+}
+
+/* ============================================================
+   Compact info column (Sep 2026)
+   ============================================================ */
+
+.detail-panel:focus {
+    outline: none;
+}
+
+.detail-fav,
+.detail-close {
+    flex-shrink: 0;
+}
+
+.detail-close {
+    border: 1px solid var(--border);
+    border-radius: 50%;
+}
+
+.nav-glyph {
+    display: inline-flex;
+}
+
+.nav-glyph-next {
+    transform: rotate(180deg);
+}
+
+.inline-edit {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.inline-edit-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+/* Empty optional fields become one row of "+ Add" chips. */
+.add-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 18px;
+}
+
+.add-field-chip,
+.tag-chip.add-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 99px;
+    border: 1px dashed var(--border-light);
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.tag-chip.add-chip {
+    min-height: 26px;
+    padding: 0 10px;
+}
+
+.add-field-chip:hover,
+.tag-chip.add-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+}
+
+.add-field-chip svg,
+.tag-chip.add-chip svg {
+    width: 13px;
+    height: 13px;
+}
+
+button.editable-value {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+}
+
+button.editable-value:hover {
+    background: var(--hover-wash);
+}
+
+.field-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.field-row-main {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.field-row-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.btn-icon.field-edit-btn {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.btn-icon.field-edit-btn svg {
+    width: 15px;
+    height: 15px;
+}
+
+.file-details-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 32px;
+}
+
+.file-rename {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.section-actions {
+    margin-bottom: 10px;
+}
+
+.section-note {
+    margin-bottom: 8px;
+}
+
+.tag-suggest-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.tag-suggestions {
+    margin-top: 8px;
+}
+
+.related-tags {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+button.tag-chip {
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.tag-chip.tag-chip-plain {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.tag-chip.col-chip {
+    background: color-mix(in srgb, var(--col) 14%, transparent);
+    color: var(--text-primary);
+    border: 1px solid color-mix(in srgb, var(--col) 40%, transparent);
+    gap: 5px;
+}
+
+.tag-chip.col-chip .sb-dot {
+    width: 8px;
+    height: 8px;
+}
+
+.col-chip-smart {
+    display: inline-flex;
+    opacity: 0.7;
+}
+
+.col-chip-smart svg {
+    width: 11px;
+    height: 11px;
+}
+
+button.plate-cell {
+    background: none;
+    font-family: inherit;
+    color: inherit;
+    text-align: left;
+}
+
+/* Action bar: primary, Download, and "⋯" holding Delete. */
+.detail-more {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.detail-actions-pinned .detail-more-btn {
+    min-width: 44px;
+    padding: 0 12px;
+    height: 100%;
+}
+
+.detail-more-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 20;
+    min-width: 220px;
+    padding: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 28px var(--shadow-strong);
+}
+
+.detail-more-menu button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-primary);
+    font-size: 0.84rem;
+    text-align: left;
+}
+
+.detail-more-menu button:hover {
+    background: var(--hover-wash);
+}
+
+.detail-more-menu button span {
+    display: inline-flex;
+    color: var(--text-muted);
+}
+
+.detail-more-menu button svg {
+    width: 15px;
+    height: 15px;
+}
+
+.detail-more-menu button.danger,
+.detail-more-menu button.danger span {
+    color: var(--danger);
+}
+
+@media (min-width: 769px) {
+    /* One scroll on wide screens: tabs are phone-only. */
+    .detail-info .info-section + .info-section {
+        margin-top: 4px;
+    }
+}
+
+@media (max-width: 768px) {
+    /* The title itself renames on tap; the pencil only crowded the header. */
+    .btn-edit-inline {
+        display: none;
+    }
+
+    .detail-more-menu button {
+        min-height: 46px;
+    }
 }

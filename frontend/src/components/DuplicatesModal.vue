@@ -8,6 +8,8 @@
 import { ref, watch } from 'vue';
 import { apiFindDuplicates, apiFindNearDuplicates, apiBulkDelete } from '../api.js';
 import { formatFileSize, formatNumber } from '../search.js';
+import { ICONS } from '../icons.js';
+import AppDialog from './AppDialog.vue';
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -106,88 +108,97 @@ function prevPage() {
 </script>
 
 <template>
-    <div v-if="show" class="modal-overlay" @click.self="emit('close')">
-        <div class="modal-content dup-modal">
-            <div class="modal-header">
-                <h2>Duplicate Review</h2>
-                <button class="btn-icon" @click="emit('close')" aria-label="Close">✕</button>
+    <AppDialog :show="show" title="Duplicate review" size="lg" full-height-mobile @close="emit('close')">
+        <template #headerExtra>
+            <div class="dup-mode-toggle" role="tablist" aria-label="Duplicate type">
+                <button class="dup-mode-btn" role="tab" :aria-selected="String(mode === 'exact')"
+                        :class="{ active: mode === 'exact' }" @click="setMode('exact')">Exact</button>
+                <button class="dup-mode-btn" role="tab" :aria-selected="String(mode === 'near')"
+                        :class="{ active: mode === 'near' }" @click="setMode('near')">Near</button>
             </div>
+        </template>
 
-            <div class="dup-mode-toggle">
-                <button class="tag-match-btn" :class="{ active: mode === 'exact' }" @click="setMode('exact')">Exact</button>
-                <button class="tag-match-btn" :class="{ active: mode === 'near' }" @click="setMode('near')">Near-duplicate</button>
-            </div>
+        <div v-if="loading && !groups.length" class="dup-loading"><div class="spinner spinner-sm"></div></div>
 
-            <div class="dup-body">
-                <p v-if="!loading && !groups.length" class="dup-empty">
-                    <template v-if="mode === 'near'">No near-duplicates found (no two models share identical geometry with different file content).</template>
-                    <template v-else>No duplicate files found. Every model has a unique hash.</template>
-                </p>
-
-                <p v-if="totalGroups" class="dup-count">
-                    {{ totalGroups }} group{{ totalGroups === 1 ? '' : 's' }} —
-                    <template v-if="mode === 'near'">same geometry (vertex/face count), different file content.</template>
-                    <template v-else>files with identical content.</template>
-                </p>
-
-                <div v-for="group in groups" :key="groupKey(group)" class="dup-group">
-                    <div class="dup-group-head">
-                        <code v-if="group.file_hash" class="dup-hash">{{ group.file_hash.slice(0, 12) }}</code>
-                        <code v-else class="dup-hash">{{ formatNumber(group.vertex_count) }} verts · {{ formatNumber(group.face_count) }} faces</code>
-                        <span class="dup-badge">{{ group.count }} {{ mode === 'near' ? 'variants' : 'copies' }}</span>
-                    </div>
-                    <div class="dup-copies">
-                        <div v-for="model in group.models" :key="model.id" class="dup-copy">
-                            <img
-                                :src="thumbUrl(model)"
-                                class="dup-thumb"
-                                alt=""
-                                @error="(e) => (e.target.style.visibility = 'hidden')"
-                            >
-                            <div class="dup-info">
-                                <div class="dup-name" :title="model.file_path">{{ model.name }}</div>
-                                <div class="dup-meta">
-                                    {{ model.file_format }} · {{ formatFileSize(model.file_size) }}
-                                </div>
-                                <div class="dup-path" :title="model.file_path">{{ model.file_path }}</div>
-                            </div>
-                            <button
-                                class="btn btn-sm btn-primary"
-                                :disabled="busyKey === groupKey(group)"
-                                @click="keepOne(group, model.id)"
-                            >
-                                Keep this
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div v-if="totalGroups > limit" class="dup-pager">
-                    <button class="btn btn-sm" :disabled="offset === 0" @click="prevPage">Prev</button>
-                    <span>{{ offset + 1 }}–{{ Math.min(offset + limit, totalGroups) }} of {{ totalGroups }}</span>
-                    <button class="btn btn-sm" :disabled="offset + limit >= totalGroups" @click="nextPage">Next</button>
-                </div>
-            </div>
+        <div v-else-if="!groups.length" class="dialog-empty">
+            <div class="dialog-empty-icon" v-html="ICONS.check"></div>
+            <div class="dialog-empty-title">No duplicates</div>
+            <p class="dialog-empty-text">
+                <template v-if="mode === 'near'">No two models share identical geometry with different file content.</template>
+                <template v-else>Every model has a unique file hash.</template>
+            </p>
         </div>
-    </div>
+
+        <template v-else>
+            <p class="dup-count">
+                {{ totalGroups }} group{{ totalGroups === 1 ? '' : 's' }}:
+                <template v-if="mode === 'near'">same vertex and face count, different file content.</template>
+                <template v-else>files with identical content. Keep one copy to delete the rest.</template>
+            </p>
+
+            <div v-for="group in groups" :key="groupKey(group)" class="dup-group">
+                <div class="dup-group-head">
+                    <code v-if="group.file_hash" class="dup-hash">{{ group.file_hash.slice(0, 12) }}</code>
+                    <code v-else class="dup-hash">{{ formatNumber(group.vertex_count) }} verts · {{ formatNumber(group.face_count) }} faces</code>
+                    <span class="dup-badge">{{ group.count }} {{ mode === 'near' ? 'variants' : 'copies' }}</span>
+                </div>
+                <div class="dup-copies">
+                    <div v-for="model in group.models" :key="model.id" class="dup-copy">
+                        <img
+                            :src="thumbUrl(model)"
+                            class="dup-thumb"
+                            alt=""
+                            @error="(e) => (e.target.style.visibility = 'hidden')"
+                        >
+                        <div class="dup-info">
+                            <div class="dup-name" :title="model.file_path">{{ model.name }}</div>
+                            <div class="dup-meta">
+                                {{ model.file_format }} · {{ formatFileSize(model.file_size) }}
+                            </div>
+                            <div class="dup-path" :title="model.file_path">{{ model.file_path }}</div>
+                        </div>
+                        <button
+                            class="btn btn-secondary dup-keep"
+                            :disabled="busyKey === groupKey(group)"
+                            @click="keepOne(group, model.id)"
+                        >
+                            Keep this one
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <template v-if="totalGroups > limit" #footer>
+            <button class="btn btn-secondary" :disabled="offset === 0" @click="prevPage">Previous</button>
+            <span class="dup-pager-text">{{ offset + 1 }}–{{ Math.min(offset + limit, totalGroups) }} of {{ totalGroups }}</span>
+            <button class="btn btn-secondary" :disabled="offset + limit >= totalGroups" @click="nextPage">Next</button>
+        </template>
+    </AppDialog>
 </template>
 
 <style scoped>
-.dup-modal { max-width: 760px; width: 92%; max-height: 86vh; display: flex; flex-direction: column; }
-.dup-body { overflow-y: auto; padding: 4px 2px; }
-.dup-empty { color: var(--text-muted); text-align: center; padding: 40px 0; }
+.dup-loading { display: flex; justify-content: center; padding: 40px 0; }
 .dup-count { color: var(--text-muted); font-size: 0.85rem; margin: 0 0 12px; }
-.dup-group { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
-.dup-group-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-elevated, rgba(255,255,255,0.03)); }
-.dup-hash { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--accent, #61afef); }
-.dup-badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 999px; background: rgba(220,53,69,0.15); color: #dc3545; }
+.dup-group { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+.dup-group-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-card); }
+.dup-hash { font-family: var(--font-mono); font-size: 0.78rem; color: var(--info); }
+.dup-badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 999px; background: var(--warning-dim); color: var(--warning); }
 .dup-copies { display: flex; flex-direction: column; }
 .dup-copy { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--border); }
-.dup-thumb { width: 48px; height: 48px; object-fit: contain; border-radius: 6px; background: rgba(0,0,0,0.15); flex: none; }
+.dup-thumb { width: 48px; height: 48px; object-fit: contain; border-radius: var(--radius-sm); background: var(--bg-input); flex: none; }
 .dup-info { flex: 1; min-width: 0; }
 .dup-name { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dup-meta { font-size: 0.78rem; color: var(--text-muted); }
 .dup-path { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.7; }
-.dup-pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px 0 4px; font-size: 0.82rem; color: var(--text-muted); }
-.dup-mode-toggle { display: flex; gap: 6px; padding: 4px 2px 10px; }
+.dup-keep { flex: none; min-height: 36px; }
+.dup-pager-text { font-size: 0.82rem; color: var(--text-muted); font-variant-numeric: tabular-nums; margin: 0 auto; }
+.dup-mode-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; flex: none; }
+.dup-mode-btn { background: transparent; color: var(--text-secondary); padding: 0 14px; min-height: 36px; font-size: 0.82rem; font-weight: 500; }
+.dup-mode-btn + .dup-mode-btn { border-left: 1px solid var(--border); }
+.dup-mode-btn.active { background: var(--accent-dim); color: var(--accent-hover); }
+@media (max-width: 560px) {
+    .dup-copy { flex-wrap: wrap; }
+    .dup-keep { width: 100%; }
+}
 </style>

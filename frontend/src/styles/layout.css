@@ -1,5 +1,5 @@
 /* ============================================================
-   Layout: App Container, Navbar, Breadcrumb, Sidebar, Content
+   Layout: App Container, Navbar, Sidebar, Content
    ============================================================ */
 
 .app-layout {
@@ -11,7 +11,7 @@
 .app-body {
     display: flex;
     flex: 1;
-    margin-top: 92px; /* navbar (56px) + breadcrumb bar (36px) */
+    margin-top: var(--topbar-h);
 }
 
 /* ---- Navbar ---- */
@@ -20,8 +20,8 @@
     top: 0;
     left: 0;
     right: 0;
-    z-index: 1000;
-    height: 56px;
+    z-index: var(--z-bars);
+    height: var(--navbar-h);
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     display: flex;
@@ -29,8 +29,7 @@
     padding: 0 20px;
     padding-left: max(20px, env(safe-area-inset-left));
     padding-right: max(20px, env(safe-area-inset-right));
-    gap: 16px;
-    box-shadow: 0 2px 8px var(--shadow);
+    gap: 12px;
 }
 
 .navbar-brand {
@@ -46,20 +45,6 @@
     display: block;
 }
 
-.navbar-brand .logo-icon {
-    width: 32px;
-    height: 32px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 900;
-    font-size: 12px;
-    color: #fff;
-    letter-spacing: -0.5px;
-}
-
 .navbar-brand h1 {
     font-size: 1.25rem;
     font-weight: 700;
@@ -71,22 +56,13 @@
     color: var(--accent);
 }
 
-.navbar-github {
-    width: 28px;
-    height: 28px;
-    opacity: 0.4;
-    transition: opacity var(--transition);
-}
-
-.navbar-github:hover {
-    opacity: 1;
-}
-
 /* ---- Search Bar ---- */
 .search-container {
     flex: 1;
-    max-width: 560px;
+    max-width: 640px;
+    min-width: 0;
     position: relative;
+    margin: 0 auto;
 }
 
 .search-container .search-icon {
@@ -102,7 +78,9 @@
 
 .search-container input {
     width: 100%;
-    height: 36px;
+    height: 38px;
+    -webkit-appearance: none;
+    appearance: none;
     padding: 0 36px 0 38px;
     background: var(--bg-input);
     border: 1px solid var(--border);
@@ -121,16 +99,22 @@
     box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
+.search-container input::-webkit-search-cancel-button {
+    display: none;
+}
+
 .search-container .search-clear {
     position: absolute;
-    right: 8px;
+    right: 2px;
     top: 50%;
     transform: translateY(-50%);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 16px;
-    padding: 4px;
+    padding: 0;
     line-height: 1;
     cursor: pointer;
     display: flex;
@@ -146,111 +130,8 @@
 .navbar-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
-    margin-left: auto;
-}
-
-/* ---- Breadcrumb Bar ---- */
-.breadcrumb-bar {
-    position: fixed;
-    top: 56px;
-    left: 0;
-    right: 0;
-    z-index: 999;
-    height: 36px;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-    font-size: 0.8rem;
-}
-
-.breadcrumb-nav {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.breadcrumb-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: color var(--transition), background var(--transition);
-    white-space: nowrap;
-    user-select: none;
-    text-decoration: none;
-}
-
-.breadcrumb-link:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-}
-
-.breadcrumb-link.active {
-    color: var(--accent);
-    font-weight: 600;
-}
-
-.breadcrumb-icon {
-    display: inline-flex;
-    align-items: center;
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-}
-
-.breadcrumb-sep {
-    color: var(--text-muted);
-    padding: 0 4px;
-    font-size: 0.9rem;
-    user-select: none;
-    flex-shrink: 0;
-}
-
-.breadcrumb-remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: 3px;
-    width: 14px;
-    height: 14px;
-    font-size: 13px;
-    line-height: 1;
-    border-radius: 50%;
-    opacity: 0.6;
-    transition: opacity var(--transition), color var(--transition);
-}
-
-.breadcrumb-remove:hover {
-    opacity: 1;
-    color: var(--danger);
-}
-
-.breadcrumb-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-    margin-left: 12px;
-}
-
-.breadcrumb-count {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    white-space: nowrap;
-}
-
-.breadcrumb-count strong {
-    color: var(--text-primary);
 }
 
 /* ---- Sidebar ---- */
@@ -262,9 +143,9 @@
     padding: 16px 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    height: calc(100vh - 92px);
+    height: calc(100vh - var(--topbar-h));
     position: sticky;
-    top: 92px;
+    top: var(--topbar-h);
     flex-shrink: 0;
     transition: transform 0.3s ease, opacity 0.3s ease;
 }
@@ -272,28 +153,6 @@
 .sidebar-section {
     padding: 0 16px;
     margin-bottom: 20px;
-}
-
-.sidebar-section-title {
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--border);
-}
-
-.sidebar-section-toggle {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    user-select: none;
-}
-
-.sidebar-section-toggle:hover {
-    color: var(--text-secondary);
 }
 
 .sidebar-section-chevron {
@@ -319,202 +178,12 @@
     letter-spacing: 0.3px;
 }
 
-.sidebar-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    transition: background var(--transition), color var(--transition);
-    user-select: none;
-    min-height: 44px;
-}
-
-.sidebar-item:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.sidebar-item:active {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.sidebar-item.active {
-    background: var(--accent-dim);
-    color: var(--accent);
-}
-
-.sidebar-item .sidebar-item-icon {
-    display: inline-flex;
-    align-items: center;
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    opacity: 0.6;
-}
-
-.sidebar-item.active .sidebar-item-icon {
-    opacity: 1;
-}
-
-.sidebar-item .item-count {
-    margin-left: auto;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    background: var(--bg-primary);
-    padding: 1px 7px;
-    border-radius: 10px;
-    min-width: 22px;
-    text-align: center;
-}
-
-/* Namespaced tag rows: tint the namespace prefix with its stable color. */
-.sidebar-tag-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-}
-
-.sidebar-tag-ns {
-    color: var(--tag-ns-color, var(--text-muted));
-    font-weight: 600;
-}
-
-.sidebar-tag-ns::after {
-    content: ':';
-    opacity: 0.55;
-}
-
-.sidebar-item.active .sidebar-tag-ns {
-    color: inherit;
-}
-
-.sidebar-search {
-    padding: 4px 8px 6px;
-}
-
-.sidebar-search-input {
-    width: 100%;
-    padding: 5px 8px;
-    font-size: 0.78rem;
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-primary);
-    outline: none;
-}
-
-.sidebar-search-input:focus {
-    border-color: var(--accent);
-}
-
-.sidebar-search-input::placeholder {
-    color: var(--text-muted);
-}
-
-.sidebar-show-more {
-    display: block;
-    width: 100%;
-    padding: 6px 10px;
-    font-size: 0.75rem;
-    color: var(--accent);
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-}
-
-.sidebar-show-more:hover {
-    text-decoration: underline;
-}
-
-/* Category tree */
-.category-tree {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.category-tree .category-item {
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    transition: background var(--transition), color var(--transition);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 44px;
-}
-
-.category-tree .category-item:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.category-tree .category-item:active {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.category-tree .category-item.active {
-    background: var(--accent-dim);
-    color: var(--accent);
-}
-
-.category-tree .category-children {
-    margin-left: 16px;
-    list-style: none;
-    padding: 0;
-}
-
-.category-toggle {
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    color: var(--text-muted);
-    transition: transform var(--transition);
-    flex-shrink: 0;
-    border-radius: var(--radius-sm);
-}
-
-.category-toggle:active {
-    background: var(--bg-hover);
-}
-
-.category-toggle.expanded {
-    transform: rotate(90deg);
-}
-
-.category-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.category-count {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-}
-
 /* ---- Main Content ---- */
 .main-content {
     flex: 1;
     padding: 20px;
     min-width: 0;
 }
-
-/* (content-toolbar and active-filters removed -- now in breadcrumb-bar) */
 
 /* ---- Sidebar toggle ---- */
 .sidebar-toggle {
@@ -535,26 +204,12 @@
 }
 
 /* ==========================================================================
-   Top-bar overflow
-
-   The navbar packed ten icon buttons into a fixed, no-wrap 56px row, and the
-   breadcrumb bar put a five-control action cluster beside the filter trail.
-   Neither could shrink, so on a phone the navbar ran 62px past the viewport at
-   412px (114px at 360px) and the breadcrumb bar overflowed by 121px with
-   overflow-x: visible — clipped outright, with no way to scroll to it. The
-   filter trail, being the flexible sibling, collapsed to nothing, so an active
-   filter was invisible while the buttons that overflowed stayed on screen.
+   Navbar "More" menu: every action that is not search, Import or stats.
    ========================================================================== */
 
-/* The only route to the filters on mobile. It must never be squeezed. */
 .navbar .sidebar-toggle {
     flex-shrink: 0;
     min-width: 40px;
-}
-
-.nav-overflow,
-.crumb-overflow-btn {
-    display: none;
 }
 
 .nav-overflow {
@@ -562,12 +217,11 @@
     flex-shrink: 0;
 }
 
-.nav-overflow-menu,
-.breadcrumb-actions.crumb-actions-open {
+.nav-overflow-menu {
     position: absolute;
-    right: 8px;
-    top: calc(100% + 6px);
-    z-index: 1001;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: var(--z-menu);
     min-width: 232px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -710,23 +364,6 @@
     flex-shrink: 0;
 }
 
-.sb-row-action {
-    font-size: 0.7rem;
-    color: var(--accent);
-    margin-left: auto;
-    flex-shrink: 0;
-}
-
-/* Row tools stay hidden until hover on a mouse, but are always present on a
-   touch device — the old sidebar's pin/edit/delete were opacity:0 with no
-   coarse-pointer fallback, so on a phone they were invisible yet tappable. */
-.sb-row-tools {
-    display: none;
-    align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-}
-
 .sb-row:hover .sb-row-tools {
     display: inline-flex;
 }
@@ -737,139 +374,40 @@
     }
 }
 
-.sb-row-tools button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    background: none;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.sb-row-tools button:hover {
-    background: var(--hover-wash);
-    color: var(--text-primary);
-}
-
-.sb-row-tools button.on {
-    color: var(--accent);
-}
-
 .sb-empty {
     font-size: 0.75rem;
     color: var(--text-muted);
     padding: 4px 0;
 }
 
-/* ---- Applied filters ---- */
-.sb-applied {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-}
-
-.sb-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.sb-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    background: var(--accent-dim);
-    border: 1px solid var(--accent);
-    border-radius: 14px;
-    color: var(--accent);
-    font-size: 0.72rem;
-    font-family: inherit;
-    cursor: pointer;
-    max-width: 100%;
-}
-
-.sb-pill-x {
-    opacity: 0.6;
-    font-size: 13px;
-}
-
-.sb-count {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 9px;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-}
-
-.sb-clear {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: var(--accent);
-    font-size: 0.72rem;
-    font-family: inherit;
-    cursor: pointer;
-    padding: 0;
-}
-
-/* ---- Facet picker ---- */
-.facet-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 1200;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-}
-
-.facet-panel {
+/* ---- Facet picker (inside AppDialog) ---- */
+.facet-dialog .app-dialog-body {
     display: flex;
     flex-direction: column;
-    width: min(460px, 100%);
-    max-height: min(620px, 86vh);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 20px 60px var(--shadow);
-    overflow: hidden;
-}
-
-.facet-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border);
-}
-
-.facet-title {
-    flex: 1;
-    font-size: 1rem;
-    font-weight: 600;
+    padding: 12px 12px 0;
 }
 
 .facet-search {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 12px 16px 0;
+    margin: 0 4px;
+    flex-shrink: 0;
     padding: 0 12px;
     height: 40px;
     background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text-muted);
+}
+
+.facet-search:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.facet-search input:focus-visible {
+    outline: none;
 }
 
 .facet-search input {
@@ -887,7 +425,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px 0;
+    padding: 8px 4px 0;
+    flex-shrink: 0;
     font-size: 0.75rem;
     color: var(--text-muted);
 }
@@ -899,8 +438,32 @@
 .facet-list {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 4px 0 12px;
     margin-top: 8px;
+    min-height: 0;
+}
+
+.facet-check {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    border: 1.5px solid var(--border-light);
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+}
+
+.facet-item.on .facet-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.facet-more {
+    width: 100%;
+    margin-top: 4px;
 }
 
 .facet-item {

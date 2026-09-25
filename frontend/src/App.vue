@@ -14,6 +14,7 @@ import { useConfirm } from './composables/useConfirm.js';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import NavBar from './components/NavBar.vue';
 import SideBar from './components/SideBar.vue';
+import FilterBar from './components/FilterBar.vue';
 import ModelGrid from './components/ModelGrid.vue';
 import DetailPanel from './components/DetailPanel.vue';
 import SettingsModal from './components/SettingsModal.vue';
@@ -21,6 +22,7 @@ import StatsModal from './components/StatsModal.vue';
 import FilamentModal from './components/FilamentModal.vue';
 import QueueModal from './components/QueueModal.vue';
 import DuplicatesModal from './components/DuplicatesModal.vue';
+import AppDialog from './components/AppDialog.vue';
 import ImportModal from './components/ImportModal.vue';
 import CollectionModal from './components/CollectionModal.vue';
 import SmartCollectionModal from './components/SmartCollectionModal.vue';
@@ -83,7 +85,7 @@ import { useSettings } from './composables/useSettings.js';
 import { useUpdates } from './composables/useUpdates.js';
 
 /* ---- Toast ---- */
-const { toasts, showToast } = useToast();
+const { toasts, showToast, dismissToast } = useToast();
 
 /* ---- Confirm dialog ---- */
 const {
@@ -278,15 +280,11 @@ const isEditingLicense = ref(false);
 
 // Detail panel tab state
 const detailTab = ref('overview');
-// Sort/save/clear cluster in the breadcrumb bar, collapsed on narrow screens.
-const crumbActionsOpen = ref(false);
 const showFileDetails = ref(false);
 
 // Category expansion state (by category id)
 const expandedCategories = reactive({});
 
-// Sidebar section collapse state (format starts collapsed)
-const collapsedSections = reactive({ format: true, tags: true, categories: true });
 
 const filters = reactive({
     format: '',
@@ -313,6 +311,8 @@ const pagination = reactive({
     limit: PAGE_SIZE_OPTIONS.includes(savedPageSize) ? savedPageSize : 50,
     offset: 0,
     total: 0,
+    // Files behind `total` once multi-model zips are grouped into one card.
+    totalFiles: 0,
 });
 
 const scanStatus = reactive({
@@ -343,6 +343,7 @@ const statsData = ref(null);
 // Format facet counts. The sidebar used to hardcode eleven formats, five of
 // which match nothing in this library; these come from the real histogram.
 const formatCounts = ref([]);
+const duplicateGroups = ref(0);
 
 /** What an unfiltered view returns, for "All models" and the "of N" beside a
  *  filtered count. Not the raw model count: the grid groups zip archives into
@@ -355,6 +356,7 @@ async function loadFormatCounts() {
     try {
         const stats = await apiGetStats();
         formatCounts.value = stats.formats || [];
+        duplicateGroups.value = stats.duplicate_groups || 0;
     } catch {
         formatCounts.value = [];
     }
@@ -393,6 +395,7 @@ const {
     setBedPreset, saveBedSettings, setColorTheme: _setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
     setPreferredSlicer, toggleAutoTagOnScan,
 } = settingsComposable;
+const settingsLastSavedAt = settingsComposable.lastSavedAt;
 
 function setColorTheme(theme) {
     _setColorTheme(theme);
@@ -408,11 +411,10 @@ const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
 const collectionsComposable = useCollections(showToast, showConfirm);
 const {
     collections, COLLECTION_COLORS,
-    showCollectionModal, newCollectionName, newCollectionColor,
     addToCollectionModelId, showAddToCollectionModal,
     editingCollectionId, editCollectionName, inlineNewCollection,
     showSmartCollectionModal, editingSmartCollection, smartCollectionForm,
-    fetchCollections, openCollectionModal, createCollection,
+    fetchCollections,
     startInlineNewCollection, cancelInlineNewCollection,
     deleteCollection: _deleteCollection,
     startEditCollection, saveCollectionName,
@@ -487,15 +489,71 @@ const {
     importCredentials, credentialInputs,
     openImportModal: _openImportModal,
     closeImportModal: _closeImportModal,
-    previewImportUrl, startImport, onFilesSelected, startUpload,
+    previewImportUrl, startImport, onFilesSelected, setImportUrls, clearUploadFiles, startUpload,
     addUploadTagSuggestion, fetchImportCredentials,
     saveImportCredential, deleteImportCredential,
 } = importComposable;
 
-function openImportModal() {
+function openImportModal(prefill) {
     fetchLibraries();
-    _openImportModal();
+    // Emitted from a click handler, `prefill` can arrive as an Event.
+    _openImportModal(prefill && !(prefill instanceof Event) ? prefill : {});
 }
+
+/* ---- Drop anywhere / paste anywhere to import ----
+   Dragging files from the desktop over any part of the library shows a
+   full-window drop target; pasting a link while not typing in a field opens
+   Import with it filled in. Card drags (to collections) carry no files, so
+   they never trigger this. */
+const fileDragActive = ref(false);
+let fileDragDepth = 0;
+
+function isFileDrag(e) {
+    return !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+}
+function importBlocked() {
+    return showImportModal.value || showSettings.value || document.body.classList.contains('dialog-open');
+}
+function onWindowDragEnter(e) {
+    if (!isFileDrag(e) || importBlocked()) return;
+    fileDragDepth++;
+    fileDragActive.value = true;
+}
+function onWindowDragOver(e) {
+    if (fileDragActive.value) e.preventDefault();
+}
+function onWindowDragLeave(e) {
+    if (!fileDragActive.value) return;
+    fileDragDepth = Math.max(0, fileDragDepth - 1);
+    if (fileDragDepth === 0 || e.relatedTarget === null) {
+        fileDragDepth = 0;
+        fileDragActive.value = false;
+    }
+}
+function onWindowDrop(e) {
+    if (!fileDragActive.value) return;
+    e.preventDefault();
+    fileDragActive.value = false;
+    fileDragDepth = 0;
+    const files = e.dataTransfer?.files;
+    if (files && files.length) openImportModal({ files });
+}
+function onWindowPaste(e) {
+    if (isTypingTarget(e.target) || importBlocked() || showDetail.value) return;
+    const text = (e.clipboardData?.getData('text') || '').trim();
+    const urls = text.split(/\s+/).filter((t) => /^https?:\/\/\S+$/i.test(t));
+    if (!urls.length) return;
+    e.preventDefault();
+    openImportModal({ urls: urls.join('\n') });
+}
+/** Models the selection bar's "All" can pick: loaded cards minus zip groups. */
+const selectableCount = computed(() =>
+    displayModels.value.filter((m) => !(m.zip_model_count != null && m.zip_model_count > 1)).length);
+
+const importDestinationName = computed(() => {
+    const lib = libraries.value.find((l) => l.id === importLibraryId.value) || libraries.value[0];
+    return lib ? lib.name : 'your library';
+});
 
 function closeImportModal() {
     _closeImportModal(showDetail.value, showSettings.value);
@@ -720,6 +778,7 @@ async function fetchModels(append = false) {
             models.value = data.models || [];
         }
         pagination.total = data.total || 0;
+        pagination.totalFiles = data.total_files ?? pagination.total;
         // An unfiltered result IS the library total, counted the same way the
         // grid counts — grouped zips included.
         if (!hasActiveFilters.value && !searchQuery.value.trim()) {
@@ -878,8 +937,16 @@ async function saveFilament({ id, data }) {
         filamentSaving.value = false;
     }
 }
-async function deleteFilamentRow(id) {
-    const res = await apiDeleteFilament(id);
+async function deleteFilamentRow(spool) {
+    const name = [spool.brand, spool.material, spool.color_name].filter(Boolean).join(' ') || 'this spool';
+    const ok = await showConfirm({
+        title: 'Delete spool',
+        message: `Delete ${name} from your filament inventory?`,
+        action: 'Delete',
+        danger: true,
+    });
+    if (!ok) return;
+    const res = await apiDeleteFilament(spool.id);
     if (res.ok) {
         await refreshFilaments();
         showToast('Filament removed');
@@ -891,6 +958,9 @@ async function deleteFilamentRow(id) {
 /* ---- Print queue (print pipeline) ---- */
 const showQueue = ref(false);
 const queue = ref([]);
+/** Items still to print, shown as a badge on the "More" menu. */
+const queueActiveCount = computed(() =>
+    queue.value.filter((q) => q.status === 'queued' || q.status === 'printing').length);
 
 async function refreshQueue() {
     const { ok, data } = await apiGetQueue();
@@ -912,7 +982,7 @@ async function addToQueue(model) {
     const { ok, data } = await apiAddToQueue(id);
     if (ok) {
         showToast('Added to print queue', 'success');
-        if (showQueue.value) await refreshQueue();
+        await refreshQueue();
     } else {
         showToast(data.detail || 'Failed to add to queue', 'error');
     }
@@ -945,7 +1015,31 @@ function openModelFromQueue(modelId) {
     viewModel(inGrid || { id: modelId });
 }
 
+// Stats rows jump to the library narrowed to what was clicked. The setters
+// toggle, so only call one when that filter is not already applied.
+function onStatsFilter({ type, value }) {
+    closeStats();
+    if (type === 'format' && filters.format !== value) setFormatFilter(value);
+    else if (type === 'library' && filters.library_id !== value) setLibraryFilter(value);
+    else if (type === 'collection' && filters.collection !== value) setCollectionFilter(value);
+    else if (type === 'tag') filterByTag(value);
+    else if (type === 'duplicates' && !filters.duplicatesOnly) toggleDuplicatesFilter();
+}
+
+function openModelFromStats(modelId) {
+    closeStats();
+    const inGrid = models.value.find((m) => m.id === modelId);
+    viewModel(inGrid || { id: modelId });
+}
+
 async function restartApp() {
+    const ok = await showConfirm({
+        title: 'Restart YASTL?',
+        message: 'The service stops for a few seconds and any scan or background job in progress is interrupted. The page reloads when it is back.',
+        action: 'Restart',
+        danger: true,
+    });
+    if (!ok) return;
     try {
         showToast('Restarting service...', 'info');
         await apiRestartApp();
@@ -2044,33 +2138,18 @@ function isTypingTarget(el) {
 
 /* ---- Keyboard handler for modals ---- */
 function onKeydown(e) {
+    // Every dialog built on AppDialog handles its own Escape (capture phase)
+    // and stops it there, so only the panels that are not dialogs remain.
     if (e.key === 'Escape') {
-        if (confirmVisible.value) {
-            onCancel();
-        } else if (showBulkTagModal.value) {
-            showBulkTagModal.value = false;
-        } else if (showImportModal.value) {
-            closeImportModal();
-        } else if (showAddToCollectionModal.value) {
-            showAddToCollectionModal.value = false;
-        } else if (showSmartCollectionModal.value) {
-            showSmartCollectionModal.value = false;
-        } else if (showCollectionModal.value) {
-            showCollectionModal.value = false;
-        } else if (showSaveSearchModal.value) {
-            showSaveSearchModal.value = false;
-        } else if (showStats.value) {
-            closeStats();
-        } else if (showFilament.value) {
-            closeFilament();
-        } else if (showQueue.value) {
-            closeQueue();
-        } else if (showSettings.value) {
+        if (showSettings.value) {
             closeSettings();
         } else if (showDetail.value) {
             closeDetail();
+        } else if (selectionMode.value) {
+            toggleSelectionMode();
         }
-    } else if (showDetail.value && !isTypingTarget(e.target)) {
+    } else if (showDetail.value && !isTypingTarget(e.target)
+        && !document.body.classList.contains('dialog-open')) {
         // Arrow keys page through the current result list without closing.
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             e.preventDefault();
@@ -2184,8 +2263,14 @@ onMounted(() => {
     fetchSavedSearches();
     fetchImportCredentials();
     refreshFilaments();
+    refreshQueue();
     statusPollTimer = setInterval(fetchSystemStatus, 30000);
     document.addEventListener('keydown', onKeydown);
+    window.addEventListener('dragenter', onWindowDragEnter);
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('dragleave', onWindowDragLeave);
+    window.addEventListener('drop', onWindowDrop);
+    document.addEventListener('paste', onWindowPaste);
     window.addEventListener('popstate', onPopState);
     const initialModel = initialParams.get('model');
     if (initialModel) {
@@ -2362,8 +2447,6 @@ function editSmartCollection(col) {
     openSmartCollectionModal(col);
 }
 
-// pickNextCollectionColor is needed in template via collectionsComposable
-const { pickNextCollectionColor } = collectionsComposable;
 </script>
 
 <template>
@@ -2373,15 +2456,12 @@ const { pickNextCollectionColor } = collectionsComposable;
          ============================================================ -->
     <NavBar
         :searchQuery="searchQuery"
-        :viewMode="viewMode"
-        :gridDensity="gridDensity"
         :scanStatus="scanStatus"
         :systemStatus="systemStatus"
         :selectionMode="selectionMode"
         :sidebarOpen="sidebarOpen"
+        :queueCount="queueActiveCount"
         @update:searchQuery="searchQuery = $event"
-        @update:viewMode="viewMode = $event"
-        @toggleGridDensity="toggleGridDensity"
         @update:sidebarOpen="sidebarOpen = $event"
         @openSettings="openSettings"
         @openImportModal="openImportModal"
@@ -2395,66 +2475,42 @@ const { pickNextCollectionColor } = collectionsComposable;
     />
 
     <!-- ============================================================
-         Breadcrumb Bar
+         Filter bar: facet chips, count, sort and view
          ============================================================ -->
-    <div class="breadcrumb-bar">
-        <div class="breadcrumb-nav">
-            <!-- Root: All Models -->
-            <a class="breadcrumb-link" :class="{ active: !hasActiveFilters }" @click="clearFilters">
-                <span class="breadcrumb-icon" v-html="ICONS.home"></span>
-                All Models
-            </a>
-            <!-- Filter trail crumbs -->
-            <template v-for="(crumb, idx) in breadcrumbTrail" :key="idx">
-                <span class="breadcrumb-sep">&rsaquo;</span>
-                <a class="breadcrumb-link active" @click="removeBreadcrumb(crumb)">
-                    {{ crumb.label }}
-                    <span class="breadcrumb-remove">&times;</span>
-                </a>
-            </template>
-        </div>
-        <!-- Right side: result count + actions. Collapsed behind one button
-             below 769px, where the cluster used to overflow the viewport and
-             squeeze the filter trail beside it down to zero width. -->
-        <button class="btn-icon crumb-overflow-btn" :class="{ active: crumbActionsOpen }"
-                @click="crumbActionsOpen = !crumbActionsOpen"
-                :aria-expanded="String(crumbActionsOpen)" title="Sort and actions">
-            <span v-html="ICONS.dots"></span>
-        </button>
-        <div class="breadcrumb-actions" :class="{ 'crumb-actions-open': crumbActionsOpen }">
-            <button v-if="ai.enabled && searchQuery.trim()" class="btn btn-sm"
-                    :class="searchMode === 'semantic' ? 'btn-primary' : 'btn-ghost'"
-                    @click="toggleSearchMode"
-                    :title="searchMode === 'semantic' ? 'Semantic (AI) search on — click for keyword' : 'Keyword search — click for semantic (AI) search'">
-                <span v-html="ICONS.zap"></span> Semantic
-            </button>
-            <button class="btn btn-sm btn-ghost" v-if="searchQuery || filters.tags.length || filters.categories.length || filters.favoritesOnly"
-                    @click="showSaveSearchModal = true" title="Save this search">
-                <span v-html="ICONS.bookmark"></span> Save
-            </button>
-            <div class="sort-control">
-                <select class="sort-select" :value="filters.sortBy" @change="setSortBy($event.target.value)">
-                    <option value="updated_at">Date Modified</option>
-                    <option value="created_at">Date Added</option>
-                    <option value="name">Name</option>
-                    <option value="file_size">File Size</option>
-                    <option value="vertex_count">Vertices</option>
-                    <option value="face_count">Faces</option>
-                </select>
-                <button class="btn-icon sort-dir-btn" @click="toggleSortOrder" :title="filters.sortOrder === 'asc' ? 'Ascending' : 'Descending'">
-                    {{ filters.sortOrder === 'asc' ? '\u2191' : '\u2193' }}
-                </button>
-            </div>
-            <span class="breadcrumb-count">
-                <strong>{{ pagination.total }}</strong> model{{ pagination.total !== 1 ? 's' : '' }}
-            </span>
-            <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="createCollectionFromCurrentView"
-                    title="Save these filters as a smart collection">
-                <span v-html="ICONS.collection"></span> Save as collection
-            </button>
-            <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="clearFilters">Clear all</button>
-        </div>
-    </div>
+    <FilterBar
+        :filters="filters"
+        :activeFilters="breadcrumbTrail"
+        :hasActiveFilters="hasActiveFilters"
+        :allTags="allTags"
+        :allCategories="allCategories"
+        :libraries="libraries"
+        :collections="collections"
+        :formatCounts="formatCounts"
+        :total="pagination.total"
+        :totalFiles="pagination.totalFiles"
+        :loading="loading"
+        :viewMode="viewMode"
+        :gridDensity="gridDensity"
+        :searchQuery="searchQuery"
+        :aiEnabled="ai.enabled"
+        :searchMode="searchMode"
+        @setFormatFilter="setFormatFilter"
+        @toggleTagFilter="toggleTagFilter"
+        @setTagMatch="setTagMatch"
+        @toggleCategoryFilter="toggleCategoryFilter"
+        @setLibraryFilter="setLibraryFilter"
+        @toggleFavoritesFilter="toggleFavoritesFilter"
+        @removeFilter="removeBreadcrumb"
+        @clearFilters="clearFilters"
+        @clearFacet="clearFacet"
+        @setSortBy="setSortBy"
+        @toggleSortOrder="toggleSortOrder"
+        @update:viewMode="viewMode = $event"
+        @toggleGridDensity="toggleGridDensity"
+        @toggleSearchMode="toggleSearchMode"
+        @saveSearch="showSaveSearchModal = true"
+        @saveAsCollection="createCollectionFromCurrentView"
+    />
 
     <!-- ============================================================
          Body: Sidebar + Main
@@ -2464,27 +2520,17 @@ const { pickNextCollectionColor } = collectionsComposable;
         <SideBar
             :sidebarOpen="sidebarOpen"
             :filters="filters"
-            :allTags="allTags"
-            :allCategories="allCategories"
+            :hasActiveFilters="hasActiveFilters"
             :collections="collections"
-            :libraries="libraries"
             :favoritesCount="favoritesCount"
             :savedSearches="savedSearches"
             :editingCollectionId="editingCollectionId"
             :editCollectionName="editCollectionName"
-            :activeFilters="breadcrumbTrail"
-            :resultCount="pagination.total"
             :totalCount="libraryTotal"
-            :formatCounts="formatCounts"
+            :duplicateGroups="duplicateGroups"
             @update:sidebarOpen="sidebarOpen = $event"
             @update:editCollectionName="editCollectionName = $event"
-            @setLibraryFilter="setLibraryFilter"
-            @setFormatFilter="setFormatFilter"
-            @toggleTagFilter="toggleTagFilter"
-            @toggleCategoryFilter="toggleCategoryFilter"
-            @removeFilter="removeBreadcrumb"
             @clearFilters="clearFilters"
-            @clearFacet="clearFacet"
             @setCollectionFilter="setCollectionFilter"
             @toggleFavoritesFilter="toggleFavoritesFilter"
             @toggleDuplicatesFilter="toggleDuplicatesFilter"
@@ -2502,7 +2548,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         />
 
         <!-- Main Content -->
-        <main class="main-content" :style="selectionMode ? { paddingBottom: '80px' } : {}">
+        <main class="main-content" :class="{ 'has-float': selectionMode }">
 
             <!-- Scan Progress Banner -->
             <div v-if="scanStatus.scanning" class="scan-banner">
@@ -2553,7 +2599,7 @@ const { pickNextCollectionColor } = collectionsComposable;
                     Get started by adding a library. Point YASTL at a local directory containing your 3D model files.
                 </div>
                 <div class="empty-message" v-else>
-                    Your library is empty. Click "Scan" in the toolbar to discover and import 3D models from your directories.
+                    Your library is empty. Scan your folders to find 3D models, or use Import to add files.
                 </div>
                 <button v-if="searchQuery || hasActiveFilters"
                         class="btn btn-primary"
@@ -2562,10 +2608,10 @@ const { pickNextCollectionColor } = collectionsComposable;
                     Clear search &amp; filters
                 </button>
                 <div v-else-if="!hasLibraries" class="onboarding-form">
-                    <input v-model="newLibName" type="text" class="form-input"
+                    <input v-model="newLibName" type="text" class="form-input" aria-label="Library name"
                            placeholder="Library name (e.g. My 3D Models)"
                            @keydown.enter="onboardAddFolder">
-                    <input v-model="newLibPath" type="text" class="form-input"
+                    <input v-model="newLibPath" type="text" class="form-input" aria-label="Folder path on the server"
                            placeholder="/path/to/your/models"
                            @keydown.enter="onboardAddFolder">
                     <button class="btn btn-primary"
@@ -2579,8 +2625,8 @@ const { pickNextCollectionColor } = collectionsComposable;
                         class="btn btn-primary"
                         @click="triggerScan"
                         :disabled="scanStatus.scanning">
-                    <span v-html="ICONS.scan"></span>
-                    Scan Library
+                    <span v-html="ICONS.refresh"></span>
+                    Scan library
                 </button>
             </div>
 
@@ -2778,6 +2824,7 @@ const { pickNextCollectionColor } = collectionsComposable;
         :collectionCardTint="collectionCardTint"
         :preferredSlicer="preferredSlicer"
         :autoTagOnScan="autoTagOnScan"
+        :lastSavedAt="settingsLastSavedAt"
         @close="closeSettings"
         @update:newLibName="newLibName = $event"
         @update:newLibPath="newLibPath = $event"
@@ -2828,6 +2875,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :printInventory="printInventory"
         @close="closeStats"
         @restartApp="restartApp"
+        @filter="onStatsFilter"
+        @openModel="openModelFromStats"
     />
 
     <FilamentModal
@@ -2862,6 +2911,7 @@ const { pickNextCollectionColor } = collectionsComposable;
     <SelectionBar
         :selectionMode="selectionMode"
         :selectedModels="selectedModels"
+        :total="selectableCount"
         @selectAll="selectAll"
         @deselectAll="deselectAll"
         @bulkFavorite="bulkFavorite"
@@ -2869,30 +2919,36 @@ const { pickNextCollectionColor } = collectionsComposable;
         @bulkAutoTag="bulkAutoTag"
         @openBulkAddToCollection="openBulkAddToCollection"
         @bulkDelete="bulkDelete"
+        @exit="toggleSelectionMode"
     />
+
+    <!-- Phone: Import lives on a floating button, in thumb reach. -->
+    <button v-if="!selectionMode" class="fab-import" @click="openImportModal()" aria-label="Import models" title="Import models">
+        <span v-html="ICONS.plus"></span>
+    </button>
+
+    <!-- Drop anywhere to import -->
+    <div v-if="fileDragActive" class="drop-anywhere" aria-hidden="true">
+        <div class="drop-anywhere-inner">
+            <span class="drop-anywhere-icon" v-html="ICONS.upload"></span>
+            <strong>Drop to import</strong>
+            <span>into {{ importDestinationName }}</span>
+        </div>
+    </div>
 
     <!-- ============================================================
          Collection Modals
          ============================================================ -->
     <CollectionModal
-        :showCollectionModal="showCollectionModal"
-        :showAddToCollectionModal="showAddToCollectionModal"
-        :newCollectionName="newCollectionName"
-        :newCollectionColor="newCollectionColor"
-        :addToCollectionModelId="addToCollectionModelId"
+        :show="showAddToCollectionModal"
         :collections="collections"
         :COLLECTION_COLORS="COLLECTION_COLORS"
         :inlineNewCollection="inlineNewCollection"
-        @update:showCollectionModal="showCollectionModal = $event"
-        @update:showAddToCollectionModal="showAddToCollectionModal = $event"
-        @update:newCollectionName="newCollectionName = $event"
-        @update:newCollectionColor="newCollectionColor = $event"
-        @createCollection="createCollection"
+        @close="showAddToCollectionModal = false"
         @handleCollectionSelect="handleCollectionSelect"
         @startInlineNewCollection="startInlineNewCollection"
         @confirmInlineNewCollection="confirmInlineNewCollection"
         @cancelInlineNewCollection="cancelInlineNewCollection"
-        @pickNextCollectionColor="inlineNewCollection.color = pickNextCollectionColor()"
         @updateInlineNewCollectionName="inlineNewCollection.name = $event"
         @updateInlineNewCollectionColor="inlineNewCollection.color = $event"
     />
@@ -2922,23 +2978,16 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Save Search Modal
          ============================================================ -->
-    <div v-if="showSaveSearchModal" class="detail-overlay" @click.self="showSaveSearchModal = false">
-        <div class="mini-modal">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="margin:0">Save Search</h3>
-                <button class="close-btn" @click="showSaveSearchModal = false">&times;</button>
-            </div>
-            <div class="form-row">
-                <label class="form-label">Name</label>
-                <input class="form-input" v-model="saveSearchName" placeholder="Search name"
-                       @keydown.enter="saveCurrentSearch">
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-secondary" @click="showSaveSearchModal = false">Cancel</button>
-                <button class="btn btn-primary" @click="saveCurrentSearch">Save</button>
-            </div>
-        </div>
-    </div>
+    <AppDialog :show="showSaveSearchModal" title="Save search" size="sm" @close="showSaveSearchModal = false">
+        <form id="save-search-form" @submit.prevent="saveCurrentSearch">
+            <label class="form-label" for="save-search-name">Name</label>
+            <input id="save-search-name" class="form-input" v-model="saveSearchName" placeholder="e.g. Dragons in 3MF">
+        </form>
+        <template #footer>
+            <button class="btn btn-secondary" @click="showSaveSearchModal = false">Cancel</button>
+            <button type="submit" form="save-search-form" class="btn btn-primary">Save</button>
+        </template>
+    </AppDialog>
 
     <!-- ============================================================
          Import Modal
@@ -2968,7 +3017,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :COLLECTION_COLORS="COLLECTION_COLORS"
         @close="closeImportModal"
         @update:importMode="importMode = $event"
-        @update:importUrls="importUrls = $event"
+        @setImportUrls="setImportUrls"
+        @clearFiles="clearUploadFiles"
         @update:importLibraryId="importLibraryId = $event"
         @update:importSubfolder="importSubfolder = $event"
         @update:uploadTags="uploadTags = $event"
@@ -2991,21 +3041,18 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Bulk Tag Modal
          ============================================================ -->
-    <div v-if="showBulkTagModal" class="detail-overlay" @click.self="showBulkTagModal = false">
-        <div class="mini-modal">
-            <h3>Add Tags to {{ selectedModels.size }} Model(s)</h3>
-            <div class="form-row">
-                <label class="form-label">Tags (comma-separated)</label>
-                <input type="text" class="form-input" v-model="bulkTagInput"
-                       placeholder="e.g. figurine, fantasy, painted"
-                       @keydown.enter="bulkAddTags">
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-secondary" @click="showBulkTagModal = false">Cancel</button>
-                <button class="btn btn-primary" @click="bulkAddTags" :disabled="!bulkTagInput.trim()">Apply Tags</button>
-            </div>
-        </div>
-    </div>
+    <AppDialog :show="showBulkTagModal" :title="`Tag ${selectedModels.size} model${selectedModels.size === 1 ? '' : 's'}`"
+               size="sm" @close="showBulkTagModal = false">
+        <form id="bulk-tag-form" @submit.prevent="bulkTagInput.trim() && bulkAddTags()">
+            <label class="form-label" for="bulk-tag-input">Tags, separated by commas</label>
+            <input id="bulk-tag-input" type="text" class="form-input" v-model="bulkTagInput"
+                   placeholder="figurine, fantasy, painted">
+        </form>
+        <template #footer>
+            <button class="btn btn-secondary" @click="showBulkTagModal = false">Cancel</button>
+            <button type="submit" form="bulk-tag-form" class="btn btn-primary" :disabled="!bulkTagInput.trim()">Add tags</button>
+        </template>
+    </AppDialog>
 
     <!-- ============================================================
          Confirm Dialog
@@ -3023,11 +3070,12 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Toast Notifications
          ============================================================ -->
-    <TransitionGroup name="toast" tag="div" class="toast-container">
+    <TransitionGroup name="toast" tag="div" class="toast-container" role="status" aria-live="polite">
         <div v-for="toast in toasts" :key="toast.id"
-             class="toast" :class="'toast-' + toast.type">
+             class="toast" :class="'toast-' + toast.type" :role="toast.type === 'error' ? 'alert' : null">
             <span class="toast-icon" v-html="toastIcon(toast.type)"></span>
             <span class="toast-msg">{{ toast.message }}</span>
+            <button class="toast-close" @click="dismissToast(toast.id)" aria-label="Dismiss" title="Dismiss" v-html="ICONS.close"></button>
         </div>
     </TransitionGroup>
 </div>
@@ -3040,5 +3088,7 @@ const { pickNextCollectionColor } = collectionsComposable;
 @import './styles/cards.css';
 @import './styles/detail-panel.css';
 @import './styles/features.css';
+@import './styles/dialog.css';
+@import './styles/shell.css';
 @import './styles/responsive.css';
 </style>

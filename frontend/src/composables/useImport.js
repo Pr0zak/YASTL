@@ -52,10 +52,34 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
 
     let importPollTimer = null;
 
-    function openImportModal() {
+    // The destination you used last is almost always the one you want next.
+    const DEST_KEY = 'yastl-import-destination';
+    function loadDestination() {
+        try {
+            const d = JSON.parse(localStorage.getItem(DEST_KEY) || 'null');
+            if (d && libraries.value.some((l) => l.id === d.libraryId)) {
+                importLibraryId.value = d.libraryId;
+                importSubfolder.value = d.subfolder || '';
+                return true;
+            }
+        } catch { /* storage unavailable */ }
+        return false;
+    }
+    function saveDestination() {
+        try {
+            localStorage.setItem(DEST_KEY, JSON.stringify({
+                libraryId: importLibraryId.value, subfolder: importSubfolder.value,
+            }));
+        } catch { /* storage unavailable */ }
+    }
+
+    /**
+     * Open the import dialog, optionally pre-filled: `files` from a drop
+     * anywhere on the page, `urls` from a paste anywhere on the page.
+     */
+    function openImportModal(prefill = {}) {
         importMode.value = 'file';
         importUrls.value = '';
-        importSubfolder.value = '';
         importPreview.loading = false;
         importPreview.data = null;
         importDone.value = false;
@@ -69,11 +93,18 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         uploadSourceUrl.value = '';
         uploadDescription.value = '';
         uploadZipMeta.value = null;
-        // Default to first library if available
-        if (libraries.value.length > 0 && !importLibraryId.value) {
+        importSubfolder.value = '';
+        if (!loadDestination() && libraries.value.length > 0
+            && !libraries.value.some((l) => l.id === importLibraryId.value)) {
             importLibraryId.value = libraries.value[0].id;
         }
         showImportModal.value = true;
+        if (prefill.files && prefill.files.length) {
+            onFilesSelected({ target: { files: prefill.files } });
+        } else if (prefill.urls) {
+            setImportUrls(prefill.urls);
+            previewImportUrl();
+        }
         document.body.classList.add('modal-open');
     }
 
@@ -104,6 +135,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         if (!urls.length || !importLibraryId.value) return;
 
         importRunning.value = true;
+        saveDestination();
         try {
             const { ok, data } = await apiStartImport(urls, importLibraryId.value, importSubfolder.value);
             if (ok) {
@@ -142,8 +174,31 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         }, 2000);
     }
 
+    /** Links typed or pasted into the import box switch it to link mode. */
+    function setImportUrls(value) {
+        importUrls.value = value;
+        if (value.trim()) {
+            uploadFiles.value = [];
+            uploadZipMeta.value = null;
+            importMode.value = 'url';
+        } else if (!uploadFiles.value.length) {
+            importMode.value = 'file';
+        }
+    }
+
+    function clearUploadFiles() {
+        uploadFiles.value = [];
+        uploadZipMeta.value = null;
+        uploadTagSuggestions.value = [];
+    }
+
     function onFilesSelected(event) {
         uploadFiles.value = Array.from(event.target.files || []);
+        if (uploadFiles.value.length) {
+            importMode.value = 'file';
+            importUrls.value = '';
+            importPreview.data = null;
+        }
         uploadZipMeta.value = null;
 
         // Generate tag suggestions from filenames
@@ -195,6 +250,7 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         importRunning.value = true;
         importDone.value = false;
         uploadResults.value = [];
+        saveDestination();
 
         const formData = new FormData();
         formData.append('library_id', importLibraryId.value);
@@ -297,6 +353,8 @@ export function useImport(showToast, refreshData, libraries, collections, fetchC
         previewImportUrl,
         startImport,
         onFilesSelected,
+        setImportUrls,
+        clearUploadFiles,
         startUpload,
         addUploadTagSuggestion,
         fetchImportCredentials,

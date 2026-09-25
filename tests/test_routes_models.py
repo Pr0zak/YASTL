@@ -56,6 +56,27 @@ class TestListModels:
         assert data["total"] == 5
         assert len(data["models"]) == 2
 
+    async def test_group_zips_reports_total_files(self, client):
+        """Grouped zips count once in ``total``; ``total_files`` counts every file."""
+        db_path = client._db_path
+        await insert_test_model(db_path, name="loose", file_path="/tmp/loose.stl")
+        for i in range(3):
+            await insert_test_model(
+                db_path, name=f"part_{i}", file_path=f"/tmp/kit.zip/p{i}.stl",
+                zip_path="/tmp/kit.zip",
+            )
+
+        resp = await client.get("/api/models?group_zips=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert data["total_files"] == 4
+
+        resp = await client.get("/api/models")
+        data = resp.json()
+        assert data["total"] == 4
+        assert data["total_files"] == 4
+
     async def test_filter_by_format(self, client):
         """GET /api/models?format=OBJ should filter by format."""
         db_path = client._db_path

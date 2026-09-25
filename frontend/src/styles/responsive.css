@@ -27,9 +27,12 @@
     .sidebar {
         position: fixed;
         left: 0;
-        top: 92px;
+        top: var(--topbar-h);
         bottom: 0;
-        z-index: 500;
+        height: auto;
+        width: min(300px, 86vw);
+        min-width: 0;
+        z-index: var(--z-sidebar);
         transform: translateX(-100%);
         opacity: 0;
         box-shadow: 4px 0 20px var(--shadow);
@@ -44,79 +47,27 @@
         display: block;
         position: fixed;
         inset: 0;
-        top: 92px;
-        z-index: 499;
-        background: rgba(0, 0, 0, 0.5);
+        top: var(--topbar-h);
+        z-index: calc(var(--z-sidebar) - 1);
+        background: var(--scrim);
     }
 
     .main-content {
         padding: 12px;
     }
 
-    .models-grid {
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-        gap: 10px;
-    }
 
-    .model-card .card-thumbnail {
-        height: 120px;
-    }
-
-    .navbar-brand h1,
-    .navbar-github {
+    .navbar-brand h1 {
         display: none;
     }
 
     .navbar {
-        padding: 0 12px;
-        gap: 8px;
+        padding: 0 8px;
+        gap: 6px;
     }
 
     .navbar-actions {
         gap: 2px;
-    }
-
-    .navbar-actions .btn-icon {
-        width: 34px;
-        height: 34px;
-    }
-
-    .view-toggle .btn-ghost {
-        padding: 6px 8px;
-    }
-
-    .breadcrumb-bar {
-        padding: 0 12px;
-    }
-
-    .breadcrumb-nav {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        flex: 1 1 auto;
-        min-width: 0;
-    }
-
-    .breadcrumb-nav::-webkit-scrollbar {
-        display: none;
-    }
-
-    .breadcrumb-link {
-        padding: 4px 6px;
-        font-size: 0.75rem;
-    }
-
-    .breadcrumb-count {
-        display: none;
-    }
-
-    /* Actions keep their size; the breadcrumb trail yields space and scrolls. */
-    .breadcrumb-actions {
-        flex-shrink: 0;
-    }
-
-    .breadcrumb-actions .sort-select {
-        max-width: 130px;
     }
 
     /* --- Detail modal: bottom sheet style --- */
@@ -181,58 +132,6 @@
         white-space: nowrap;
     }
 
-    /* Bulk selection bar: stack the count above the actions, and let the
-       action buttons scroll horizontally instead of overflowing the viewport. */
-    .selection-bar {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-        padding: 10px 12px;
-        padding-bottom: calc(10px + env(safe-area-inset-bottom));
-    }
-
-    .selection-bar .selection-actions {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        padding-bottom: 2px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-
-    .selection-bar .selection-actions::-webkit-scrollbar {
-        display: none;
-    }
-
-    .selection-bar .selection-actions .btn {
-        flex-shrink: 0;
-        white-space: nowrap;
-    }
-
-    /* Table: hide less important columns */
-    .models-table .col-tags {
-        display: none;
-    }
-
-    .models-table .col-date {
-        display: none;
-    }
-
-    /* Bigger touch targets for table rows */
-    .models-table tbody td {
-        padding: 12px 10px;
-    }
-
-    .models-table thead th {
-        padding: 10px;
-    }
-
-    /* Allow name column to wrap on mobile */
-    .models-table tbody td.col-name {
-        white-space: normal;
-        word-break: break-word;
-        min-width: 120px;
-    }
-
     /* Detail tabs: smaller padding on mobile */
     .detail-tabs {
         padding: 0 16px;
@@ -268,44 +167,20 @@
         font-size: 20px;
     }
 
-    /* Toast at bottom-center on mobile */
+    /* Toasts drop in under the top bars on a phone, where the bottom edge
+       belongs to the Import button, the selection bar and sheet footers. */
     .toast-container {
         right: 12px;
         left: 12px;
-        bottom: 12px;
+        bottom: auto;
+        top: calc(var(--topbar-h) + 8px);
     }
 
     .toast {
         max-width: 100%;
     }
 
-    /* Status menu full-width on mobile */
-    .status-menu {
-        left: 0;
-        right: 0;
-        width: auto;
-        border-radius: 0 0 var(--radius) var(--radius);
-    }
 
-    /* Settings: full-screen on mobile */
-    .settings-panel {
-        max-width: 100%;
-        max-height: 100vh;
-        max-height: 100dvh;
-        height: 100vh;
-        height: 100dvh;
-        border-radius: 0;
-    }
-
-    .detail-overlay:has(.settings-panel) {
-        padding: 0;
-        align-items: stretch;
-    }
-
-    .settings-content {
-        padding: 16px;
-        padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    }
 
     /* Thumbnail mode options: stack vertically */
     .thumbnail-mode-options {
@@ -371,22 +246,6 @@
 
 /* ---- Small phone: <= 480px ---- */
 @media (max-width: 480px) {
-    .models-grid {
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-        gap: 8px;
-    }
-
-    .model-card .card-thumbnail {
-        height: 100px;
-    }
-
-    .model-card .card-body {
-        padding: 8px;
-    }
-
-    .model-card .card-name {
-        font-size: 0.8rem;
-    }
 
     /* Search: let it shrink more but stay usable */
     .search-container {
@@ -395,26 +254,6 @@
 
     .search-container input {
         font-size: 16px; /* Prevents iOS zoom on focus */
-    }
-
-    /* Navbar tighter */
-    .navbar {
-        padding: 0 8px;
-        gap: 4px;
-    }
-
-    .navbar-actions .btn-icon {
-        width: 32px;
-        height: 32px;
-    }
-
-    .navbar-actions .btn-icon svg {
-        width: 16px;
-        height: 16px;
-    }
-
-    .view-toggle .btn-ghost {
-        padding: 5px 6px;
     }
 
     .detail-header {
@@ -450,10 +289,6 @@
         font-size: 0.7rem;
     }
 
-    /* Breadcrumb bar tighter */
-    .breadcrumb-actions {
-        gap: 4px;
-    }
 }
 
 /* ---- Small update commits: <= 640px ---- */
@@ -512,64 +347,9 @@
 }
 
 @media (max-width: 768px) {
-    /* Swap the inline action row for the overflow button. */
-    .nav-action-wide {
-        display: none;
-    }
-
-    .nav-overflow,
-    .crumb-overflow-btn {
-        display: inline-flex;
-    }
-
-    /* The filter trail is what tells you why the grid looks the way it does,
-       so it gets the room the action cluster used to take. */
-    .breadcrumb-nav {
-        flex: 1 1 auto;
-        min-width: 0;
-    }
-
-    .breadcrumb-actions {
-        display: none;
-    }
-
-    .breadcrumb-actions.crumb-actions-open {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-        padding: 12px;
-        right: 8px;
-        top: calc(100% + 6px);
-    }
-
-    .breadcrumb-actions.crumb-actions-open .btn,
-    .breadcrumb-actions.crumb-actions-open .sort-control,
-    .breadcrumb-actions.crumb-actions-open .sort-select {
-        width: 100%;
-        min-height: 44px;
-        justify-content: flex-start;
-    }
-
-    /* .breadcrumb-bar is position: fixed, which already establishes the
-       containing block the menu positions against — making it relative here
-       would drop it out of the fixed layer and let it scroll away. */
-}
-
-@media (max-width: 768px) {
     /* Touch floors belong in the drawer, where fingers are the input. */
     .sb-row {
         min-height: 44px;
     }
 
-    .facet-overlay {
-        padding: 0;
-        align-items: flex-end;
-    }
-
-    .facet-panel {
-        width: 100%;
-        max-height: 88dvh;
-        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    }
 }

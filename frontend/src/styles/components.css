@@ -27,7 +27,7 @@
 .btn-primary:hover,
 .btn-primary:active {
     background: var(--accent-hover);
-    box-shadow: 0 2px 8px rgba(15, 155, 142, 0.3);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .btn-secondary {
@@ -106,7 +106,7 @@
 
 .btn-icon-danger:hover {
     color: var(--danger) !important;
-    background: rgba(231, 76, 60, 0.1);
+    background: var(--danger-dim);
 }
 
 /* View toggle group */
@@ -148,7 +148,7 @@
 }
 
 .tag-chip:hover {
-    background: rgba(15, 155, 142, 0.25);
+    background: color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .tag-chip-clickable {
@@ -172,8 +172,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
+    width: 20px;
+    height: 20px;
+    margin: -3px -6px -3px 0;
     border-radius: 50%;
     background: transparent;
     border: none;
@@ -190,6 +191,20 @@
     color: #fff;
 }
 
+.tag-chip .tag-remove svg {
+    width: 11px;
+    height: 11px;
+}
+
+/* A bigger hit area on touch without changing how the chip looks. */
+@media (pointer: coarse) {
+    .tag-chip .tag-remove {
+        width: 28px;
+        height: 28px;
+        margin: -8px -10px -8px -2px;
+    }
+}
+
 /* ---- Format badge ---- */
 .format-badge {
     display: inline-block;
@@ -204,31 +219,21 @@
     border: 1px solid var(--border);
 }
 
-.format-badge.stl { color: #3498db; border-color: #3498db44; background: #3498db15; }
-.format-badge.obj { color: #e67e22; border-color: #e67e2244; background: #e67e2215; }
-.format-badge.gltf,
-.format-badge.glb { color: #2ecc71; border-color: #2ecc7144; background: #2ecc7115; }
-.format-badge.fbx { color: #9b59b6; border-color: #9b59b644; background: #9b59b615; }
-.format-badge.ply { color: #f1c40f; border-color: #f1c40f44; background: #f1c40f15; }
-.format-badge.dae { color: #1abc9c; border-color: #1abc9c44; background: #1abc9c15; }
-.format-badge.threemf,
-.format-badge._3mf { color: #e74c3c; border-color: #e74c3c44; background: #e74c3c15; }
-.format-badge.step,
-.format-badge.stp { color: #95a5a6; border-color: #95a5a644; background: #95a5a615; }
-.format-badge.off { color: #fd79a8; border-color: #fd79a844; background: #fd79a815; }
+/* Format badges are neutral: colour is kept for state. 3MF used to be the
+   same red as errors and Delete, and 560 files in this library are 3MF. */
 
 /* ---- Zip Archive Badge ---- */
 .zip-badge {
     display: inline-block;
     padding: 0 4px;
-    font-size: 0.55rem;
+    font-size: 0.62rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
     border-radius: 3px;
-    background: rgba(155, 89, 182, 0.15);
-    color: #9b59b6;
-    border: 1px solid rgba(155, 89, 182, 0.3);
+    background: color-mix(in srgb, var(--purple) 15%, transparent);
+    color: var(--purple);
+    border: 1px solid color-mix(in srgb, var(--purple) 35%, transparent);
     white-space: nowrap;
     vertical-align: middle;
     margin-left: 4px;
@@ -238,14 +243,14 @@
 .dup-badge {
     display: inline-block;
     padding: 0 4px;
-    font-size: 0.55rem;
+    font-size: 0.62rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
     border-radius: 3px;
-    background: rgba(243, 156, 18, 0.15);
-    color: #f39c12;
-    border: 1px solid rgba(243, 156, 18, 0.3);
+    background: var(--warning-dim);
+    color: var(--warning);
+    border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
     white-space: nowrap;
     vertical-align: middle;
     margin-left: 4px;
@@ -255,14 +260,14 @@
 .error-badge {
     display: inline-block;
     padding: 0 4px;
-    font-size: 0.55rem;
+    font-size: 0.62rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
     border-radius: 3px;
-    background: rgba(220, 53, 69, 0.15);
-    color: #dc3545;
-    border: 1px solid rgba(220, 53, 69, 0.3);
+    background: var(--danger-dim);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
     white-space: nowrap;
     vertical-align: middle;
     margin-left: 4px;
@@ -560,57 +565,6 @@
     min-width: 18px;
 }
 
-/* ============================================================
-   Confirm Dialog
-   ============================================================ */
-
-.confirm-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 9000;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: fadeIn 0.15s ease;
-}
-
-.confirm-dialog {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    min-width: 340px;
-    max-width: 440px;
-    width: 100%;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    animation: slideUp 0.2s ease;
-}
-
-.confirm-title {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 8px;
-}
-
-.confirm-message {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-    margin: 0 0 20px;
-    line-height: 1.5;
-}
-
-.confirm-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-}
-
 /* Auto-generated tag chips are dimmed to distinguish from manual ones */
 .tag-chip.tag-chip-auto {
     opacity: 0.6;
@@ -640,4 +594,14 @@
     content: ':';
     opacity: 0.6;
     margin: 0 1px 0 0;
+}
+
+/* Keep a large source icon at button size. */
+.btn .btn-icon-sm {
+    display: inline-flex;
+}
+
+.btn .btn-icon-sm svg {
+    width: 16px;
+    height: 16px;
 }

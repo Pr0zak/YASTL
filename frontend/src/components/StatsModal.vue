@@ -3,6 +3,7 @@
  * StatsModal - Library statistics dashboard with system status.
  */
 import { ICONS } from '../icons.js';
+import AppDialog from './AppDialog.vue';
 
 defineProps({
     showStats: { type: Boolean, default: false },
@@ -12,7 +13,9 @@ defineProps({
     printInventory: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['close', 'restartApp']);
+// 'filter' asks the app to close this dialog and show the library narrowed to
+// one format / library / collection / tag / duplicates; 'openModel' opens one.
+const emit = defineEmits(['close', 'restartApp', 'filter', 'openModel']);
 
 function formatSize(bytes) {
     if (!bytes || bytes === 0) return '0 B';
@@ -63,18 +66,8 @@ function tagOpacity(count, tags) {
 </script>
 
 <template>
-    <div v-if="showStats" class="detail-overlay" @click.self="emit('close')">
-        <div class="settings-panel stats-panel">
-            <!-- Header -->
-            <div class="detail-header">
-                <div class="detail-title">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                    Library Stats
-                </div>
-                <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
-            </div>
-
-            <div class="settings-content" v-if="stats && !statsLoading">
+    <AppDialog :show="showStats" title="Library stats" size="md" full-height-mobile @close="emit('close')">
+            <div v-if="stats && !statsLoading">
                 <!-- System Health -->
                 <div class="stats-health">
                     <div class="stats-health-header">
@@ -82,9 +75,9 @@ function tagOpacity(count, tags) {
                         <span class="status-badge" :class="statusDotClass(systemStatus.health)">
                             {{ statusLabel(systemStatus.health) }}
                         </span>
-                        <button class="btn btn-secondary" style="margin-left:auto;font-size:0.7rem;padding:3px 8px"
-                                @click="emit('restartApp')" title="Restart YASTL service">
-                            <span v-html="ICONS.refresh"></span> Restart
+                        <button class="btn btn-secondary btn-sm stats-restart"
+                                @click="emit('restartApp')" title="Restart the YASTL service">
+                            <span v-html="ICONS.refresh"></span> Restart service
                         </button>
                     </div>
                     <div class="stats-health-items">
@@ -127,7 +120,7 @@ function tagOpacity(count, tags) {
                     </div>
                     <div class="stats-card">
                         <div class="stats-card-value">{{ formatSize(stats.total_size) }}</div>
-                        <div class="stats-card-label">Total Size</div>
+                        <div class="stats-card-label">On disk</div>
                     </div>
                     <div class="stats-card">
                         <div class="stats-card-value">{{ stats.total_tags.toLocaleString() }}</div>
@@ -135,7 +128,7 @@ function tagOpacity(count, tags) {
                     </div>
                     <div class="stats-card">
                         <div class="stats-card-value">{{ stats.total_favorites.toLocaleString() }}</div>
-                        <div class="stats-card-label">Favorites</div>
+                        <div class="stats-card-label">Favourites</div>
                     </div>
                 </div>
 
@@ -193,23 +186,26 @@ function tagOpacity(count, tags) {
                         </div>
                         <span class="stats-coverage-value">{{ stats.zip_models }}</span>
                     </div>
-                    <div class="stats-coverage-row" v-if="stats.duplicate_groups > 0">
+                    <button type="button" class="stats-coverage-row stats-link" v-if="stats.duplicate_groups > 0"
+                            @click="emit('filter', { type: 'duplicates' })" title="Show duplicate files in the library">
                         <span class="stats-coverage-label">Duplicates</span>
                         <div class="stats-bar-track">
                             <div class="stats-bar-fill stats-bar-warn"
                                  :style="{ width: (stats.total_models ? (stats.duplicate_models / stats.total_models * 100) : 0) + '%' }"></div>
                         </div>
                         <span class="stats-coverage-value">{{ stats.duplicate_models }} files in {{ stats.duplicate_groups }} groups</span>
-                    </div>
+                        <span class="stats-link-chevron" v-html="ICONS.chevron"></span>
+                    </button>
                 </div>
 
                 <!-- Formats -->
                 <div class="settings-section">
                     <div class="settings-section-title">Formats</div>
                     <div class="stats-bar-list">
-                        <div v-for="fmt in stats.formats" :key="fmt.file_format" class="stats-bar-row">
+                        <button type="button" v-for="fmt in stats.formats" :key="fmt.file_format" class="stats-bar-row stats-link"
+                                @click="emit('filter', { type: 'format', value: fmt.file_format })" :title="'Show ' + fmt.file_format + ' models'">
                             <span class="stats-bar-label">
-                                <span class="format-badge" :class="fmt.file_format?.toLowerCase().replace('.', '')">
+                                <span class="format-badge">
                                     {{ fmt.file_format }}
                                 </span>
                             </span>
@@ -217,7 +213,8 @@ function tagOpacity(count, tags) {
                                 <div class="stats-bar-fill" :style="{ width: barWidth(fmt.count, stats.formats[0]?.count) }"></div>
                             </div>
                             <span class="stats-bar-value">{{ fmt.count }} <span class="text-muted">({{ formatSize(fmt.total_size) }})</span></span>
-                        </div>
+                            <span class="stats-link-chevron" v-html="ICONS.chevron"></span>
+                        </button>
                     </div>
                 </div>
 
@@ -225,14 +222,16 @@ function tagOpacity(count, tags) {
                 <div class="settings-section" v-if="stats.libraries.length > 0">
                     <div class="settings-section-title">Libraries</div>
                     <div class="stats-bar-list">
-                        <div v-for="lib in stats.libraries" :key="lib.id" class="stats-bar-row">
+                        <button type="button" v-for="lib in stats.libraries" :key="lib.id" class="stats-bar-row stats-link"
+                                @click="emit('filter', { type: 'library', value: lib.id })" :title="'Show ' + lib.name">
                             <span class="stats-bar-label stats-bar-label-wide">{{ lib.name }}</span>
                             <div class="stats-bar-track">
                                 <div class="stats-bar-fill stats-bar-accent"
                                      :style="{ width: barWidth(lib.count, stats.libraries[0]?.count) }"></div>
                             </div>
                             <span class="stats-bar-value">{{ lib.count }} <span class="text-muted">({{ formatSize(lib.total_size) }})</span></span>
-                        </div>
+                            <span class="stats-link-chevron" v-html="ICONS.chevron"></span>
+                        </button>
                     </div>
                 </div>
 
@@ -254,26 +253,14 @@ function tagOpacity(count, tags) {
                     </div>
                 </div>
 
-                <!-- Tag Cloud -->
-                <div class="settings-section" v-if="stats.top_tags.length > 0">
-                    <div class="settings-section-title">Tag Cloud</div>
-                    <div class="stats-tag-cloud">
-                        <span v-for="tag in stats.top_tags" :key="tag.name"
-                              class="cloud-tag"
-                              :style="{ fontSize: tagFontSize(tag.count, stats.top_tags), opacity: tagOpacity(tag.count, stats.top_tags) }"
-                              :title="tag.name + ': ' + tag.count + ' models'">
-                            {{ tag.name }}
-                        </span>
-                    </div>
-                </div>
-
                 <!-- Collections -->
                 <div class="settings-section" v-if="stats.collection_stats && stats.collection_stats.length > 0">
                     <div class="settings-section-title">Collections</div>
                     <div class="stats-bar-list">
-                        <div v-for="col in stats.collection_stats" :key="col.id" class="stats-bar-row">
-                            <span class="stats-bar-label stats-bar-label-wide" style="display:flex;align-items:center;gap:6px" :title="col.name">
-                                <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
+                        <button type="button" v-for="col in stats.collection_stats" :key="col.id" class="stats-bar-row stats-link"
+                                @click="emit('filter', { type: 'collection', value: col.id })" :title="'Show ' + col.name">
+                            <span class="stats-bar-label stats-bar-label-wide stats-col-label" :title="col.name">
+                                <span class="collection-dot" :style="{ background: col.color || 'var(--text-muted)' }"></span>
                                 {{ col.name }}
                             </span>
                             <div class="stats-bar-track">
@@ -281,7 +268,8 @@ function tagOpacity(count, tags) {
                                      :style="{ width: barWidth(col.count, stats.collection_stats[0]?.count), background: col.color || 'var(--accent)' }"></div>
                             </div>
                             <span class="stats-bar-value">{{ col.count }}</span>
-                        </div>
+                            <span class="stats-link-chevron" v-html="ICONS.chevron"></span>
+                        </button>
                     </div>
                 </div>
 
@@ -289,7 +277,8 @@ function tagOpacity(count, tags) {
                 <div class="settings-section" v-if="stats.largest_models.length > 0">
                     <div class="settings-section-title">Largest Models</div>
                     <div class="stats-bar-list">
-                        <div v-for="model in stats.largest_models" :key="model.id" class="stats-bar-row">
+                        <button type="button" v-for="model in stats.largest_models" :key="model.id" class="stats-bar-row stats-link"
+                                @click="emit('openModel', model.id)" :title="'Open ' + model.name">
                             <span class="stats-bar-label stats-bar-label-wide" :title="model.name">
                                 {{ model.name }}
                             </span>
@@ -298,24 +287,46 @@ function tagOpacity(count, tags) {
                                      :style="{ width: barWidth(model.file_size, stats.largest_models[0]?.file_size) }"></div>
                             </div>
                             <span class="stats-bar-value">{{ formatSize(model.file_size) }}</span>
-                        </div>
+                            <span class="stats-link-chevron" v-html="ICONS.chevron"></span>
+                        </button>
                     </div>
                 </div>
+                <!-- Tag Cloud -->
+                <div class="settings-section" v-if="stats.top_tags.length > 0">
+                    <div class="settings-section-title">Tag Cloud</div>
+                    <div class="stats-tag-cloud">
+                        <button type="button" v-for="tag in stats.top_tags" :key="tag.name"
+                              class="cloud-tag"
+                              :style="{ fontSize: tagFontSize(tag.count, stats.top_tags), opacity: tagOpacity(tag.count, stats.top_tags) }"
+                              :title="tag.name + ': ' + tag.count + ' models'"
+                              @click="emit('filter', { type: 'tag', value: tag.name })">
+                            {{ tag.name }}
+                        </button>
+                    </div>
+                </div>
+
             </div>
 
             <!-- Loading -->
-            <div v-else class="settings-content" style="display:flex;align-items:center;justify-content:center;min-height:200px">
+            <div v-else class="stats-loading">
                 <div class="spinner"></div>
-                <span style="margin-left:12px">Loading stats...</span>
+                <span>Loading stats…</span>
             </div>
-        </div>
-    </div>
+    </AppDialog>
 </template>
 
 <style scoped>
-.stats-panel {
-    max-width: 640px;
+.stats-loading { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 200px; }
+.stats-restart { margin-left: auto; min-height: 32px; }
+.stats-link {
+    width: 100%; background: none; color: inherit; font: inherit; text-align: left;
+    border-radius: var(--radius-sm); padding: 4px 6px; margin: 0 -6px; box-sizing: content-box;
+    min-height: 28px;
 }
+.stats-link:hover { background: var(--bg-hover); }
+.stats-link:hover .stats-link-chevron { opacity: 1; }
+.stats-link-chevron { display: flex; color: var(--text-muted); opacity: 0.4; flex: none; }
+.stats-col-label { display: flex; align-items: center; gap: 6px; }
 
 .stats-cards {
     display: grid;
@@ -334,7 +345,7 @@ function tagOpacity(count, tags) {
 .stats-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 14px 10px;
     text-align: center;
 }
@@ -401,9 +412,9 @@ function tagOpacity(count, tags) {
     min-width: 2px;
 }
 
-.stats-bar-accent { background: #44aacc; }
-.stats-bar-purple { background: #a855f7; }
-.stats-bar-warn { background: #f59e0b; }
+.stats-bar-accent { background: var(--info); }
+.stats-bar-purple { background: var(--purple); }
+.stats-bar-warn { background: var(--warning); }
 
 .stats-bar-list {
     display: flex;
@@ -448,8 +459,10 @@ function tagOpacity(count, tags) {
 }
 
 .cloud-tag {
-    color: var(--accent);
-    cursor: default;
+    background: none;
+    font-family: inherit;
+    color: var(--accent-hover);
+    cursor: pointer;
     transition: opacity 0.2s;
     white-space: nowrap;
 }
@@ -463,7 +476,7 @@ function tagOpacity(count, tags) {
 .stats-health {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 12px 14px;
     margin-bottom: 16px;
 }
@@ -509,9 +522,9 @@ function tagOpacity(count, tags) {
     font-size: 0.7rem;
 }
 
-.stats-health-value.status-dot-ok { color: #22c55e; }
-.stats-health-value.status-dot-warn { color: #f59e0b; }
-.stats-health-value.status-dot-error { color: #ef4444; }
+.stats-health-value.status-dot-ok { color: var(--success); }
+.stats-health-value.status-dot-warn { color: var(--warning); }
+.stats-health-value.status-dot-error { color: var(--danger); }
 .stats-health-value.status-dot-unknown { color: var(--text-muted); }
 
 @media (max-width: 640px) {
