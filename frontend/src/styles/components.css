@@ -172,8 +172,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
+    width: 20px;
+    height: 20px;
+    margin: -3px -6px -3px 0;
     border-radius: 50%;
     background: transparent;
     border: none;
@@ -188,6 +189,20 @@
 .tag-chip .tag-remove:hover {
     background: var(--accent);
     color: #fff;
+}
+
+.tag-chip .tag-remove svg {
+    width: 11px;
+    height: 11px;
+}
+
+/* A bigger hit area on touch without changing how the chip looks. */
+@media (pointer: coarse) {
+    .tag-chip .tag-remove {
+        width: 28px;
+        height: 28px;
+        margin: -8px -10px -8px -2px;
+    }
 }
 
 /* ---- Format badge ---- */
