@@ -20,6 +20,26 @@ class TestSearchModels:
         data = resp.json()
         assert data["total"] == 2
 
+    async def test_single_model_zip_is_found_when_grouping(self, client):
+        """A model alone in its zip is not grouped, so it must stay searchable."""
+        db_path = client._db_path
+        for i in range(2):
+            await insert_test_model(
+                db_path, name=f"dragon_part_{i}", file_path=f"/tmp/kit.zip/p{i}.stl",
+                zip_path="/tmp/kit.zip",
+            )
+        await insert_test_model(
+            db_path, name="dragon_solo", file_path="/tmp/solo.zip/solo.stl",
+            zip_path="/tmp/solo.zip",
+        )
+
+        resp = await client.get("/api/search?q=dragon&group_zips=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert data["total_files"] == 3
+        assert "dragon_solo" in {m["name"] for m in data["models"]}
+
     async def test_fts_search(self, client):
         """GET /api/search?q=dragon should find matching models."""
         db_path = client._db_path

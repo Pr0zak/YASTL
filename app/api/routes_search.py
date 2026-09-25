@@ -341,10 +341,16 @@ async def search_models(
                 }
 
             if rep_ids:
+                # Hide only the non-representative members of grouped zips; a
+                # single-model zip is not grouped and must stay searchable.
+                grouped_paths = [g["zip_path"] for g in zip_group_map.values()]
+                path_placeholders = ", ".join("?" for _ in grouped_paths)
                 rep_placeholders = ", ".join("?" for _ in rep_ids)
                 where_clauses.append(
-                    f"(m.zip_path IS NULL OR m.id IN ({rep_placeholders}))"
+                    f"(m.zip_path IS NULL OR m.zip_path NOT IN ({path_placeholders})"
+                    f" OR m.id IN ({rep_placeholders}))"
                 )
+                params.extend(grouped_paths)
                 params.extend(rep_ids)
 
         where_sql = ""
@@ -358,6 +364,8 @@ async def search_models(
         cursor = await db.execute(count_sql, params)
         count_row = await cursor.fetchone()
         total = dict(count_row)["cnt"]
+        # Files behind the grouped cards, as in GET /api/models.
+        total_files = total + sum(g["count"] - 1 for g in zip_group_map.values())
 
         # -----------------------------------------------------------------
         # Fetch the page of results.
@@ -424,6 +432,7 @@ async def search_models(
     return {
         "models": models,
         "total": total,
+        "total_files": total_files,
         "query": q,
         "limit": limit,
         "offset": offset,
