@@ -578,13 +578,13 @@
 .update-status-current {
     flex-direction: row;
     align-items: center;
-    border-color: #2e7d32;
-    background: rgba(46, 125, 50, 0.08);
+    border-color: var(--success);
+    background: var(--success-dim);
 }
 
 .update-status-available {
     border-color: var(--accent);
-    background: rgba(15, 155, 142, 0.08);
+    background: var(--accent-dim);
 }
 
 .update-status-icon {
@@ -597,7 +597,7 @@
 }
 
 .update-icon-current {
-    color: #4caf50;
+    color: var(--success);
 }
 
 .update-icon-available {
@@ -654,7 +654,7 @@
     font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
     font-size: 0.75rem;
     color: var(--accent);
-    background: rgba(15, 155, 142, 0.12);
+    background: var(--accent-dim);
     padding: 1px 6px;
     border-radius: 3px;
 }
@@ -687,8 +687,8 @@
     align-items: center;
     gap: 8px;
     padding: 10px 14px;
-    background: rgba(231, 76, 60, 0.1);
-    border: 1px solid rgba(231, 76, 60, 0.3);
+    background: var(--danger-dim);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
     border-radius: var(--radius-sm);
     color: var(--danger);
     font-size: 0.82rem;
@@ -828,8 +828,8 @@ textarea.import-textarea {
 }
 
 .tag-suggestion:hover {
-    background: rgba(52, 152, 219, 0.25);
-    border-color: #3498db;
+    background: color-mix(in srgb, var(--info) 25%, transparent);
+    border-color: var(--info);
 }
 
 /* Tag AND/OR match toggle in the sidebar */
@@ -976,8 +976,8 @@ textarea.import-textarea {
     font-size: 0.8rem;
     align-self: center;
 }
-.ai-test-result.ok { color: var(--color-success, #2ec4b6); }
-.ai-test-result.err { color: #dc3545; }
+.ai-test-result.ok { color: var(--success); }
+.ai-test-result.err { color: var(--danger); }
 @media (max-width: 560px) {
     .ai-settings-grid { grid-template-columns: 1fr; }
 }
@@ -1106,7 +1106,7 @@ textarea.import-textarea {
     height: 22px;
     border-radius: 50%;
     background: var(--accent);
-    color: var(--bg-primary, #1a1a2e);
+    color: var(--bg-primary);
     font-size: 0.72rem;
     font-weight: 700;
     display: flex;
@@ -1121,7 +1121,7 @@ textarea.import-textarea {
     top: 26px;
     bottom: 6px;
     width: 1px;
-    background: var(--border-color, #2a3a5c);
+    background: var(--border);
 }
 
 .connect-step-title {
@@ -1150,13 +1150,13 @@ textarea.import-textarea {
 .connect-note {
     margin-top: 12px;
     padding: 10px 12px;
-    border-left: 3px solid var(--border-color, #2a3a5c);
+    border-left: 3px solid var(--border);
     border-radius: 4px;
     background: var(--bg-secondary, rgba(0, 0, 0, 0.15));
 }
 
 .connect-note.warn {
-    border-left-color: var(--warning, #e5c07b);
+    border-left-color: var(--warning);
 }
 
 .form-input.mono {

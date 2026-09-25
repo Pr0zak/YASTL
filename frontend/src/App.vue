@@ -2599,7 +2599,7 @@ function editSmartCollection(col) {
                     Get started by adding a library. Point YASTL at a local directory containing your 3D model files.
                 </div>
                 <div class="empty-message" v-else>
-                    Your library is empty. Click "Scan" in the toolbar to discover and import 3D models from your directories.
+                    Your library is empty. Scan your folders to find 3D models, or use Import to add files.
                 </div>
                 <button v-if="searchQuery || hasActiveFilters"
                         class="btn btn-primary"
@@ -2608,10 +2608,10 @@ function editSmartCollection(col) {
                     Clear search &amp; filters
                 </button>
                 <div v-else-if="!hasLibraries" class="onboarding-form">
-                    <input v-model="newLibName" type="text" class="form-input"
+                    <input v-model="newLibName" type="text" class="form-input" aria-label="Library name"
                            placeholder="Library name (e.g. My 3D Models)"
                            @keydown.enter="onboardAddFolder">
-                    <input v-model="newLibPath" type="text" class="form-input"
+                    <input v-model="newLibPath" type="text" class="form-input" aria-label="Folder path on the server"
                            placeholder="/path/to/your/models"
                            @keydown.enter="onboardAddFolder">
                     <button class="btn btn-primary"
@@ -2625,8 +2625,8 @@ function editSmartCollection(col) {
                         class="btn btn-primary"
                         @click="triggerScan"
                         :disabled="scanStatus.scanning">
-                    <span v-html="ICONS.scan"></span>
-                    Scan Library
+                    <span v-html="ICONS.refresh"></span>
+                    Scan library
                 </button>
             </div>
 

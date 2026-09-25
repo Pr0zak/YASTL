@@ -1030,7 +1030,8 @@ onBeforeUnmount(() => {
                                      class="related-models-grid">
                                     <div v-for="v in selectedModel.variants" :key="v.id"
                                          class="related-model-item variant-item"
-                                         @click="emit('openVariant', v.id)" :title="v.name">
+                                         role="button" tabindex="0"
+                                         @click="emit('openVariant', v.id)" @keydown.enter="emit('openVariant', v.id)" :title="v.name">
                                         <button class="variant-unlink" title="Unlink variant" :aria-label="'Unlink ' + v.name"
                                                 @click.stop="emit('unlinkVariant', v.id)" v-html="ICONS.close"></button>
                                         <img v-if="v.thumbnail_path" :src="'/thumbnails/' + v.thumbnail_path"
@@ -1087,7 +1088,8 @@ onBeforeUnmount(() => {
                                 <div class="related-models-grid">
                                     <div v-for="rm in relatedModels" :key="rm.id"
                                          class="related-model-item"
-                                         @click="emit('openRelatedModel', rm.id)"
+                                         role="button" tabindex="0"
+                                         @click="emit('openRelatedModel', rm.id)" @keydown.enter="emit('openRelatedModel', rm.id)"
                                          :title="rm.name">
                                         <img v-if="rm.thumbnail_path"
                                              :src="'/thumbnails/' + rm.thumbnail_path"
