@@ -14,6 +14,7 @@ import { useConfirm } from './composables/useConfirm.js';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import NavBar from './components/NavBar.vue';
 import SideBar from './components/SideBar.vue';
+import FilterBar from './components/FilterBar.vue';
 import ModelGrid from './components/ModelGrid.vue';
 import DetailPanel from './components/DetailPanel.vue';
 import SettingsModal from './components/SettingsModal.vue';
@@ -84,7 +85,7 @@ import { useSettings } from './composables/useSettings.js';
 import { useUpdates } from './composables/useUpdates.js';
 
 /* ---- Toast ---- */
-const { toasts, showToast } = useToast();
+const { toasts, showToast, dismissToast } = useToast();
 
 /* ---- Confirm dialog ---- */
 const {
@@ -279,15 +280,11 @@ const isEditingLicense = ref(false);
 
 // Detail panel tab state
 const detailTab = ref('overview');
-// Sort/save/clear cluster in the breadcrumb bar, collapsed on narrow screens.
-const crumbActionsOpen = ref(false);
 const showFileDetails = ref(false);
 
 // Category expansion state (by category id)
 const expandedCategories = reactive({});
 
-// Sidebar section collapse state (format starts collapsed)
-const collapsedSections = reactive({ format: true, tags: true, categories: true });
 
 const filters = reactive({
     format: '',
@@ -314,6 +311,8 @@ const pagination = reactive({
     limit: PAGE_SIZE_OPTIONS.includes(savedPageSize) ? savedPageSize : 50,
     offset: 0,
     total: 0,
+    // Files behind `total` once multi-model zips are grouped into one card.
+    totalFiles: 0,
 });
 
 const scanStatus = reactive({
@@ -344,6 +343,7 @@ const statsData = ref(null);
 // Format facet counts. The sidebar used to hardcode eleven formats, five of
 // which match nothing in this library; these come from the real histogram.
 const formatCounts = ref([]);
+const duplicateGroups = ref(0);
 
 /** What an unfiltered view returns, for "All models" and the "of N" beside a
  *  filtered count. Not the raw model count: the grid groups zip archives into
@@ -356,6 +356,7 @@ async function loadFormatCounts() {
     try {
         const stats = await apiGetStats();
         formatCounts.value = stats.formats || [];
+        duplicateGroups.value = stats.duplicate_groups || 0;
     } catch {
         formatCounts.value = [];
     }
@@ -544,6 +545,10 @@ function onWindowPaste(e) {
     e.preventDefault();
     openImportModal({ urls: urls.join('\n') });
 }
+/** Models the selection bar's "All" can pick: loaded cards minus zip groups. */
+const selectableCount = computed(() =>
+    displayModels.value.filter((m) => !(m.zip_model_count != null && m.zip_model_count > 1)).length);
+
 const importDestinationName = computed(() => {
     const lib = libraries.value.find((l) => l.id === importLibraryId.value) || libraries.value[0];
     return lib ? lib.name : 'your library';
@@ -772,6 +777,7 @@ async function fetchModels(append = false) {
             models.value = data.models || [];
         }
         pagination.total = data.total || 0;
+        pagination.totalFiles = data.total_files ?? pagination.total;
         // An unfiltered result IS the library total, counted the same way the
         // grid counts — grouped zips included.
         if (!hasActiveFilters.value && !searchQuery.value.trim()) {
@@ -951,6 +957,9 @@ async function deleteFilamentRow(spool) {
 /* ---- Print queue (print pipeline) ---- */
 const showQueue = ref(false);
 const queue = ref([]);
+/** Items still to print, shown as a badge on the "More" menu. */
+const queueActiveCount = computed(() =>
+    queue.value.filter((q) => q.status === 'queued' || q.status === 'printing').length);
 
 async function refreshQueue() {
     const { ok, data } = await apiGetQueue();
@@ -972,7 +981,7 @@ async function addToQueue(model) {
     const { ok, data } = await apiAddToQueue(id);
     if (ok) {
         showToast('Added to print queue', 'success');
-        if (showQueue.value) await refreshQueue();
+        await refreshQueue();
     } else {
         showToast(data.detail || 'Failed to add to queue', 'error');
     }
@@ -2135,6 +2144,8 @@ function onKeydown(e) {
             closeSettings();
         } else if (showDetail.value) {
             closeDetail();
+        } else if (selectionMode.value) {
+            toggleSelectionMode();
         }
     } else if (showDetail.value && !isTypingTarget(e.target)
         && !document.body.classList.contains('dialog-open')) {
@@ -2251,6 +2262,7 @@ onMounted(() => {
     fetchSavedSearches();
     fetchImportCredentials();
     refreshFilaments();
+    refreshQueue();
     statusPollTimer = setInterval(fetchSystemStatus, 30000);
     document.addEventListener('keydown', onKeydown);
     window.addEventListener('dragenter', onWindowDragEnter);
@@ -2443,15 +2455,12 @@ function editSmartCollection(col) {
          ============================================================ -->
     <NavBar
         :searchQuery="searchQuery"
-        :viewMode="viewMode"
-        :gridDensity="gridDensity"
         :scanStatus="scanStatus"
         :systemStatus="systemStatus"
         :selectionMode="selectionMode"
         :sidebarOpen="sidebarOpen"
+        :queueCount="queueActiveCount"
         @update:searchQuery="searchQuery = $event"
-        @update:viewMode="viewMode = $event"
-        @toggleGridDensity="toggleGridDensity"
         @update:sidebarOpen="sidebarOpen = $event"
         @openSettings="openSettings"
         @openImportModal="openImportModal"
@@ -2465,66 +2474,42 @@ function editSmartCollection(col) {
     />
 
     <!-- ============================================================
-         Breadcrumb Bar
+         Filter bar: facet chips, count, sort and view
          ============================================================ -->
-    <div class="breadcrumb-bar">
-        <div class="breadcrumb-nav">
-            <!-- Root: All Models -->
-            <a class="breadcrumb-link" :class="{ active: !hasActiveFilters }" @click="clearFilters">
-                <span class="breadcrumb-icon" v-html="ICONS.home"></span>
-                All Models
-            </a>
-            <!-- Filter trail crumbs -->
-            <template v-for="(crumb, idx) in breadcrumbTrail" :key="idx">
-                <span class="breadcrumb-sep">&rsaquo;</span>
-                <a class="breadcrumb-link active" @click="removeBreadcrumb(crumb)">
-                    {{ crumb.label }}
-                    <span class="breadcrumb-remove">&times;</span>
-                </a>
-            </template>
-        </div>
-        <!-- Right side: result count + actions. Collapsed behind one button
-             below 769px, where the cluster used to overflow the viewport and
-             squeeze the filter trail beside it down to zero width. -->
-        <button class="btn-icon crumb-overflow-btn" :class="{ active: crumbActionsOpen }"
-                @click="crumbActionsOpen = !crumbActionsOpen"
-                :aria-expanded="String(crumbActionsOpen)" title="Sort and actions">
-            <span v-html="ICONS.dots"></span>
-        </button>
-        <div class="breadcrumb-actions" :class="{ 'crumb-actions-open': crumbActionsOpen }">
-            <button v-if="ai.enabled && searchQuery.trim()" class="btn btn-sm"
-                    :class="searchMode === 'semantic' ? 'btn-primary' : 'btn-ghost'"
-                    @click="toggleSearchMode"
-                    :title="searchMode === 'semantic' ? 'Semantic (AI) search on — click for keyword' : 'Keyword search — click for semantic (AI) search'">
-                <span v-html="ICONS.zap"></span> Semantic
-            </button>
-            <button class="btn btn-sm btn-ghost" v-if="searchQuery || filters.tags.length || filters.categories.length || filters.favoritesOnly"
-                    @click="showSaveSearchModal = true" title="Save this search">
-                <span v-html="ICONS.bookmark"></span> Save
-            </button>
-            <div class="sort-control">
-                <select class="sort-select" :value="filters.sortBy" @change="setSortBy($event.target.value)">
-                    <option value="updated_at">Date Modified</option>
-                    <option value="created_at">Date Added</option>
-                    <option value="name">Name</option>
-                    <option value="file_size">File Size</option>
-                    <option value="vertex_count">Vertices</option>
-                    <option value="face_count">Faces</option>
-                </select>
-                <button class="btn-icon sort-dir-btn" @click="toggleSortOrder" :title="filters.sortOrder === 'asc' ? 'Ascending' : 'Descending'">
-                    {{ filters.sortOrder === 'asc' ? '\u2191' : '\u2193' }}
-                </button>
-            </div>
-            <span class="breadcrumb-count">
-                <strong>{{ pagination.total }}</strong> model{{ pagination.total !== 1 ? 's' : '' }}
-            </span>
-            <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="createCollectionFromCurrentView"
-                    title="Save these filters as a smart collection">
-                <span v-html="ICONS.collection"></span> Save as collection
-            </button>
-            <button v-if="hasActiveFilters" class="btn btn-sm btn-ghost" @click="clearFilters">Clear all</button>
-        </div>
-    </div>
+    <FilterBar
+        :filters="filters"
+        :activeFilters="breadcrumbTrail"
+        :hasActiveFilters="hasActiveFilters"
+        :allTags="allTags"
+        :allCategories="allCategories"
+        :libraries="libraries"
+        :collections="collections"
+        :formatCounts="formatCounts"
+        :total="pagination.total"
+        :totalFiles="pagination.totalFiles"
+        :loading="loading"
+        :viewMode="viewMode"
+        :gridDensity="gridDensity"
+        :searchQuery="searchQuery"
+        :aiEnabled="ai.enabled"
+        :searchMode="searchMode"
+        @setFormatFilter="setFormatFilter"
+        @toggleTagFilter="toggleTagFilter"
+        @setTagMatch="setTagMatch"
+        @toggleCategoryFilter="toggleCategoryFilter"
+        @setLibraryFilter="setLibraryFilter"
+        @toggleFavoritesFilter="toggleFavoritesFilter"
+        @removeFilter="removeBreadcrumb"
+        @clearFilters="clearFilters"
+        @clearFacet="clearFacet"
+        @setSortBy="setSortBy"
+        @toggleSortOrder="toggleSortOrder"
+        @update:viewMode="viewMode = $event"
+        @toggleGridDensity="toggleGridDensity"
+        @toggleSearchMode="toggleSearchMode"
+        @saveSearch="showSaveSearchModal = true"
+        @saveAsCollection="createCollectionFromCurrentView"
+    />
 
     <!-- ============================================================
          Body: Sidebar + Main
@@ -2534,27 +2519,17 @@ function editSmartCollection(col) {
         <SideBar
             :sidebarOpen="sidebarOpen"
             :filters="filters"
-            :allTags="allTags"
-            :allCategories="allCategories"
+            :hasActiveFilters="hasActiveFilters"
             :collections="collections"
-            :libraries="libraries"
             :favoritesCount="favoritesCount"
             :savedSearches="savedSearches"
             :editingCollectionId="editingCollectionId"
             :editCollectionName="editCollectionName"
-            :activeFilters="breadcrumbTrail"
-            :resultCount="pagination.total"
             :totalCount="libraryTotal"
-            :formatCounts="formatCounts"
+            :duplicateGroups="duplicateGroups"
             @update:sidebarOpen="sidebarOpen = $event"
             @update:editCollectionName="editCollectionName = $event"
-            @setLibraryFilter="setLibraryFilter"
-            @setFormatFilter="setFormatFilter"
-            @toggleTagFilter="toggleTagFilter"
-            @toggleCategoryFilter="toggleCategoryFilter"
-            @removeFilter="removeBreadcrumb"
             @clearFilters="clearFilters"
-            @clearFacet="clearFacet"
             @setCollectionFilter="setCollectionFilter"
             @toggleFavoritesFilter="toggleFavoritesFilter"
             @toggleDuplicatesFilter="toggleDuplicatesFilter"
@@ -2572,7 +2547,7 @@ function editSmartCollection(col) {
         />
 
         <!-- Main Content -->
-        <main class="main-content" :style="selectionMode ? { paddingBottom: '80px' } : {}">
+        <main class="main-content" :class="{ 'has-float': selectionMode }">
 
             <!-- Scan Progress Banner -->
             <div v-if="scanStatus.scanning" class="scan-banner">
@@ -2934,6 +2909,7 @@ function editSmartCollection(col) {
     <SelectionBar
         :selectionMode="selectionMode"
         :selectedModels="selectedModels"
+        :total="selectableCount"
         @selectAll="selectAll"
         @deselectAll="deselectAll"
         @bulkFavorite="bulkFavorite"
@@ -2941,7 +2917,22 @@ function editSmartCollection(col) {
         @bulkAutoTag="bulkAutoTag"
         @openBulkAddToCollection="openBulkAddToCollection"
         @bulkDelete="bulkDelete"
+        @exit="toggleSelectionMode"
     />
+
+    <!-- Phone: Import lives on a floating button, in thumb reach. -->
+    <button v-if="!selectionMode" class="fab-import" @click="openImportModal()" aria-label="Import models" title="Import models">
+        <span v-html="ICONS.plus"></span>
+    </button>
+
+    <!-- Drop anywhere to import -->
+    <div v-if="fileDragActive" class="drop-anywhere" aria-hidden="true">
+        <div class="drop-anywhere-inner">
+            <span class="drop-anywhere-icon" v-html="ICONS.upload"></span>
+            <strong>Drop to import</strong>
+            <span>into {{ importDestinationName }}</span>
+        </div>
+    </div>
 
     <!-- ============================================================
          Collection Modals
@@ -3077,11 +3068,12 @@ function editSmartCollection(col) {
     <!-- ============================================================
          Toast Notifications
          ============================================================ -->
-    <TransitionGroup name="toast" tag="div" class="toast-container">
+    <TransitionGroup name="toast" tag="div" class="toast-container" role="status" aria-live="polite">
         <div v-for="toast in toasts" :key="toast.id"
-             class="toast" :class="'toast-' + toast.type">
+             class="toast" :class="'toast-' + toast.type" :role="toast.type === 'error' ? 'alert' : null">
             <span class="toast-icon" v-html="toastIcon(toast.type)"></span>
             <span class="toast-msg">{{ toast.message }}</span>
+            <button class="toast-close" @click="dismissToast(toast.id)" aria-label="Dismiss" title="Dismiss" v-html="ICONS.close"></button>
         </div>
     </TransitionGroup>
 </div>
@@ -3095,5 +3087,6 @@ function editSmartCollection(col) {
 @import './styles/detail-panel.css';
 @import './styles/features.css';
 @import './styles/dialog.css';
+@import './styles/shell.css';
 @import './styles/responsive.css';
 </style>

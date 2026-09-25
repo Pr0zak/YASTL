@@ -10,7 +10,7 @@
     position: fixed;
     bottom: 20px;
     right: 20px;
-    z-index: 3000;
+    z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -43,7 +43,23 @@
 }
 .toast .toast-msg {
     line-height: 1.35;
+    flex: 1;
+    min-width: 0;
 }
+.toast .toast-close {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    margin: -6px -8px -6px 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.toast .toast-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.toast .toast-close svg { width: 14px; height: 14px; }
 
 .toast.toast-success {
     border-left-color: var(--success);
@@ -196,53 +212,6 @@
     border-color: var(--accent);
 }
 
-/* ============================================================
-   Selection Bar (bulk actions)
-   ============================================================ */
-
-.selection-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 1500;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -4px 20px var(--shadow);
-    padding: 12px 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    animation: slideUpBar 0.25s ease;
-}
-
-.selection-bar .selection-info {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.selection-bar .selection-info strong {
-    color: var(--accent);
-}
-
-.selection-bar .selection-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-/* ============================================================
-   Status Indicator
-   ============================================================ */
-
-.status-wrapper {
-    position: relative;
-}
-
 .status-btn {
     position: relative;
 }
@@ -276,40 +245,6 @@
     background: var(--text-muted);
 }
 
-/* Status dropdown menu (teleported to body) */
-.status-menu-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1099;
-}
-
-.status-menu {
-    position: fixed;
-    top: 56px;
-    right: 20px;
-    width: 280px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: 0 8px 32px var(--shadow);
-    z-index: 1100;
-    animation: fadeIn 0.15s ease;
-    overflow: hidden;
-    max-height: calc(100vh - 72px);
-    overflow-y: auto;
-}
-
-.status-menu-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
 .status-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -321,76 +256,22 @@
 }
 
 .status-badge.status-dot-ok {
-    background: rgba(39, 174, 96, 0.15);
+    background: var(--success-dim);
     color: var(--success);
 }
 
 .status-badge.status-dot-warn {
-    background: rgba(243, 156, 18, 0.15);
+    background: var(--warning-dim);
     color: var(--warning);
 }
 
 .status-badge.status-dot-error {
-    background: rgba(231, 76, 60, 0.15);
+    background: var(--danger-dim);
     color: var(--danger);
 }
 
 .status-badge.status-dot-unknown {
     background: var(--bg-hover);
-    color: var(--text-muted);
-}
-
-.status-menu-items {
-    padding: 6px 0;
-}
-
-.status-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    font-size: 0.82rem;
-}
-
-.status-item-icon {
-    width: 14px;
-    height: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-    flex-shrink: 0;
-}
-
-.status-item-label {
-    flex: 1;
-    color: var(--text-secondary);
-}
-
-.status-item-value {
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.status-item-value.status-dot-ok {
-    color: var(--success);
-}
-
-.status-item-value.status-dot-warn {
-    color: var(--warning);
-}
-
-.status-item-value.status-dot-error {
-    color: var(--danger);
-}
-
-.status-item-value.status-dot-unknown {
-    color: var(--text-muted);
-}
-
-.status-menu-detail {
-    padding: 0 14px 6px 36px;
-    font-size: 0.72rem;
     color: var(--text-muted);
 }
 
@@ -672,13 +553,6 @@
     margin-top: 2px;
 }
 
-.thumbnail-regen-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
 /* ---- Regeneration Progress Bar ---- */
 .regen-progress-bar {
     width: 100%;
@@ -875,66 +749,6 @@
     border: 1px solid var(--border);
 }
 
-.sidebar-item-delete {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 14px;
-    padding: 0;
-    opacity: 0;
-    transition: all var(--transition);
-    flex-shrink: 0;
-    margin-left: auto;
-}
-
-.sidebar-item:hover .sidebar-item-delete {
-    opacity: 1;
-}
-
-.sidebar-item-delete:hover {
-    color: var(--danger);
-    background: rgba(231, 76, 60, 0.15);
-}
-
-.sidebar-item-action {
-    width: 18px;
-    height: 18px;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    opacity: 0;
-    transition: all var(--transition);
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border-radius: 3px;
-}
-
-.sidebar-item-action svg {
-    width: 12px;
-    height: 12px;
-}
-
-.sidebar-item:hover .sidebar-item-action {
-    opacity: 0.5;
-}
-
-.sidebar-item-action:hover {
-    opacity: 1 !important;
-    color: var(--text-primary);
-    background: var(--hover-wash);
-}
-
 .sidebar-smart-icon {
     opacity: 0.45;
     flex-shrink: 0;
@@ -1102,13 +916,6 @@ textarea.import-textarea {
 .sidebar-pin-mark svg {
     width: 12px;
     height: 12px;
-}
-
-/* Drop target highlight for drag-model-onto-collection */
-.sidebar-item.drop-target {
-    background: var(--accent-dim);
-    outline: 2px dashed var(--accent);
-    outline-offset: -2px;
 }
 
 /* ============================================================

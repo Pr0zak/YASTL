@@ -48,6 +48,14 @@
     --z-float: 1500;
     --z-dialog: 2000;
     --z-toast: 3000;
+    /* Navbar (56px) + filter bar (48px). */
+    --navbar-h: 56px;
+    --filterbar-h: 48px;
+    --topbar-h: calc(var(--navbar-h) + var(--filterbar-h));
+    /* Logo: the darkest facet was #16213e, the navbar's own colour, so it
+       vanished against the dark theme. */
+    --logo-edge: #2a3a5c;
+    --logo-deep: #2e4a7a;
     /* Theme-scoped overlays so light mode isn't a partial reskin */
     --overlay-bg: rgba(22, 33, 62, 0.75);
     --overlay-bg-strong: rgba(22, 33, 62, 0.95);
@@ -92,6 +100,7 @@
     --shadow: rgba(0, 0, 0, 0.1);
     --shadow-strong: rgba(0, 0, 0, 0.18);
     --scrim: rgba(20, 24, 36, 0.45);
+    --logo-deep: #16213e;
     /* Light-theme overrides for the shared overlay/utility vars */
     --overlay-bg: rgba(255, 255, 255, 0.85);
     --overlay-bg-strong: rgba(255, 255, 255, 0.96);

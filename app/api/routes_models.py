@@ -230,6 +230,10 @@ async def list_models(
         cursor = await db.execute(count_sql, params)
         total_row = await cursor.fetchone()
         total = dict(total_row)["cnt"]
+        # With zips grouped, each multi-model zip counts once in ``total``.
+        # ``total_files`` restores the rest so the UI can say "1,246 items ·
+        # 2,449 files" instead of disagreeing with the stats page.
+        total_files = total + sum(g["count"] - 1 for g in zip_group_map.values())
 
         # Fetch the page of models with sorting
         order_sql = f"m.{sort_by} {sort_order}"
@@ -260,7 +264,13 @@ async def list_models(
                     m["zip_model_count"] = info["count"]
                     m["zip_group_name"] = info["name"]
 
-        return {"models": models, "total": total, "limit": limit, "offset": offset}
+        return {
+            "models": models,
+            "total": total,
+            "total_files": total_files,
+            "limit": limit,
+            "offset": offset,
+        }
 
 
 # ---------------------------------------------------------------------------

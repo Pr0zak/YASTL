@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+// Backend for the dev server. Point it at another instance with
+// YASTL_API=http://host:8000 npm run dev
+const API = process.env.YASTL_API || 'http://localhost:8000'
+
 export default defineConfig({
   plugins: [vue()],
   define: {
@@ -31,9 +35,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/thumbnails': 'http://localhost:8000',
-      '/health': 'http://localhost:8000',
+      '/api': API,
+      '/thumbnails': API,
+      '/health': API,
     },
   },
 })
