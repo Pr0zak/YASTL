@@ -5,6 +5,7 @@
 import { ref, computed, watch } from 'vue';
 import { ICONS } from '../icons.js';
 import { apiPreviewSmartCount } from '../api.js';
+import AppDialog from './AppDialog.vue';
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -116,121 +117,109 @@ function toggleRules() {
 </script>
 
 <template>
-    <div v-if="show" class="detail-overlay" @click.self="emit('close')">
-        <div class="settings-panel smart-collection-panel">
-            <!-- Header -->
-            <div class="detail-header">
-                <div class="detail-title">
-                    {{ editing ? 'Edit Collection' : 'New Collection' }}
+    <AppDialog :show="show" :title="editing ? 'Edit collection' : 'New collection'" size="sm"
+               :dismiss-on-backdrop="false" @close="emit('close')">
+        <form id="smart-collection-form" @submit.prevent="form.name.trim() && emit('save')">
+            <div class="form-row">
+                <label class="form-label" for="collection-name">Name</label>
+                <input id="collection-name" class="form-input" :value="form.name"
+                       @input="emit('updateName', $event.target.value)"
+                       placeholder="Collection name">
+            </div>
+            <div class="form-row">
+                <span class="form-label" id="collection-colour-label">Colour</span>
+                <div class="color-swatch-grid" role="radiogroup" aria-labelledby="collection-colour-label">
+                    <button v-for="c in COLLECTION_COLORS" :key="c"
+                            class="color-swatch" :class="{ active: form.color === c }"
+                            :style="{ background: c }" role="radio" :aria-checked="String(form.color === c)"
+                            :aria-label="'Colour ' + c"
+                            @click="emit('updateColor', c)"
+                            type="button"></button>
                 </div>
-                <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
             </div>
 
-            <div class="settings-content">
-                <!-- Name & Color -->
-                <div class="form-row">
-                    <label class="form-label">Name</label>
-                    <input class="form-input" :value="form.name"
-                           @input="emit('updateName', $event.target.value)"
-                           placeholder="Collection name">
-                </div>
-                <div class="form-row">
-                    <label class="form-label">Color</label>
-                    <div class="color-swatch-grid">
-                        <button v-for="c in COLLECTION_COLORS" :key="c"
-                                class="color-swatch" :class="{ active: form.color === c }"
-                                :style="{ background: c }"
-                                @click="emit('updateColor', c)"
-                                type="button"></button>
-                    </div>
-                </div>
-
-                <!-- Smart Rules (collapsible, optional) -->
-                <div class="settings-section">
-                    <div class="settings-section-title sidebar-section-toggle" @click="toggleRules"
-                         style="cursor:pointer;display:flex;align-items:center;gap:6px">
-                        <span v-html="ICONS.zap" style="opacity:0.6;width:14px;height:14px"></span>
-                        <span>Smart Rules (optional)</span>
-                        <span v-if="hasActiveRules()" class="sidebar-section-active-badge">active</span>
-                        <span class="sidebar-section-chevron" :class="{ expanded: rulesExpanded }"
-                              v-html="ICONS.chevron" style="margin-left:auto"></span>
-                    </div>
-                    <template v-if="rulesExpanded">
-                    <div class="smart-preview-count">
+            <!-- Smart Rules (collapsible, optional) -->
+            <div class="rules-box">
+                <button type="button" class="rules-toggle" :aria-expanded="String(!!rulesExpanded)" @click="toggleRules">
+                    <span v-html="ICONS.zap" class="rules-toggle-icon"></span>
+                    <span>Smart rules</span>
+                    <span class="text-muted rules-optional">{{ hasActiveRules() ? '' : 'optional' }}</span>
+                    <span v-if="hasActiveRules()" class="sidebar-section-active-badge">active</span>
+                    <span class="sidebar-section-chevron" :class="{ expanded: rulesExpanded }" v-html="ICONS.chevron"></span>
+                </button>
+                <div v-if="rulesExpanded" class="rules-body">
+                    <p class="text-muted text-sm">Models matching every rule appear in this collection automatically.</p>
+                    <div class="smart-preview-count" aria-live="polite">
                         <span v-if="previewLoading" class="text-muted">Counting…</span>
                         <span v-else-if="previewCount != null">
                             <strong>{{ previewCount }}</strong> model{{ previewCount === 1 ? '' : 's' }} match
                         </span>
                         <span v-else class="text-muted">Add a rule to preview matches</span>
                     </div>
-                    <p class="text-muted text-sm" style="margin-bottom:12px;margin-top:8px">
-                        Models matching all rules below will automatically appear in this collection.
-                    </p>
 
-                    <!-- Format -->
                     <div class="form-row">
-                        <label class="form-label">Format</label>
-                        <select class="form-input" :value="form.rules.format"
+                        <label class="form-label" for="rule-format">Format</label>
+                        <select id="rule-format" class="form-input" :value="form.rules.format"
                                 @change="emit('updateRule', 'format', $event.target.value)">
                             <option value="">Any format</option>
                             <option v-for="fmt in FORMATS" :key="fmt" :value="fmt">{{ fmt.toUpperCase() }}</option>
                         </select>
                     </div>
 
-                    <!-- Library -->
                     <div class="form-row" v-if="libraries.length > 0">
-                        <label class="form-label">Library</label>
-                        <select class="form-input" :value="form.rules.library_id || ''"
+                        <label class="form-label" for="rule-library">Library</label>
+                        <select id="rule-library" class="form-input" :value="form.rules.library_id || ''"
                                 @change="emit('updateRule', 'library_id', $event.target.value ? Number($event.target.value) : null)">
                             <option value="">Any library</option>
                             <option v-for="lib in libraries" :key="lib.id" :value="lib.id">{{ lib.name }}</option>
                         </select>
                     </div>
 
-                    <!-- Tags -->
                     <div class="form-row">
-                        <div class="form-label" style="display:flex;align-items:center;justify-content:space-between">
-                            <span>Tags</span>
-                            <span v-if="form.rules.tags && form.rules.tags.length > 1" class="tag-match-toggle">
+                        <div class="form-label rule-label-row">
+                            <label for="rule-tag-input">Tags</label>
+                            <span v-if="form.rules.tags && form.rules.tags.length > 1" class="tag-match-toggle" role="group" aria-label="Tag matching">
                                 <button type="button" class="btn-ghost tag-match-btn"
                                         :class="{ active: (form.rules.tagMatch || 'and') === 'and' }"
+                                        :aria-pressed="String((form.rules.tagMatch || 'and') === 'and')"
                                         @click="emit('updateRule', 'tagMatch', 'and')">ALL</button>
                                 <button type="button" class="btn-ghost tag-match-btn"
                                         :class="{ active: form.rules.tagMatch === 'or' }"
+                                        :aria-pressed="String(form.rules.tagMatch === 'or')"
                                         @click="emit('updateRule', 'tagMatch', 'or')">ANY</button>
                             </span>
                         </div>
                         <div class="smart-rule-tags">
                             <span v-for="tag in form.rules.tags" :key="tag" class="tag-chip">
                                 {{ tag }}
-                                <button class="tag-remove" @click="emit('removeRuleTag', tag)">&times;</button>
+                                <button type="button" class="tag-remove" :aria-label="'Remove ' + tag" @click="emit('removeRuleTag', tag)">&times;</button>
                             </span>
                         </div>
                         <div class="smart-tag-add">
-                            <input class="form-input" v-model="tagInput" placeholder="Add tag..."
+                            <input id="rule-tag-input" class="form-input" v-model="tagInput" placeholder="Add tag…"
+                                   autocomplete="off"
                                    @keydown.enter.prevent="tagInput.trim() && onAddTag(tagInput.trim())">
-                            <div v-if="tagInput.trim() && availableTags.length" class="smart-tag-dropdown">
-                                <div v-for="t in availableTags" :key="t.id" class="smart-tag-option"
-                                     @click="onAddTag(t.name)">
+                            <div v-if="tagInput.trim() && availableTags.length" class="smart-tag-dropdown" role="listbox">
+                                <button v-for="t in availableTags" :key="t.id" type="button" role="option"
+                                        class="smart-tag-option" @click="onAddTag(t.name)">
                                     {{ t.name }}
                                     <span class="text-muted text-sm" v-if="t.model_count">({{ t.model_count }})</span>
-                                </div>
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Categories -->
                     <div class="form-row">
-                        <label class="form-label">Categories (any match)</label>
+                        <label class="form-label" for="rule-category">Categories (any match)</label>
                         <div class="smart-rule-tags">
                             <span v-for="cat in form.rules.categories" :key="cat" class="tag-chip">
                                 {{ cat }}
-                                <button class="tag-remove" @click="emit('removeRuleCategory', cat)">&times;</button>
+                                <button type="button" class="tag-remove" :aria-label="'Remove ' + cat" @click="emit('removeRuleCategory', cat)">&times;</button>
                             </span>
                         </div>
-                        <select class="form-input"
+                        <select id="rule-category" class="form-input"
                                 @change="$event.target.value && emit('addRuleCategory', $event.target.value); $event.target.value = ''">
-                            <option value="">Add category...</option>
+                            <option value="">Add category…</option>
                             <option v-for="cat in flatCategories" :key="cat.id" :value="cat.name"
                                     :disabled="form.rules.categories.includes(cat.name)">
                                 {{ '\u00A0'.repeat(cat.depth * 2) }}{{ cat.name }}
@@ -238,12 +227,11 @@ function toggleRules() {
                         </select>
                     </div>
 
-                    <!-- Checkboxes -->
-                    <div class="form-row">
-                        <label class="checkbox-item" style="margin-bottom:6px">
+                    <div class="form-row rule-checks">
+                        <label class="checkbox-item">
                             <input type="checkbox" :checked="form.rules.favoritesOnly"
                                    @change="emit('updateRule', 'favoritesOnly', $event.target.checked)">
-                            <span>Favorites only</span>
+                            <span>Favourites only</span>
                         </label>
                         <label class="checkbox-item">
                             <input type="checkbox" :checked="form.rules.duplicatesOnly"
@@ -252,34 +240,38 @@ function toggleRules() {
                         </label>
                     </div>
 
-                    <!-- Date range -->
                     <div class="form-row">
-                        <label class="form-label">Added</label>
-                        <select class="form-input" :value="form.rules.dateRange"
+                        <label class="form-label" for="rule-date">Added</label>
+                        <select id="rule-date" class="form-input" :value="form.rules.dateRange"
                                 @change="emit('updateRule', 'dateRange', $event.target.value)">
                             <option v-for="dr in DATE_RANGES" :key="dr.value" :value="dr.value">{{ dr.label }}</option>
                         </select>
                     </div>
-                    </template>
-                </div>
-
-                <!-- Actions -->
-                <div class="form-actions" style="margin-top:16px">
-                    <button class="btn btn-secondary" @click="emit('close')">Cancel</button>
-                    <button class="btn btn-primary" @click="emit('save')"
-                            :disabled="!form.name.trim()">
-                        {{ editing ? 'Save Changes' : 'Create' }}
-                    </button>
                 </div>
             </div>
-        </div>
-    </div>
+        </form>
+
+        <template #footer>
+            <button type="button" class="btn btn-secondary" @click="emit('close')">Cancel</button>
+            <button type="submit" form="smart-collection-form" class="btn btn-primary" :disabled="!form.name.trim()">
+                {{ editing ? 'Save changes' : 'Create' }}
+            </button>
+        </template>
+    </AppDialog>
 </template>
 
 <style scoped>
-.smart-collection-panel {
-    max-width: 520px;
+.rules-box { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+.rules-toggle {
+    width: 100%; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px;
+    background: none; color: var(--text-primary); font-weight: 600; font-size: 0.88rem; text-align: left;
 }
+.rules-toggle-icon { display: flex; opacity: 0.7; }
+.rules-optional { font-weight: 400; font-size: 0.78rem; }
+.rules-toggle .sidebar-section-chevron { margin-left: auto; }
+.rules-body { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
+.rule-label-row { display: flex; align-items: center; justify-content: space-between; }
+.rule-checks { display: flex; flex-direction: column; gap: 6px; }
 
 .smart-rule-tags {
     display: flex;
@@ -302,11 +294,17 @@ function toggleRules() {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px var(--shadow);
     z-index: 10;
 }
 
 .smart-tag-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    color: var(--text-primary);
+    min-height: 36px;
     padding: 6px 10px;
     cursor: pointer;
     font-size: 0.85rem;

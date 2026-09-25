@@ -21,6 +21,7 @@ import StatsModal from './components/StatsModal.vue';
 import FilamentModal from './components/FilamentModal.vue';
 import QueueModal from './components/QueueModal.vue';
 import DuplicatesModal from './components/DuplicatesModal.vue';
+import AppDialog from './components/AppDialog.vue';
 import ImportModal from './components/ImportModal.vue';
 import CollectionModal from './components/CollectionModal.vue';
 import SmartCollectionModal from './components/SmartCollectionModal.vue';
@@ -408,11 +409,10 @@ const { updateInfo, checkForUpdates, applyUpdate } = updatesComposable;
 const collectionsComposable = useCollections(showToast, showConfirm);
 const {
     collections, COLLECTION_COLORS,
-    showCollectionModal, newCollectionName, newCollectionColor,
     addToCollectionModelId, showAddToCollectionModal,
     editingCollectionId, editCollectionName, inlineNewCollection,
     showSmartCollectionModal, editingSmartCollection, smartCollectionForm,
-    fetchCollections, openCollectionModal, createCollection,
+    fetchCollections,
     startInlineNewCollection, cancelInlineNewCollection,
     deleteCollection: _deleteCollection,
     startEditCollection, saveCollectionName,
@@ -487,15 +487,67 @@ const {
     importCredentials, credentialInputs,
     openImportModal: _openImportModal,
     closeImportModal: _closeImportModal,
-    previewImportUrl, startImport, onFilesSelected, startUpload,
+    previewImportUrl, startImport, onFilesSelected, setImportUrls, clearUploadFiles, startUpload,
     addUploadTagSuggestion, fetchImportCredentials,
     saveImportCredential, deleteImportCredential,
 } = importComposable;
 
-function openImportModal() {
+function openImportModal(prefill) {
     fetchLibraries();
-    _openImportModal();
+    // Emitted from a click handler, `prefill` can arrive as an Event.
+    _openImportModal(prefill && !(prefill instanceof Event) ? prefill : {});
 }
+
+/* ---- Drop anywhere / paste anywhere to import ----
+   Dragging files from the desktop over any part of the library shows a
+   full-window drop target; pasting a link while not typing in a field opens
+   Import with it filled in. Card drags (to collections) carry no files, so
+   they never trigger this. */
+const fileDragActive = ref(false);
+let fileDragDepth = 0;
+
+function isFileDrag(e) {
+    return !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+}
+function importBlocked() {
+    return showImportModal.value || showSettings.value || document.body.classList.contains('dialog-open');
+}
+function onWindowDragEnter(e) {
+    if (!isFileDrag(e) || importBlocked()) return;
+    fileDragDepth++;
+    fileDragActive.value = true;
+}
+function onWindowDragOver(e) {
+    if (fileDragActive.value) e.preventDefault();
+}
+function onWindowDragLeave(e) {
+    if (!fileDragActive.value) return;
+    fileDragDepth = Math.max(0, fileDragDepth - 1);
+    if (fileDragDepth === 0 || e.relatedTarget === null) {
+        fileDragDepth = 0;
+        fileDragActive.value = false;
+    }
+}
+function onWindowDrop(e) {
+    if (!fileDragActive.value) return;
+    e.preventDefault();
+    fileDragActive.value = false;
+    fileDragDepth = 0;
+    const files = e.dataTransfer?.files;
+    if (files && files.length) openImportModal({ files });
+}
+function onWindowPaste(e) {
+    if (isTypingTarget(e.target) || importBlocked() || showDetail.value) return;
+    const text = (e.clipboardData?.getData('text') || '').trim();
+    const urls = text.split(/\s+/).filter((t) => /^https?:\/\/\S+$/i.test(t));
+    if (!urls.length) return;
+    e.preventDefault();
+    openImportModal({ urls: urls.join('\n') });
+}
+const importDestinationName = computed(() => {
+    const lib = libraries.value.find((l) => l.id === importLibraryId.value) || libraries.value[0];
+    return lib ? lib.name : 'your library';
+});
 
 function closeImportModal() {
     _closeImportModal(showDetail.value, showSettings.value);
@@ -878,8 +930,16 @@ async function saveFilament({ id, data }) {
         filamentSaving.value = false;
     }
 }
-async function deleteFilamentRow(id) {
-    const res = await apiDeleteFilament(id);
+async function deleteFilamentRow(spool) {
+    const name = [spool.brand, spool.material, spool.color_name].filter(Boolean).join(' ') || 'this spool';
+    const ok = await showConfirm({
+        title: 'Delete spool',
+        message: `Delete ${name} from your filament inventory?`,
+        action: 'Delete',
+        danger: true,
+    });
+    if (!ok) return;
+    const res = await apiDeleteFilament(spool.id);
     if (res.ok) {
         await refreshFilaments();
         showToast('Filament removed');
@@ -945,7 +1005,31 @@ function openModelFromQueue(modelId) {
     viewModel(inGrid || { id: modelId });
 }
 
+// Stats rows jump to the library narrowed to what was clicked. The setters
+// toggle, so only call one when that filter is not already applied.
+function onStatsFilter({ type, value }) {
+    closeStats();
+    if (type === 'format' && filters.format !== value) setFormatFilter(value);
+    else if (type === 'library' && filters.library_id !== value) setLibraryFilter(value);
+    else if (type === 'collection' && filters.collection !== value) setCollectionFilter(value);
+    else if (type === 'tag') filterByTag(value);
+    else if (type === 'duplicates' && !filters.duplicatesOnly) toggleDuplicatesFilter();
+}
+
+function openModelFromStats(modelId) {
+    closeStats();
+    const inGrid = models.value.find((m) => m.id === modelId);
+    viewModel(inGrid || { id: modelId });
+}
+
 async function restartApp() {
+    const ok = await showConfirm({
+        title: 'Restart YASTL?',
+        message: 'The service stops for a few seconds and any scan or background job in progress is interrupted. The page reloads when it is back.',
+        action: 'Restart',
+        danger: true,
+    });
+    if (!ok) return;
     try {
         showToast('Restarting service...', 'info');
         await apiRestartApp();
@@ -2044,33 +2128,16 @@ function isTypingTarget(el) {
 
 /* ---- Keyboard handler for modals ---- */
 function onKeydown(e) {
+    // Every dialog built on AppDialog handles its own Escape (capture phase)
+    // and stops it there, so only the panels that are not dialogs remain.
     if (e.key === 'Escape') {
-        if (confirmVisible.value) {
-            onCancel();
-        } else if (showBulkTagModal.value) {
-            showBulkTagModal.value = false;
-        } else if (showImportModal.value) {
-            closeImportModal();
-        } else if (showAddToCollectionModal.value) {
-            showAddToCollectionModal.value = false;
-        } else if (showSmartCollectionModal.value) {
-            showSmartCollectionModal.value = false;
-        } else if (showCollectionModal.value) {
-            showCollectionModal.value = false;
-        } else if (showSaveSearchModal.value) {
-            showSaveSearchModal.value = false;
-        } else if (showStats.value) {
-            closeStats();
-        } else if (showFilament.value) {
-            closeFilament();
-        } else if (showQueue.value) {
-            closeQueue();
-        } else if (showSettings.value) {
+        if (showSettings.value) {
             closeSettings();
         } else if (showDetail.value) {
             closeDetail();
         }
-    } else if (showDetail.value && !isTypingTarget(e.target)) {
+    } else if (showDetail.value && !isTypingTarget(e.target)
+        && !document.body.classList.contains('dialog-open')) {
         // Arrow keys page through the current result list without closing.
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             e.preventDefault();
@@ -2186,6 +2253,11 @@ onMounted(() => {
     refreshFilaments();
     statusPollTimer = setInterval(fetchSystemStatus, 30000);
     document.addEventListener('keydown', onKeydown);
+    window.addEventListener('dragenter', onWindowDragEnter);
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('dragleave', onWindowDragLeave);
+    window.addEventListener('drop', onWindowDrop);
+    document.addEventListener('paste', onWindowPaste);
     window.addEventListener('popstate', onPopState);
     const initialModel = initialParams.get('model');
     if (initialModel) {
@@ -2362,8 +2434,6 @@ function editSmartCollection(col) {
     openSmartCollectionModal(col);
 }
 
-// pickNextCollectionColor is needed in template via collectionsComposable
-const { pickNextCollectionColor } = collectionsComposable;
 </script>
 
 <template>
@@ -2828,6 +2898,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :printInventory="printInventory"
         @close="closeStats"
         @restartApp="restartApp"
+        @filter="onStatsFilter"
+        @openModel="openModelFromStats"
     />
 
     <FilamentModal
@@ -2875,24 +2947,15 @@ const { pickNextCollectionColor } = collectionsComposable;
          Collection Modals
          ============================================================ -->
     <CollectionModal
-        :showCollectionModal="showCollectionModal"
-        :showAddToCollectionModal="showAddToCollectionModal"
-        :newCollectionName="newCollectionName"
-        :newCollectionColor="newCollectionColor"
-        :addToCollectionModelId="addToCollectionModelId"
+        :show="showAddToCollectionModal"
         :collections="collections"
         :COLLECTION_COLORS="COLLECTION_COLORS"
         :inlineNewCollection="inlineNewCollection"
-        @update:showCollectionModal="showCollectionModal = $event"
-        @update:showAddToCollectionModal="showAddToCollectionModal = $event"
-        @update:newCollectionName="newCollectionName = $event"
-        @update:newCollectionColor="newCollectionColor = $event"
-        @createCollection="createCollection"
+        @close="showAddToCollectionModal = false"
         @handleCollectionSelect="handleCollectionSelect"
         @startInlineNewCollection="startInlineNewCollection"
         @confirmInlineNewCollection="confirmInlineNewCollection"
         @cancelInlineNewCollection="cancelInlineNewCollection"
-        @pickNextCollectionColor="inlineNewCollection.color = pickNextCollectionColor()"
         @updateInlineNewCollectionName="inlineNewCollection.name = $event"
         @updateInlineNewCollectionColor="inlineNewCollection.color = $event"
     />
@@ -2922,23 +2985,16 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Save Search Modal
          ============================================================ -->
-    <div v-if="showSaveSearchModal" class="detail-overlay" @click.self="showSaveSearchModal = false">
-        <div class="mini-modal">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="margin:0">Save Search</h3>
-                <button class="close-btn" @click="showSaveSearchModal = false">&times;</button>
-            </div>
-            <div class="form-row">
-                <label class="form-label">Name</label>
-                <input class="form-input" v-model="saveSearchName" placeholder="Search name"
-                       @keydown.enter="saveCurrentSearch">
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-secondary" @click="showSaveSearchModal = false">Cancel</button>
-                <button class="btn btn-primary" @click="saveCurrentSearch">Save</button>
-            </div>
-        </div>
-    </div>
+    <AppDialog :show="showSaveSearchModal" title="Save search" size="sm" @close="showSaveSearchModal = false">
+        <form id="save-search-form" @submit.prevent="saveCurrentSearch">
+            <label class="form-label" for="save-search-name">Name</label>
+            <input id="save-search-name" class="form-input" v-model="saveSearchName" placeholder="e.g. Dragons in 3MF">
+        </form>
+        <template #footer>
+            <button class="btn btn-secondary" @click="showSaveSearchModal = false">Cancel</button>
+            <button type="submit" form="save-search-form" class="btn btn-primary">Save</button>
+        </template>
+    </AppDialog>
 
     <!-- ============================================================
          Import Modal
@@ -2968,7 +3024,8 @@ const { pickNextCollectionColor } = collectionsComposable;
         :COLLECTION_COLORS="COLLECTION_COLORS"
         @close="closeImportModal"
         @update:importMode="importMode = $event"
-        @update:importUrls="importUrls = $event"
+        @setImportUrls="setImportUrls"
+        @clearFiles="clearUploadFiles"
         @update:importLibraryId="importLibraryId = $event"
         @update:importSubfolder="importSubfolder = $event"
         @update:uploadTags="uploadTags = $event"
@@ -2991,21 +3048,18 @@ const { pickNextCollectionColor } = collectionsComposable;
     <!-- ============================================================
          Bulk Tag Modal
          ============================================================ -->
-    <div v-if="showBulkTagModal" class="detail-overlay" @click.self="showBulkTagModal = false">
-        <div class="mini-modal">
-            <h3>Add Tags to {{ selectedModels.size }} Model(s)</h3>
-            <div class="form-row">
-                <label class="form-label">Tags (comma-separated)</label>
-                <input type="text" class="form-input" v-model="bulkTagInput"
-                       placeholder="e.g. figurine, fantasy, painted"
-                       @keydown.enter="bulkAddTags">
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-secondary" @click="showBulkTagModal = false">Cancel</button>
-                <button class="btn btn-primary" @click="bulkAddTags" :disabled="!bulkTagInput.trim()">Apply Tags</button>
-            </div>
-        </div>
-    </div>
+    <AppDialog :show="showBulkTagModal" :title="`Tag ${selectedModels.size} model${selectedModels.size === 1 ? '' : 's'}`"
+               size="sm" @close="showBulkTagModal = false">
+        <form id="bulk-tag-form" @submit.prevent="bulkTagInput.trim() && bulkAddTags()">
+            <label class="form-label" for="bulk-tag-input">Tags, separated by commas</label>
+            <input id="bulk-tag-input" type="text" class="form-input" v-model="bulkTagInput"
+                   placeholder="figurine, fantasy, painted">
+        </form>
+        <template #footer>
+            <button class="btn btn-secondary" @click="showBulkTagModal = false">Cancel</button>
+            <button type="submit" form="bulk-tag-form" class="btn btn-primary" :disabled="!bulkTagInput.trim()">Add tags</button>
+        </template>
+    </AppDialog>
 
     <!-- ============================================================
          Confirm Dialog
@@ -3040,5 +3094,6 @@ const { pickNextCollectionColor } = collectionsComposable;
 @import './styles/cards.css';
 @import './styles/detail-panel.css';
 @import './styles/features.css';
+@import './styles/dialog.css';
 @import './styles/responsive.css';
 </style>

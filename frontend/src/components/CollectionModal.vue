@@ -1,108 +1,79 @@
 <script setup>
 /**
- * CollectionModal - Create collection and add-to-collection modals.
+ * CollectionModal - "Add to collection" picker, from the detail panel or
+ * the selection bar. New collections are created inline at the bottom.
  */
 import { ICONS } from '../icons.js';
+import AppDialog from './AppDialog.vue';
 
 defineProps({
-    showCollectionModal: { type: Boolean, default: false },
-    showAddToCollectionModal: { type: Boolean, default: false },
-    newCollectionName: { type: String, default: '' },
-    newCollectionColor: { type: String, default: '#4f8cff' },
-    addToCollectionModelId: { default: null },
+    show: { type: Boolean, default: false },
     collections: { type: Array, default: () => [] },
     COLLECTION_COLORS: { type: Array, default: () => [] },
-    inlineNewCollection: { type: Object, default: () => ({ active: false, name: '', color: '#4f8cff' }) },
+    inlineNewCollection: { type: Object, default: () => ({ active: false, name: '', color: '#0f9b8e' }) },
 });
 
 const emit = defineEmits([
-    'update:showCollectionModal',
-    'update:showAddToCollectionModal',
-    'update:newCollectionName',
-    'update:newCollectionColor',
-    'createCollection',
+    'close',
     'handleCollectionSelect',
     'startInlineNewCollection',
     'confirmInlineNewCollection',
     'cancelInlineNewCollection',
-    'pickNextCollectionColor',
     'updateInlineNewCollectionName',
     'updateInlineNewCollectionColor',
 ]);
 </script>
 
 <template>
-    <!-- Create Collection Modal -->
-    <div v-if="showCollectionModal" class="detail-overlay" @click.self="emit('update:showCollectionModal', false)">
-        <div class="mini-modal">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="margin:0">New Collection</h3>
-                <button class="close-btn" @click="emit('update:showCollectionModal', false)">&times;</button>
-            </div>
-            <div class="form-row">
-                <label class="form-label">Name</label>
-                <input class="form-input" :value="newCollectionName"
-                       @input="emit('update:newCollectionName', $event.target.value)"
-                       placeholder="Collection name"
-                       @keydown.enter="emit('createCollection')">
-            </div>
-            <div class="form-row">
-                <label class="form-label">Color</label>
-                <div class="color-swatch-grid">
-                    <button v-for="c in COLLECTION_COLORS" :key="c"
-                            class="color-swatch" :class="{ active: newCollectionColor === c }"
-                            :style="{ background: c }"
-                            @click="emit('update:newCollectionColor', c)"
-                            type="button"></button>
-                </div>
-            </div>
-            <div class="form-actions">
-                <button class="btn btn-secondary" @click="emit('update:showCollectionModal', false)">Cancel</button>
-                <button class="btn btn-primary" @click="emit('createCollection')">Create</button>
-            </div>
-        </div>
-    </div>
+    <AppDialog :show="show" title="Add to collection" size="sm" @close="emit('close')">
+        <ul class="pick-list">
+            <li v-for="col in collections" :key="col.id">
+                <button type="button" class="pick-row" @click="emit('handleCollectionSelect', col.id)">
+                    <span class="collection-dot" :style="{ background: col.color || 'var(--text-muted)' }"></span>
+                    <span class="pick-name">{{ col.name }}</span>
+                    <span class="pick-count">{{ col.model_count }}</span>
+                </button>
+            </li>
+        </ul>
 
-    <!-- Add to Collection Modal -->
-    <div v-if="showAddToCollectionModal" class="detail-overlay" @click.self="emit('update:showAddToCollectionModal', false)">
-        <div class="mini-modal">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                <h3 style="margin:0">Add to Collection</h3>
-                <button class="close-btn" @click="emit('update:showAddToCollectionModal', false)">&times;</button>
+        <form v-if="inlineNewCollection.active" class="inline-new-collection"
+              @submit.prevent="emit('confirmInlineNewCollection', 'addToCollection')">
+            <label class="form-label" for="new-col-name">New collection</label>
+            <div class="inline-new-row">
+                <input id="new-col-name" class="form-input" :value="inlineNewCollection.name" data-autofocus
+                       @input="emit('updateInlineNewCollectionName', $event.target.value)"
+                       placeholder="Collection name"
+                       @keydown.escape.stop="emit('cancelInlineNewCollection')">
+                <button type="submit" class="btn btn-primary" :disabled="!inlineNewCollection.name.trim()">Create</button>
+                <button type="button" class="btn btn-ghost" @click="emit('cancelInlineNewCollection')">Cancel</button>
             </div>
-            <div v-for="col in collections" :key="col.id"
-                 class="sidebar-item" @click="emit('handleCollectionSelect', col.id)">
-                <span class="collection-dot" :style="{ background: col.color || '#666' }"></span>
-                <span>{{ col.name }}</span>
-                <span class="item-count">{{ col.model_count }}</span>
+            <div class="color-swatch-grid" role="radiogroup" aria-label="Collection colour">
+                <button v-for="c in COLLECTION_COLORS" :key="c"
+                        class="color-swatch color-swatch-sm" :class="{ active: inlineNewCollection.color === c }"
+                        :style="{ background: c }" role="radio" :aria-checked="String(inlineNewCollection.color === c)"
+                        :aria-label="'Colour ' + c"
+                        @click="emit('updateInlineNewCollectionColor', c)"
+                        type="button"></button>
             </div>
-            <!-- Inline new collection -->
-            <div v-if="inlineNewCollection.active" class="inline-new-collection">
-                <div style="display:flex;gap:8px;align-items:center">
-                    <span class="collection-dot" :style="{ background: inlineNewCollection.color }" style="flex-shrink:0;cursor:pointer"
-                          @click="emit('pickNextCollectionColor')"></span>
-                    <input class="form-input" :value="inlineNewCollection.name"
-                           @input="emit('updateInlineNewCollectionName', $event.target.value)"
-                           placeholder="Collection name"
-                           @keydown.enter="emit('confirmInlineNewCollection', 'addToCollection')"
-                           @keydown.escape="emit('cancelInlineNewCollection')"
-                           style="flex:1;padding:4px 8px;font-size:0.85rem" autofocus>
-                    <button class="btn btn-primary btn-sm" @click="emit('confirmInlineNewCollection', 'addToCollection')"
-                            :disabled="!inlineNewCollection.name.trim()">Add</button>
-                    <button class="btn btn-ghost btn-sm" @click="emit('cancelInlineNewCollection')">&times;</button>
-                </div>
-                <div class="color-swatch-grid" style="margin-top:6px">
-                    <button v-for="c in COLLECTION_COLORS" :key="c"
-                            class="color-swatch color-swatch-sm" :class="{ active: inlineNewCollection.color === c }"
-                            :style="{ background: c }"
-                            @click="emit('updateInlineNewCollectionColor', c)"
-                            type="button"></button>
-                </div>
-            </div>
-            <div v-else class="sidebar-item" @click="emit('startInlineNewCollection')" style="color:var(--color-primary, #4f8cff)">
-                <span v-html="ICONS.plus"></span>
-                <span>New Collection</span>
-            </div>
-        </div>
-    </div>
+        </form>
+        <button v-else type="button" class="pick-row pick-new" @click="emit('startInlineNewCollection')">
+            <span v-html="ICONS.plus"></span>
+            <span class="pick-name">New collection</span>
+        </button>
+    </AppDialog>
 </template>
+
+<style scoped>
+.pick-list { list-style: none; display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.pick-row {
+    width: 100%; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px;
+    background: none; color: var(--text-primary); border-radius: var(--radius); text-align: left; font-size: 0.9rem;
+}
+.pick-row:hover { background: var(--bg-hover); }
+.pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-count { color: var(--text-muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.pick-new { color: var(--accent-hover); }
+.inline-new-collection { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+.inline-new-row { display: flex; gap: 8px; }
+.inline-new-row .form-input { flex: 1; min-width: 0; }
+</style>

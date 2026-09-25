@@ -25,7 +25,29 @@
     /* Brand aliases so --color-* usages don't fall back to off-brand blue */
     --color-primary: var(--accent);
     --color-success: var(--success);
+    --color-danger: var(--danger);
+    /* Aliases for names some components used without ever defining them. */
+    --bg-elevated: var(--bg-card);
+    --border-color: var(--border);
+    /* Secondary palette for data colours (charts, format badges, stats). One
+       value per role replaces the scattered hard-coded greens/reds/blues. */
+    --info: #61afef;
+    --purple: #a877e0;
+    --amber: #e8a23d;
+    --danger-dim: rgba(231, 76, 60, 0.14);
+    --warning-dim: rgba(243, 156, 18, 0.14);
+    --success-dim: rgba(39, 174, 96, 0.15);
+    --info-dim: rgba(97, 175, 239, 0.14);
     --shadow: rgba(0, 0, 0, 0.35);
+    --shadow-strong: rgba(0, 0, 0, 0.5);
+    --scrim: rgba(5, 8, 18, 0.66);
+    /* Stacking order, lowest to highest. */
+    --z-sidebar: 500;
+    --z-bars: 1000;
+    --z-menu: 1100;
+    --z-float: 1500;
+    --z-dialog: 2000;
+    --z-toast: 3000;
     /* Theme-scoped overlays so light mode isn't a partial reskin */
     --overlay-bg: rgba(22, 33, 62, 0.75);
     --overlay-bg-strong: rgba(22, 33, 62, 0.95);
@@ -60,7 +82,16 @@
     --danger-hover: #e04050;
     --warning: #d98a0b;
     --success: #1f9d55;
+    --info: #2f7fc4;
+    --purple: #7b4fc0;
+    --amber: #b8740a;
+    --danger-dim: rgba(220, 53, 69, 0.1);
+    --warning-dim: rgba(217, 138, 11, 0.12);
+    --success-dim: rgba(31, 157, 85, 0.12);
+    --info-dim: rgba(47, 127, 196, 0.1);
     --shadow: rgba(0, 0, 0, 0.1);
+    --shadow-strong: rgba(0, 0, 0, 0.18);
+    --scrim: rgba(20, 24, 36, 0.45);
     /* Light-theme overrides for the shared overlay/utility vars */
     --overlay-bg: rgba(255, 255, 255, 0.85);
     --overlay-bg-strong: rgba(255, 255, 255, 0.96);
@@ -165,6 +196,22 @@ img {
 .gap-3 { gap: 16px; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hidden { display: none !important; }
+/* Hidden from sight but still reachable by keyboard and screen readers. */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+:focus-visible {
+    outline: 2px solid var(--accent-hover);
+    outline-offset: 2px;
+}
 
 /* ---- Animations ---- */
 @keyframes spin {

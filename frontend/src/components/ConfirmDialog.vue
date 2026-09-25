@@ -1,4 +1,6 @@
 <script setup>
+import AppDialog from './AppDialog.vue';
+
 defineProps({
     visible: Boolean,
     title: String,
@@ -11,20 +13,19 @@ defineEmits(['confirm', 'cancel']);
 </script>
 
 <template>
-<teleport to="body">
-    <div v-if="visible" class="confirm-overlay" @click.self="$emit('cancel')">
-        <div class="confirm-dialog">
-            <h3 class="confirm-title">{{ title }}</h3>
-            <p class="confirm-message">{{ message }}</p>
-            <div class="confirm-actions">
-                <button class="btn btn-secondary" @click="$emit('cancel')">Cancel</button>
-                <button
-                    class="btn"
-                    :class="danger ? 'btn-danger' : 'btn-primary'"
-                    @click="$emit('confirm')"
-                >{{ action }}</button>
-            </div>
-        </div>
-    </div>
-</teleport>
+    <!-- Focus lands on Cancel for destructive actions, so a reflexive Enter
+         never deletes anything; otherwise on the action itself. -->
+    <AppDialog :show="visible" :title="title" size="sm" role="alertdialog"
+               panel-class="confirm-dialog" @close="$emit('cancel')">
+        <p class="confirm-message">{{ message }}</p>
+        <template #footer>
+            <button class="btn btn-secondary" :data-autofocus="danger ? '' : null" @click="$emit('cancel')">Cancel</button>
+            <button
+                class="btn"
+                :class="danger ? 'btn-danger' : 'btn-primary'"
+                :data-autofocus="danger ? null : ''"
+                @click="$emit('confirm')"
+            >{{ action }}</button>
+        </template>
+    </AppDialog>
 </template>

@@ -28,9 +28,6 @@ export function useCollections(showToast, showConfirm) {
         '#e06898', '#36b37e', '#6c5ce7', '#f39c12', '#00b894',
     ];
 
-    const showCollectionModal = ref(false);
-    const newCollectionName = ref('');
-    const newCollectionColor = ref('#0f9b8e');
     const addToCollectionModelId = ref(null);
     const showAddToCollectionModal = ref(false);
     const editingCollectionId = ref(null);
@@ -70,27 +67,6 @@ export function useCollections(showToast, showConfirm) {
             collections.value = data.collections || [];
         } catch (e) {
             console.error('Failed to fetch collections', e);
-        }
-    }
-
-    function openCollectionModal() {
-        newCollectionName.value = '';
-        newCollectionColor.value = pickNextCollectionColor();
-        showCollectionModal.value = true;
-    }
-
-    async function createCollection() {
-        const name = newCollectionName.value.trim();
-        if (!name) return;
-        try {
-            await apiCreateCollection({ name, color: newCollectionColor.value });
-            showCollectionModal.value = false;
-            newCollectionName.value = '';
-            newCollectionColor.value = '#0f9b8e';
-            await fetchCollections();
-            showToast('Collection created', 'success');
-        } catch (e) {
-            showToast('Failed to create collection', 'error');
         }
     }
 
@@ -281,9 +257,6 @@ export function useCollections(showToast, showConfirm) {
         // State
         collections,
         COLLECTION_COLORS,
-        showCollectionModal,
-        newCollectionName,
-        newCollectionColor,
         addToCollectionModelId,
         showAddToCollectionModal,
         editingCollectionId,
@@ -296,8 +269,6 @@ export function useCollections(showToast, showConfirm) {
         // Actions
         pickNextCollectionColor,
         fetchCollections,
-        openCollectionModal,
-        createCollection,
         startInlineNewCollection,
         confirmInlineNewCollection,
         cancelInlineNewCollection,
