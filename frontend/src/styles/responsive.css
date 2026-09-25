@@ -56,14 +56,6 @@
         padding: 12px;
     }
 
-    .models-grid {
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-        gap: 10px;
-    }
-
-    .model-card .card-thumbnail {
-        height: 120px;
-    }
 
     .navbar-brand h1 {
         display: none;
@@ -138,31 +130,6 @@
     .viewer-toolbar .viewer-view-select {
         flex-shrink: 0;
         white-space: nowrap;
-    }
-
-    /* Table: hide less important columns */
-    .models-table .col-tags {
-        display: none;
-    }
-
-    .models-table .col-date {
-        display: none;
-    }
-
-    /* Bigger touch targets for table rows */
-    .models-table tbody td {
-        padding: 12px 10px;
-    }
-
-    .models-table thead th {
-        padding: 10px;
-    }
-
-    /* Allow name column to wrap on mobile */
-    .models-table tbody td.col-name {
-        white-space: normal;
-        word-break: break-word;
-        min-width: 120px;
     }
 
     /* Detail tabs: smaller padding on mobile */
@@ -297,22 +264,6 @@
 
 /* ---- Small phone: <= 480px ---- */
 @media (max-width: 480px) {
-    .models-grid {
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-        gap: 8px;
-    }
-
-    .model-card .card-thumbnail {
-        height: 100px;
-    }
-
-    .model-card .card-body {
-        padding: 8px;
-    }
-
-    .model-card .card-name {
-        font-size: 0.8rem;
-    }
 
     /* Search: let it shrink more but stay usable */
     .search-container {

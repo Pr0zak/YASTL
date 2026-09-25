@@ -274,7 +274,7 @@ function timeAgo(dateStr) {
                     <label class="settings-toggle-row" style="margin-top:8px">
                         <input type="checkbox" :checked="collectionCardTint"
                                @change="emit('toggleCollectionCardTint')">
-                        Tint model cards with collection color
+                        Colour models by their collection
                     </label>
                 </div>
 
