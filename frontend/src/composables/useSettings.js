@@ -46,6 +46,15 @@ export const BED_PRESETS = [
  * @param {Function} fetchTagsFn - Callback to refresh tags after auto-tag
  */
 export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) {
+    // Every settings write goes through here. The settings page shows a brief
+    // "Saved" tick when this changes, instead of a toast per field.
+    const lastSavedAt = ref(0);
+    async function saveSettings(payload) {
+        const data = await apiUpdateSettings(payload);
+        lastSavedAt.value = Date.now();
+        return data;
+    }
+
     const showSettings = ref(false);
     const libraries = ref([]);
     const newLibName = ref('');
@@ -222,7 +231,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     async function toggleFavoritesFirst() {
         favoritesFirst.value = !favoritesFirst.value;
         try {
-            await apiUpdateSettings({ favorites_first: favoritesFirst.value ? 'true' : 'false' });
+            await saveSettings({ favorites_first: favoritesFirst.value ? 'true' : 'false' });
         } catch (err) {
             showToast('Failed to save setting', 'error');
             console.error('toggleFavoritesFirst error:', err);
@@ -232,7 +241,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     async function toggleCollectionCardTint() {
         collectionCardTint.value = !collectionCardTint.value;
         try {
-            await apiUpdateSettings({ collection_card_tint: collectionCardTint.value ? 'true' : 'false' });
+            await saveSettings({ collection_card_tint: collectionCardTint.value ? 'true' : 'false' });
         } catch (err) {
             showToast('Failed to save setting', 'error');
             console.error('toggleCollectionCardTint error:', err);
@@ -242,7 +251,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     async function toggleAutoTagOnScan() {
         autoTagOnScan.value = !autoTagOnScan.value;
         try {
-            await apiUpdateSettings({ auto_tag_on_scan: autoTagOnScan.value ? 'true' : 'false' });
+            await saveSettings({ auto_tag_on_scan: autoTagOnScan.value ? 'true' : 'false' });
         } catch (err) {
             showToast('Failed to save setting', 'error');
             console.error('toggleAutoTagOnScan error:', err);
@@ -252,7 +261,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     async function setPreferredSlicer(slicer) {
         preferredSlicer.value = slicer;
         try {
-            await apiUpdateSettings({ preferred_slicer: slicer });
+            await saveSettings({ preferred_slicer: slicer });
         } catch (err) {
             showToast('Failed to save slicer setting', 'error');
             console.error('setPreferredSlicer error:', err);
@@ -263,8 +272,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         const val = String(parseInt(minutes) || 0);
         scanIntervalMinutes.value = val;
         try {
-            await apiUpdateSettings({ scan_interval_minutes: val });
-            showToast(val === '0' ? 'Scheduled scans off' : `Auto-scan every ${val} min`, 'info');
+            await saveSettings({ scan_interval_minutes: val });
         } catch {
             showToast('Failed to save scan interval', 'error');
         }
@@ -273,7 +281,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
     async function setWebhookUrl(url) {
         webhookUrl.value = url;
         try {
-            await apiUpdateSettings({ webhook_url: url });
+            await saveSettings({ webhook_url: url });
         } catch {
             showToast('Failed to save webhook URL', 'error');
         }
@@ -304,10 +312,9 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         const previous = previewDetail.value;
         previewDetail.value = value;
         try {
-            await apiUpdateSettings({ preview_detail: value });
+            await saveSettings({ preview_detail: value });
             // Each level is cached under its own name, so nothing is discarded
             // and an already-warmed level comes back instantly.
-            showToast('Preview detail updated', 'success');
         } catch (err) {
             previewDetail.value = previous;
             showToast(err.message || 'Failed to update preview detail', 'error');
@@ -316,12 +323,11 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
 
     async function saveConnectSettings() {
         try {
-            const data = await apiUpdateSettings({
+            const data = await saveSettings({
                 connect_enabled: connect.enabled ? 'true' : 'false',
             });
             connect.enabled = data.connect_enabled === 'true';
             connect.token = data.connect_token || '';
-            showToast('Connect settings saved', 'success');
         } catch (err) {
             showToast(err.message || 'Failed to save Connect settings', 'error');
         }
@@ -343,7 +349,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         // Send the current AI form. Masked keys ("••••…") are ignored server-side,
         // so unchanged keys are preserved.
         try {
-            const data = await apiUpdateSettings({
+            const data = await saveSettings({
                 ai_enabled: ai.enabled ? 'true' : 'false',
                 ai_provider: ai.provider,
                 ai_api_key: ai.api_key,
@@ -356,7 +362,6 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
             });
             applyAiFromData(data); // refresh masked keys
             aiTestResult.value = null;
-            showToast('AI settings saved', 'success');
         } catch (err) {
             showToast(err.message || 'Failed to save AI settings', 'error');
         }
@@ -447,7 +452,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
         colorTheme.value = theme;
         applyTheme(theme);
         try {
-            await apiUpdateSettings({ color_theme: theme });
+            await saveSettings({ color_theme: theme });
         } catch (err) {
             showToast('Failed to save theme', 'error');
             console.error('setColorTheme error:', err);
@@ -475,7 +480,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
 
     async function saveBedSettings() {
         try {
-            await apiUpdateSettings({
+            await saveSettings({
                 bed_enabled: bedConfig.enabled ? 'true' : 'false',
                 bed_shape: bedConfig.shape,
                 bed_width: String(bedConfig.width),
@@ -483,7 +488,6 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
                 bed_height: String(bedConfig.height),
             });
             _detectPreset();
-            showToast('Print bed settings saved');
         } catch (err) {
             showToast('Failed to save bed settings', 'error');
             console.error('saveBedSettings error:', err);
@@ -492,7 +496,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
 
     async function setThumbnailMode(mode) {
         try {
-            const data = await apiUpdateSettings({ thumbnail_mode: mode });
+            const data = await saveSettings({ thumbnail_mode: mode });
             thumbnailMode.value = data.thumbnail_mode || mode;
             showToast(`Thumbnail mode set to ${mode}`);
         } catch (err) {
@@ -682,6 +686,7 @@ export function useSettings(showToast, fetchModelsFn, showConfirm, fetchTagsFn) 
 
     return {
         // State
+        lastSavedAt,
         showSettings,
         libraries,
         newLibName,

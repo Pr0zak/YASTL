@@ -395,6 +395,7 @@ const {
     setBedPreset, saveBedSettings, setColorTheme: _setColorTheme, toggleFavoritesFirst, toggleCollectionCardTint,
     setPreferredSlicer, toggleAutoTagOnScan,
 } = settingsComposable;
+const settingsLastSavedAt = settingsComposable.lastSavedAt;
 
 function setColorTheme(theme) {
     _setColorTheme(theme);
@@ -2823,6 +2824,7 @@ function editSmartCollection(col) {
         :collectionCardTint="collectionCardTint"
         :preferredSlicer="preferredSlicer"
         :autoTagOnScan="autoTagOnScan"
+        :lastSavedAt="settingsLastSavedAt"
         @close="closeSettings"
         @update:newLibName="newLibName = $event"
         @update:newLibPath="newLibPath = $event"

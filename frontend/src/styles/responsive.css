@@ -180,25 +180,7 @@
         max-width: 100%;
     }
 
-    /* Settings: full-screen on mobile */
-    .settings-panel {
-        max-width: 100%;
-        max-height: 100vh;
-        max-height: 100dvh;
-        height: 100vh;
-        height: 100dvh;
-        border-radius: 0;
-    }
 
-    .detail-overlay:has(.settings-panel) {
-        padding: 0;
-        align-items: stretch;
-    }
-
-    .settings-content {
-        padding: 16px;
-        padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    }
 
     /* Thumbnail mode options: stack vertically */
     .thumbnail-mode-options {

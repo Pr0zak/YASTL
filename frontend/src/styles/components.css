@@ -595,3 +595,13 @@
     opacity: 0.6;
     margin: 0 1px 0 0;
 }
+
+/* Keep a large source icon at button size. */
+.btn .btn-icon-sm {
+    display: inline-flex;
+}
+
+.btn .btn-icon-sm svg {
+    width: 16px;
+    height: 16px;
+}

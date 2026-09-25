@@ -2,12 +2,15 @@
 /**
  * SettingsModal - Settings panel: Libraries, Appearance, Printing, Maintenance, Advanced.
  */
-import { computed, ref } from 'vue';
+import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { ICONS } from '../icons.js';
 import { BED_PRESETS } from '../composables/useSettings.js';
 
-const showAdvanced = ref(false);
+const showAdvanced = ref(true);
+
+
 const showConnectSteps = ref(false);
+const addFormOpen = ref(false);
 
 // The address to paste into the extension is simply where this page is served
 // from, so show it rather than asking the user to work it out.
@@ -51,6 +54,7 @@ const props = defineProps({
     embedProgress: { type: Object, default: () => ({ running: false, total: 0, completed: 0, in_memory: 0 }) },
     aiTaggingAll: { type: Boolean, default: false },
     aiTagProgress: { type: Object, default: () => ({ running: false, total: 0, completed: 0, tags_added: 0 }) },
+    lastSavedAt: { type: Number, default: 0 },
 });
 
 // Steps start open until a token exists, since that is the first-run case, and
@@ -97,6 +101,75 @@ const emit = defineEmits([
     'aiAutoTagAll',
 ]);
 
+/* ---- Page navigation ----
+   Settings was one modal scroll of eight sections, about four and a half
+   phone screens, with no way to jump between them. It is now a page: a
+   section list on the left (on a phone, a list you tap into and back out
+   of), one section shown at a time. */
+const SECTIONS = [
+    { key: 'libraries', label: 'Libraries', icon: 'folder', hint: 'Folders YASTL scans' },
+    { key: 'appearance', label: 'Appearance', icon: 'sun', hint: 'Theme, thumbnails, grid' },
+    { key: 'printing', label: 'Printing', icon: 'slicer', hint: 'Slicer and print bed' },
+    { key: 'maintenance', label: 'Maintenance', icon: 'wrench', hint: 'Scans, webhooks, bulk jobs' },
+    { key: 'ai', label: 'AI', icon: 'zap', hint: 'Optional, your own key' },
+    { key: 'extension', label: 'Browser extension', icon: 'link', hint: 'YASTL Connect' },
+    { key: 'backup', label: 'Backup and sites', icon: 'database', hint: 'Export, site logins' },
+    { key: 'updates', label: 'Updates', icon: 'refresh', hint: 'Check and install' },
+];
+const LAST_KEY = 'yastl-settings-section';
+let initial = 'libraries';
+try { initial = localStorage.getItem(LAST_KEY) || 'libraries'; } catch { /* storage unavailable */ }
+const current = ref(SECTIONS.some((x) => x.key === initial) ? initial : 'libraries');
+/** Phones show either the list or one section. */
+const mobileShowing = ref(false);
+function openSection(key) {
+    current.value = key;
+    mobileShowing.value = true;
+    try { localStorage.setItem(LAST_KEY, key); } catch { /* storage unavailable */ }
+}
+function show(key) {
+    return current.value === key;
+}
+const currentLabel = computed(() => SECTIONS.find((x) => x.key === current.value)?.label || 'Settings');
+
+/* ---- "Saved" tick ---- */
+const savedVisible = ref(false);
+let savedTimer = null;
+watch(() => props.lastSavedAt, (t) => {
+    if (!t) return;
+    savedVisible.value = true;
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => { savedVisible.value = false; }, 2200);
+});
+
+/* Bed and AI fields save themselves shortly after a change, like every
+   other setting here; they used to need their own Save buttons. */
+let bedTimer = null;
+let aiTimer = null;
+function autosaveBed() {
+    clearTimeout(bedTimer);
+    bedTimer = setTimeout(() => emit('saveBedSettings'), 500);
+}
+function autosaveAi() {
+    clearTimeout(aiTimer);
+    aiTimer = setTimeout(() => emit('saveAiSettings'), 500);
+}
+onBeforeUnmount(() => { clearTimeout(savedTimer); clearTimeout(bedTimer); clearTimeout(aiTimer); });
+
+watch(() => props.showSettings, (open) => { if (open) { mobileShowing.value = false; addFormOpen.value = false; } });
+// Close the add form once the new library appears.
+watch(() => props.libraries.length, (n, old) => { if (n > old) addFormOpen.value = false; });
+
+function onPageKey(e) {
+    if (e.key === 'Escape' && mobileShowing.value && window.matchMedia('(max-width: 768px)').matches) {
+        e.stopImmediatePropagation();
+        mobileShowing.value = false;
+    }
+}
+watch(() => props.showSettings, (open) => {
+    document[open ? 'addEventListener' : 'removeEventListener']('keydown', onPageKey, true);
+});
+
 function timeAgo(dateStr) {
     if (!dateStr) return 'Never scanned';
     const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -119,18 +192,40 @@ function timeAgo(dateStr) {
         is declared off here rather than routed through nine emit handlers that
         would only copy values back into the same object.
     -->
-    <div v-if="showSettings" class="detail-overlay" @click.self="emit('close')">
-        <div class="settings-panel">
-            <!-- Header -->
-            <div class="detail-header">
-                <div class="detail-title">Settings</div>
-                <button class="close-btn" @click="emit('close')" title="Close">&times;</button>
-            </div>
+    <div v-if="showSettings" class="settings-page" :class="{ 'is-showing': mobileShowing }"
+         role="dialog" aria-modal="true" aria-labelledby="settings-page-title">
+        <header class="settings-page-header">
+            <button class="btn-icon settings-back" @click="mobileShowing ? (mobileShowing = false) : emit('close')"
+                    :aria-label="mobileShowing ? 'Back to all settings' : 'Back to library'"
+                    v-html="ICONS.back"></button>
+            <h2 id="settings-page-title" class="settings-page-title">
+                <span class="settings-title-root">Settings</span>
+                <span class="settings-title-section">{{ currentLabel }}</span>
+            </h2>
+            <span class="settings-saved" :class="{ on: savedVisible }" aria-live="polite">
+                <span v-html="ICONS.check"></span>{{ savedVisible ? 'Saved' : '' }}
+            </span>
+            <button class="btn btn-secondary settings-done" @click="emit('close')">Done</button>
+        </header>
+
+        <div class="settings-page-body">
+            <nav class="settings-nav" aria-label="Settings sections">
+                <button v-for="sec in SECTIONS" :key="sec.key" class="settings-nav-item"
+                        :class="{ active: current === sec.key }" :aria-current="current === sec.key ? 'page' : undefined"
+                        @click="openSection(sec.key)">
+                    <span class="settings-nav-icon" v-html="ICONS[sec.icon]"></span>
+                    <span class="settings-nav-text">
+                        <span class="settings-nav-label">{{ sec.label }}</span>
+                        <span class="settings-nav-hint">{{ sec.hint }}</span>
+                    </span>
+                    <span class="settings-nav-chev" v-html="ICONS.chevron"></span>
+                </button>
+            </nav>
 
             <div class="settings-content">
 
                 <!-- ========== 1. Libraries ========== -->
-                <div class="settings-section">
+                <div v-show="show('libraries')" id="settings-libraries" class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.folder"></span>
                         Libraries
@@ -166,49 +261,53 @@ function timeAgo(dateStr) {
                     </div>
 
                     <!-- Scan Libraries -->
-                    <div v-if="libraries.length > 0" style="padding: 0 0 12px 0;">
-                        <button class="btn btn-primary"
+                    <div v-if="libraries.length > 0" class="settings-btn-row library-actions">
+                        <button class="btn btn-secondary"
                                 @click="emit('triggerScan')"
                                 :disabled="scanStatus.scanning"
                                 title="Scan libraries for new models">
-                            <span v-html="ICONS.scan"></span>
-                            {{ scanStatus.scanning ? 'Scanning...' : 'Scan All Libraries' }}
+                            <span v-html="ICONS.refresh"></span>
+                            {{ scanStatus.scanning ? 'Scanning…' : 'Scan all libraries' }}
+                        </button>
+                        <button v-if="!addFormOpen" class="btn btn-secondary" @click="addFormOpen = true">
+                            <span v-html="ICONS.plus"></span> Add a folder
                         </button>
                         <div v-if="scanStatus.scanning" class="text-muted text-sm" style="margin-top:6px">
                             {{ scanStatus.processed_files }} / {{ scanStatus.total_files }} files processed
                         </div>
                     </div>
 
-                    <!-- Add Library Form -->
-                    <div class="add-library-form">
+                    <!-- Add Library Form: folded away once you have a library. -->
+                    <form v-if="addFormOpen || !libraries.length" class="add-library-form" @submit.prevent="emit('addLibrary')">
                         <div class="form-row">
-                            <label class="form-label">Library Name</label>
-                            <input type="text"
+                            <label class="form-label" for="new-lib-name">Library name</label>
+                            <input type="text" id="new-lib-name"
                                    :value="newLibName"
                                    @input="emit('update:newLibName', $event.target.value)"
                                    placeholder="e.g. My 3D Models"
                                    class="form-input">
                         </div>
                         <div class="form-row">
-                            <label class="form-label">Local Path</label>
-                            <input type="text"
+                            <label class="form-label" for="new-lib-path">Folder path on the server</label>
+                            <input type="text" id="new-lib-path"
                                    :value="newLibPath"
                                    @input="emit('update:newLibPath', $event.target.value)"
                                    placeholder="e.g. /home/user/models"
-                                   class="form-input"
-                                   @keydown.enter="emit('addLibrary')">
+                                   class="form-input">
                         </div>
-                        <button class="btn btn-primary"
-                                @click="emit('addLibrary')"
-                                :disabled="addingLibrary || !newLibName.trim() || !newLibPath.trim()">
-                            <span v-html="ICONS.plus"></span>
-                            Add Library
-                        </button>
-                    </div>
+                        <div class="settings-btn-row">
+                            <button v-if="libraries.length" type="button" class="btn btn-ghost" @click="addFormOpen = false">Cancel</button>
+                            <button type="submit" class="btn btn-primary"
+                                    :disabled="addingLibrary || !newLibName.trim() || !newLibPath.trim()">
+                                <span v-html="ICONS.plus"></span>
+                                {{ addingLibrary ? 'Adding…' : 'Add library' }}
+                            </button>
+                        </div>
+                    </form>
                 </div>
 
                 <!-- ========== 2. Appearance ========== -->
-                <div class="settings-section">
+                <div v-show="show('appearance')" id="settings-appearance" class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.sun"></span>
                         Appearance
@@ -279,7 +378,7 @@ function timeAgo(dateStr) {
                 </div>
 
                 <!-- ========== 3. Printing ========== -->
-                <div class="settings-section">
+                <div v-show="show('printing')" id="settings-printing" class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.slicer"></span>
                         Printing
@@ -304,6 +403,7 @@ function timeAgo(dateStr) {
                         </div>
                     </div>
 
+                    <div class="bed-settings" @change="autosaveBed" @click="$event.target.closest('.thumbnail-mode-option') && autosaveBed()">
                     <label class="settings-toggle-row" style="margin-bottom:12px">
                         <input type="checkbox" :checked="bedConfig.enabled"
                                @change="emit('updateBedConfig', 'enabled', $event.target.checked)">
@@ -355,15 +455,11 @@ function timeAgo(dateStr) {
                         </label>
                     </div>
 
-                    <div style="margin-top:12px">
-                        <button class="btn btn-primary" @click="emit('saveBedSettings')">
-                            Save Bed Settings
-                        </button>
                     </div>
                 </div>
 
                 <!-- ========== 4. Maintenance ========== -->
-                <div class="settings-section">
+                <div v-show="show('maintenance')" id="settings-maintenance" class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.wrench"></span>
                         Maintenance
@@ -415,33 +511,33 @@ function timeAgo(dateStr) {
                                 @click="emit('regenerateThumbnails')"
                                 :disabled="regeneratingThumbnails">
                             <span v-html="ICONS.refresh"></span>
-                            Regen Thumbnails
+                            Regenerate thumbnails
                         </button>
                         <button class="btn btn-secondary"
                                 @click="emit('autoTagAll')"
                                 :disabled="autoTagging">
                             <span v-html="ICONS.refresh"></span>
-                            Auto-Tag All
+                            Auto-tag all
                         </button>
                         <button class="btn btn-secondary"
                                 @click="emit('extractMetadata')"
                                 :disabled="extractingMetadata"
                                 title="Extract descriptions and tags from README files in zips and folders">
                             <span v-html="ICONS.refresh"></span>
-                            Extract Metadata
+                            Extract metadata
                         </button>
                         <button class="btn btn-secondary"
                                 @click="emit('cleanupTags')"
                                 title="Delete tags not attached to any model">
                             <span v-html="ICONS.wrench"></span>
-                            Clean Up Tags
+                            Clean up tags
                         </button>
                         <button class="btn btn-secondary"
                                 @click="emit('generatePreviews')"
                                 :disabled="generatingPreviews"
                                 title="Pre-build decimated 3D previews for large models so they open instantly">
-                            <span v-html="ICONS.cube"></span>
-                            Generate Previews
+                            <span class="btn-icon-sm" v-html="ICONS.cube"></span>
+                            Generate previews
                         </button>
                     </div>
 
@@ -480,7 +576,7 @@ function timeAgo(dateStr) {
                 </div>
 
                 <!-- ========== 5. AI (optional, bring your own key) ========== -->
-                <div class="settings-section">
+                <div v-show="show('ai')" id="settings-ai" @change="autosaveAi" class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.zap"></span>
                         AI <span class="settings-optional-tag">optional · bring your own key</span>
@@ -547,7 +643,6 @@ function timeAgo(dateStr) {
                     </div>
 
                     <div class="settings-btn-row" style="margin-top:12px">
-                        <button class="btn btn-primary" @click="emit('saveAiSettings')">Save AI settings</button>
                         <button class="btn btn-secondary" @click="emit('testAi')"
                                 :disabled="aiTesting || !ai.enabled">
                             {{ aiTesting ? 'Testing…' : 'Test connection' }}
@@ -604,7 +699,7 @@ function timeAgo(dateStr) {
 
 
                 <!-- ========== 5. Connect (browser extension) ========== -->
-                <div class="settings-section">
+                <div v-show="show('extension')" id="settings-extension" class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.link"></span>
                         Connect <span class="settings-optional-tag">optional · browser extension</span>
@@ -776,13 +871,10 @@ function timeAgo(dateStr) {
                 </div>
 
                 <!-- ========== 6. Advanced (collapsible) ========== -->
-                <div class="settings-section" :class="{ 'settings-section-collapsed': !showAdvanced }">
-                    <div class="settings-advanced-header" @click="showAdvanced = !showAdvanced">
-                        <div class="settings-section-title">
-                            <span v-html="ICONS.settings"></span>
-                            Advanced
-                            <span class="settings-advanced-arrow">{{ showAdvanced ? '&#x25BC;' : '&#x25B6;' }}</span>
-                        </div>
+                <div v-show="show('backup')" id="settings-backup" class="settings-section" :class="{ 'settings-section-collapsed': !showAdvanced }">
+                    <div class="settings-section-title">
+                        <span v-html="ICONS.database"></span>
+                        Backup and sites
                     </div>
 
                     <template v-if="showAdvanced">
@@ -861,7 +953,7 @@ function timeAgo(dateStr) {
                 </div>
 
                 <!-- ========== 6. Updates ========== -->
-                <div class="settings-section">
+                <div v-show="show('updates')" id="settings-updates" class="settings-section">
                     <div class="settings-section-title">
                         <span v-html="ICONS.refresh"></span>
                         Updates
@@ -969,7 +1061,7 @@ function timeAgo(dateStr) {
                             @click="emit('checkForUpdates')"
                             :disabled="updateInfo.checking || updateInfo.applying || updateInfo.restarting">
                         <span v-html="ICONS.refresh"></span>
-                        Check for Updates
+                        Check for updates
                     </button>
                 </div>
             </div>
