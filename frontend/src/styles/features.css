@@ -166,50 +166,24 @@
 }
 
 /* ============================================================
-   Pagination bar
+   Infinite scroll status line
    ============================================================ */
 
-.pagination-bar {
+.load-more {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 0;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-
-.pagination-info {
+    justify-content: center;
+    gap: 10px;
+    min-height: 64px;
+    padding: 16px 0 8px;
     font-size: 0.8rem;
     color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
-.pagination-controls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.page-size-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-
-.page-size-select {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 0.8rem;
-    cursor: pointer;
-}
-
-.page-size-select:focus {
-    outline: none;
-    border-color: var(--accent);
+.load-more:empty {
+    min-height: 1px;
+    padding: 0;
 }
 
 .status-btn {

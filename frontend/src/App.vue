@@ -593,6 +593,40 @@ const hasMore = computed(() => {
     return pagination.offset + pagination.limit < pagination.total;
 });
 
+/* ---- Infinite scroll ----
+   A marker below the grid loads the next page when it comes within 800px
+   of the viewport, so the next batch is usually in before you reach the
+   bottom. An observer only fires on changes, so after each load we check
+   again: a tall screen may still show the marker when a page arrives. */
+const loadMoreSentinel = ref(null);
+const loadMoreFailed = ref(false);
+let loadMoreObserver = null;
+
+function sentinelNearViewport() {
+    const el = loadMoreSentinel.value;
+    if (!el) return false;
+    return el.getBoundingClientRect().top < window.innerHeight + 800;
+}
+function maybeLoadMore() {
+    if (loading.value || !hasMore.value || loadMoreFailed.value) return;
+    if (showDetail.value || showSettings.value) return;
+    if (sentinelNearViewport()) loadMore();
+}
+watch(loadMoreSentinel, (el) => {
+    loadMoreObserver?.disconnect();
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    loadMoreObserver = new IntersectionObserver(
+        (entries) => { if (entries.some((e) => e.isIntersecting)) maybeLoadMore(); },
+        { rootMargin: '0px 0px 800px 0px' },
+    );
+    loadMoreObserver.observe(el);
+});
+watch(loading, async (busy) => {
+    if (busy) return;
+    await nextTick();
+    maybeLoadMore();
+});
+
 const shownCount = computed(() => {
     return Math.min(pagination.offset + pagination.limit, pagination.total);
 });
@@ -710,6 +744,7 @@ let fetchGeneration = 0;
 
 async function fetchModels(append = false) {
     const myGen = ++fetchGeneration;
+    if (!append) loadMoreFailed.value = false;
     loading.value = true;
     try {
         const params = new URLSearchParams({
@@ -786,6 +821,12 @@ async function fetchModels(append = false) {
         }
     } catch (err) {
         if (myGen !== fetchGeneration) return;
+        if (append) {
+            // Undo the page step so a retry asks for the same page, and stop
+            // infinite scroll from re-firing into the same failure.
+            pagination.offset = Math.max(0, pagination.offset - pagination.limit);
+            loadMoreFailed.value = true;
+        }
         showToast('Failed to load models', 'error');
         console.error('fetchModels error:', err);
     } finally {
@@ -1713,24 +1754,13 @@ function refreshCurrentView() {
 }
 
 function loadMore() {
+    if (loading.value || !hasMore.value) return;
+    loadMoreFailed.value = false;
     pagination.offset += pagination.limit;
     if (searchQuery.value.trim()) {
         searchModels(true);
     } else {
         fetchModels(true);
-    }
-}
-
-function setPageSize(size) {
-    const val = parseInt(size);
-    if (!PAGE_SIZE_OPTIONS.includes(val)) return;
-    pagination.limit = val;
-    pagination.offset = 0;
-    localStorage.setItem('yastl_page_size', String(val));
-    if (searchQuery.value.trim()) {
-        searchModels();
-    } else {
-        fetchModels();
     }
 }
 
@@ -2653,25 +2683,23 @@ function editSmartCollection(col) {
             />
 
             <!-- Load More / Pagination Info -->
-            <div v-if="models.length > 0 && !loading" class="pagination-bar">
-                <div class="pagination-info">
-                    Showing {{ shownCount }} of {{ pagination.total }} models
-                </div>
-                <div class="pagination-controls">
-                    <label class="page-size-label">Per page:
-                        <select class="page-size-select" :value="pagination.limit" @change="setPageSize($event.target.value)">
-                            <option v-for="opt in PAGE_SIZE_OPTIONS" :key="opt" :value="opt">{{ opt }}</option>
-                        </select>
-                    </label>
-                    <button v-if="hasMore" class="btn btn-secondary btn-sm" @click="loadMore" :disabled="loading">
-                        Load More
-                    </button>
-                </div>
-            </div>
-
-            <!-- Loading indicator when loading more -->
-            <div v-if="loading && models.length > 0" class="loading-overlay" style="padding:20px">
-                <div class="spinner spinner-sm"></div>
+            <!-- Infinite scroll: the marker loads the next page as it nears the
+                 viewport; the button stays as a fallback for keyboard use and
+                 for retrying after a failed load. -->
+            <div v-if="models.length > 0" ref="loadMoreSentinel" class="load-more" aria-live="polite">
+                <template v-if="loading">
+                    <div class="spinner spinner-sm"></div>
+                    <span>Loading more…</span>
+                </template>
+                <template v-else-if="loadMoreFailed">
+                    <span>Couldn't load more models.</span>
+                    <button class="btn btn-secondary btn-sm" @click="loadMore">Try again</button>
+                </template>
+                <template v-else-if="hasMore">
+                    <span>{{ shownCount.toLocaleString() }} of {{ pagination.total.toLocaleString() }}</span>
+                    <button class="btn btn-ghost btn-sm" @click="loadMore">Load more</button>
+                </template>
+                <span v-else-if="pagination.total > pagination.limit">All {{ pagination.total.toLocaleString() }} shown</span>
             </div>
         </main>
     </div>
