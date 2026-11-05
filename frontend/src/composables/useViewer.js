@@ -237,8 +237,8 @@ export function useViewer() {
 
     /** Theme color presets. */
     const THEME_COLORS = {
-        default: { bg: 0x12182a, gridCenter: 0x2a3a5c, gridLines: 0x1e2a40 },
-        light:   { bg: 0xf5f5f5, gridCenter: 0xcccccc, gridLines: 0xdddddd },
+        default: { bg: 0x111723, gridCenter: 0x32405c, gridLines: 0x1c2638 },
+        light:   { bg: 0xedf0f3, gridCenter: 0xc3cad5, gridLines: 0xd8dde5 },
     };
 
     /**

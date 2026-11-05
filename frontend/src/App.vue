@@ -2951,8 +2951,8 @@ function editSmartCollection(col) {
     />
 
     <!-- Phone: Import lives on a floating button, in thumb reach. -->
-    <button v-if="!selectionMode" class="fab-import" @click="openImportModal()" aria-label="Import models" title="Import models">
-        <span v-html="ICONS.plus"></span>
+    <button v-if="!selectionMode" class="fab-import" :class="{ 'fab-hidden': sidebarOpen }" @click="openImportModal()" title="Import models">
+        <span v-html="ICONS.plus"></span><span>Import</span>
     </button>
 
     <!-- Drop anywhere to import -->

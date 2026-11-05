@@ -5,19 +5,24 @@
 
 /* ---- CSS Variables ---- */
 :root {
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-card: #1e2a45;
-    --bg-input: #131b2e;
-    --bg-hover: #243352;
-    --text-primary: #e0e0e0;
-    --text-secondary: #a0a0a0;
-    --text-muted: #6b7a94;
-    --accent: #0f9b8e;
-    --accent-hover: #12b5a6;
-    --accent-dim: rgba(15, 155, 142, 0.15);
-    --border: #2a3a5c;
-    --border-light: #344868;
+    /* Ink-slate rather than the old purple-navy: the same family as the
+       logo's deepest facet, but neutral enough that model renders (teal,
+       red, green, purple) read as their own colours. */
+    --bg-primary: #111723;
+    --bg-secondary: #161e2d;
+    --bg-card: #1b2436;
+    --bg-input: #121a28;
+    --bg-hover: #233049;
+    --text-primary: #e6e9ef;
+    --text-secondary: #a6afc0;
+    --text-muted: #717d93;
+    --accent: #14a595;
+    --accent-hover: #2cc4b2;
+    --accent-dim: rgba(20, 165, 149, 0.15);
+    --border: #263249;
+    --border-light: #32405c;
+    /* The build plate: a faint dot grid that tiles and the viewer sit on. */
+    --plate-dot: rgba(166, 175, 192, 0.11);
     --danger: #e74c3c;
     --danger-hover: #ff5544;
     --warning: #f39c12;
@@ -62,30 +67,37 @@
     --row-stripe: rgba(30, 42, 69, 0.3);
     --hover-wash: rgba(255, 255, 255, 0.08);
     --dot-border: rgba(255, 255, 255, 0.15);
-    --radius: 8px;
-    --radius-sm: 4px;
-    --radius-lg: 12px;
-    --transition: 0.2s ease;
-    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-        'Helvetica Neue', Arial, sans-serif;
+    /* Radius follows hierarchy: controls 6, tiles 10, sheets and dialogs 14. */
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-lg: 14px;
+    --transition: 0.18s ease;
+    /* Archivo carries a width axis. Model names are long filenames
+       ("Traxxas_TQi_Remote_Wall_Mount"), so they are set semi-condensed to
+       fit more of the name before the ellipsis; dimensions are set wide. */
+    --font-family: 'Archivo Variable', -apple-system, BlinkMacSystemFont,
+        'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --stretch-name: 86%;
+    --stretch-wide: 118%;
     --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
 /* ---- Color Themes ---- */
 [data-theme="light"] {
-    --bg-primary: #f5f5f5;
+    --bg-primary: #edf0f3;
     --bg-secondary: #ffffff;
-    --bg-card: #ffffff;
-    --bg-input: #f0f0f0;
-    --bg-hover: #e8e8e8;
-    --text-primary: #1a1a1a;
-    --text-secondary: #555555;
-    --text-muted: #888888;
-    --accent: #0f9b8e;
-    --accent-hover: #12b5a6;
-    --accent-dim: rgba(15, 155, 142, 0.1);
-    --border: #d4d4d4;
-    --border-light: #e0e0e0;
+    --bg-card: #f7f8fa;
+    --bg-input: #f2f4f7;
+    --bg-hover: #e4e8ee;
+    --text-primary: #172031;
+    --text-secondary: #4d586b;
+    --text-muted: #7a8496;
+    --accent: #0c8a7c;
+    --accent-hover: #0a9d8d;
+    --accent-dim: rgba(12, 138, 124, 0.1);
+    --border: #d5dae2;
+    --border-light: #e2e6ec;
+    --plate-dot: rgba(23, 32, 49, 0.09);
     --danger: #dc3545;
     --danger-hover: #e04050;
     --warning: #d98a0b;
@@ -120,6 +132,7 @@
 
 html {
     font-size: 14px;
+    font-feature-settings: 'tnum' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -129,6 +142,8 @@ body {
     background: var(--bg-primary);
     color: var(--text-primary);
     line-height: 1.5;
+    /* Archivo's word space is tight; at UI sizes "Add to" read as "Addto". */
+    word-spacing: 0.06em;
     min-height: 100vh;
     overflow-x: hidden;
     -webkit-text-size-adjust: 100%;
@@ -146,6 +161,14 @@ a {
 
 a:hover {
     color: var(--accent-hover);
+}
+
+/* Chrome's UA sheet resets spacing on form controls; keep the body's. */
+button,
+input,
+textarea,
+select {
+    word-spacing: inherit;
 }
 
 button {

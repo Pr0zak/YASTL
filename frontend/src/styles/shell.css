@@ -586,19 +586,28 @@ button.fchip:hover {
     right: 16px;
     bottom: calc(18px + env(safe-area-inset-bottom));
     z-index: var(--z-float);
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
+    /* A labelled pill, not a 56px disc: it covered most of a tile's caption. */
+    height: 44px;
+    padding: 0 18px 0 14px;
+    gap: 6px;
+    border-radius: 99px;
     background: var(--accent);
     color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 24px var(--shadow-strong);
+    box-shadow: 0 6px 20px var(--shadow-strong);
+}
+
+/* The phone sidebar is a drawer; the pill must not float over it. */
+.fab-import.fab-hidden {
+    display: none !important;
 }
 
 .fab-import svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
 }
 
 .fab-import:active {

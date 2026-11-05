@@ -110,7 +110,7 @@
     }
 
     #viewer-container {
-        height: 260px;
+        height: 300px;
     }
 
     /* Pinned across the bottom of the viewer. It must NOT scroll: overflow-x
@@ -118,12 +118,24 @@
        and paints the upward-opening overflow menu at zero visible pixels. The
        three remaining controls plus the menu button fit 390px, so nothing
        needs to scroll. */
+    /* On a phone the toolbar is its own row under the canvas: floating over
+       a 300px viewer it hid the bottom third of the model. */
     .viewer-toolbar {
-        left: 8px;
-        right: 8px;
+        position: relative;
+        left: auto;
+        bottom: auto;
         transform: none;
         justify-content: flex-start;
         flex-wrap: nowrap;
+        padding: 8px 12px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .viewer-toolbar .btn,
+    .viewer-toolbar .viewer-view-select {
+        background: var(--bg-card);
+        backdrop-filter: none;
     }
 
     .viewer-toolbar .btn,

@@ -183,7 +183,7 @@ function prevPage() {
 .dup-group { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
 .dup-group-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-card); }
 .dup-hash { font-family: var(--font-mono); font-size: 0.78rem; color: var(--info); }
-.dup-badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 999px; background: var(--warning-dim); color: var(--warning); }
+.dup-badge { font-size: 0.78rem; padding: 2px 8px; border-radius: 999px; background: var(--warning-dim); color: var(--warning); }
 .dup-copies { display: flex; flex-direction: column; }
 .dup-copy { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--border); }
 .dup-thumb { width: 48px; height: 48px; object-fit: contain; border-radius: var(--radius-sm); background: var(--bg-input); flex: none; }
