@@ -234,6 +234,23 @@ const showOverview = computed(() => isWide.value || props.detailTab === 'overvie
 const showOrganise = computed(() => isWide.value || props.detailTab === 'organise');
 
 /** Empty optional fields collapse into one row of "+ Add" chips. */
+// Will it print? Answered from the stored dimensions against the bed set up in
+// Settings, without opening the 3D bed overlay. Same test as the viewer's
+// overlay (no rotation), so the two never disagree.
+const bedFit = computed(() => {
+    const m = props.selectedModel;
+    const b = props.bedConfig;
+    if (!m || !m.dimensions_x || !b || !b.enabled) return null;
+    const [x, y, z] = [m.dimensions_x, m.dimensions_y, m.dimensions_z];
+    const fits = b.shape === 'circular'
+        ? Math.hypot(x / 2, y / 2) <= b.width / 2 && z <= b.height
+        : x <= b.width && y <= b.depth && z <= b.height;
+    const label = b.shape === 'circular'
+        ? `⌀${b.width} × ${b.height} mm`
+        : `${b.width} × ${b.depth} × ${b.height} mm`;
+    return { fits, label };
+});
+
 const missingFields = computed(() => {
     const m = props.selectedModel;
     if (!m) return [];
@@ -445,8 +462,7 @@ onBeforeUnmount(() => {
                              sheet scrolls; tapping activates orbit for this model. -->
                         <button v-if="!viewerInteractive && !viewerLoading && selectedModel.status !== 'error'"
                                 class="viewer-tap-gate" @click="viewerInteractive = true">
-                            <span v-html="ICONS.cube"></span>
-                            <span>Tap to interact</span>
+                            <span class="viewer-tap-pill">Tap to rotate</span>
                         </button>
                         <!-- Thumbnail underlay so opening feels instant while 3D loads -->
                         <img v-if="viewerLoading && selectedModel.status !== 'error'"
@@ -622,19 +638,19 @@ onBeforeUnmount(() => {
                         <!-- ==================== OVERVIEW ==================== -->
                         <template v-if="showOverview">
                             <!-- Size first: the fact that decides whether this gets printed. -->
-                            <div class="dims-row" v-if="selectedModel.dimensions_x">
-                                <div class="dim-card">
-                                    <div class="dim-label">Width</div>
-                                    <div class="dim-value">{{ Math.round(selectedModel.dimensions_x) }}<span>mm</span></div>
+                            <div class="dims-readout" v-if="selectedModel.dimensions_x">
+                                <div class="dims-figures">
+                                    <span class="dim"><span class="dim-n">{{ Math.round(selectedModel.dimensions_x) }}</span><span class="dim-axis">Width</span></span>
+                                    <span class="dim-x" aria-hidden="true">×</span>
+                                    <span class="dim"><span class="dim-n">{{ Math.round(selectedModel.dimensions_y) }}</span><span class="dim-axis">Depth</span></span>
+                                    <span class="dim-x" aria-hidden="true">×</span>
+                                    <span class="dim"><span class="dim-n">{{ Math.round(selectedModel.dimensions_z) }}</span><span class="dim-axis">Height</span></span>
+                                    <span class="dim-unit">mm</span>
                                 </div>
-                                <div class="dim-card">
-                                    <div class="dim-label">Depth</div>
-                                    <div class="dim-value">{{ Math.round(selectedModel.dimensions_y) }}<span>mm</span></div>
-                                </div>
-                                <div class="dim-card">
-                                    <div class="dim-label">Height</div>
-                                    <div class="dim-value">{{ Math.round(selectedModel.dimensions_z) }}<span>mm</span></div>
-                                </div>
+                                <p v-if="bedFit" class="dims-fit" :class="bedFit.fits ? 'dims-fit-ok' : 'dims-fit-no'">
+                                    {{ bedFit.fits ? 'Fits your' : 'Larger than your' }}
+                                    {{ bedFit.label }} bed
+                                </p>
                             </div>
 
                             <!-- Empty optional fields: one row of chips instead of

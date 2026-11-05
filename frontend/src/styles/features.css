@@ -223,10 +223,8 @@
     display: inline-block;
     padding: 2px 8px;
     border-radius: 10px;
-    font-size: 0.7rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
 }
 
 .status-badge.status-dot-ok {
@@ -274,11 +272,9 @@
 }
 
 .settings-section-title {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -814,9 +810,7 @@ textarea.import-textarea {
     padding: 4px 10px 8px;
 }
 .tag-match-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 0.78rem;
     color: var(--text-muted);
     margin-right: 4px;
 }
@@ -910,8 +904,7 @@ textarea.import-textarea {
     color: var(--text-secondary);
 }
 .print-history-status {
-    text-transform: uppercase;
-    font-size: 0.62rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
     border: 1px solid var(--border);
     border-radius: 3px;

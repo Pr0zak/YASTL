@@ -226,10 +226,8 @@
 .zip-badge {
     display: inline-block;
     padding: 0 4px;
-    font-size: 0.62rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
     border-radius: 3px;
     background: color-mix(in srgb, var(--purple) 15%, transparent);
     color: var(--purple);
@@ -243,10 +241,8 @@
 .dup-badge {
     display: inline-block;
     padding: 0 4px;
-    font-size: 0.62rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
     border-radius: 3px;
     background: var(--warning-dim);
     color: var(--warning);
@@ -260,10 +256,8 @@
 .error-badge {
     display: inline-block;
     padding: 0 4px;
-    font-size: 0.62rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
     border-radius: 3px;
     background: var(--danger-dim);
     color: var(--danger);
@@ -506,8 +500,6 @@
 .form-label {
     font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     color: var(--text-muted);
 }
 

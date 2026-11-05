@@ -155,7 +155,7 @@ function g(v) { return v == null ? null : Math.round(v); }
 .filament-name { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
 .filament-color-name { font-weight: 400; color: var(--text-secondary); }
 .filament-status-tag {
-    font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted);
+    font-size: 0.78rem; color: var(--text-muted);
     border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; margin-left: 6px;
 }
 .filament-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }

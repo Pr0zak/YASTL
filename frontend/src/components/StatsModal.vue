@@ -354,9 +354,11 @@ function tagOpacity(count, tags) {
     padding: 10px 8px;
 }
 
+/* Same wide figures as the model's dimensions: numbers you read at a glance. */
 .stats-card-value {
-    font-size: 1.4rem;
-    font-weight: 700;
+    font-size: 1.5rem;
+    font-weight: 650;
+    font-stretch: var(--stretch-wide);
     color: var(--text-primary);
     line-height: 1.2;
 }
@@ -366,10 +368,8 @@ function tagOpacity(count, tags) {
 }
 
 .stats-card-label {
-    font-size: 0.7rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     margin-top: 4px;
 }
 

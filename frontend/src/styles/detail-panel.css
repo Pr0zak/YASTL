@@ -65,8 +65,10 @@
 }
 
 .detail-header .detail-title {
-    font-size: 1.15rem;
-    font-weight: 600;
+    font-size: 1.3rem;
+    font-weight: 650;
+    font-stretch: var(--stretch-name);
+    word-spacing: 0.08em;
     color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -191,7 +193,6 @@
 .file-summary-size {
     font-size: 0.85rem;
     color: var(--text-primary);
-    font-family: var(--font-mono);
 }
 
 .file-details-toggle {
@@ -273,26 +274,27 @@
        every control needed two taps and gave no feedback on the first. */
     z-index: 4;
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 10px;
     background: transparent;
     border: none;
-    color: var(--text-secondary);
-    font-size: 0.8rem;
     cursor: pointer;
 }
 
-.viewer-tap-gate :deep(svg),
-.viewer-tap-gate svg {
-    width: 28px;
-    height: 28px;
-    opacity: 0.7;
+/* A corner hint, not a cube icon over the model it is hiding. */
+.viewer-tap-pill {
+    padding: 5px 11px;
+    border-radius: 99px;
+    background: var(--overlay-bg);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
 }
 
-.viewer-tap-gate:active {
-    background: rgba(0, 0, 0, 0.06);
+.viewer-tap-gate:active .viewer-tap-pill {
+    color: var(--text-primary);
 }
 
 .viewer-toolbar {
@@ -439,10 +441,8 @@
 }
 
 .info-section-title {
-    font-size: 0.7rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
     color: var(--text-muted);
     margin-bottom: 10px;
     padding-bottom: 6px;
@@ -467,7 +467,6 @@
     color: var(--text-primary);
     text-align: right;
     word-break: break-word;
-    font-family: var(--font-mono);
     font-size: 0.8rem;
 }
 
@@ -507,8 +506,6 @@
     font-size: 0.75rem;
     color: var(--text-muted);
     margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 .editable-field input,
@@ -894,41 +891,73 @@
 
 /* ---- Size, stated plainly. It decides whether the model gets printed, and
         used to be three levels down behind a collapsed "Details" toggle. ---- */
-.dims-row {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+.dims-readout {
     margin-bottom: 18px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
 }
 
-.dim-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 9px 10px;
+/* A caliper readout: the three figures set large and wide, each with its axis
+   underneath. This is the number that decides whether a model gets printed. */
+.dims-figures {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
-.dim-label {
-    font-size: 0.62rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    font-weight: 600;
+.dim {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
 }
 
-.dim-value {
-    font-size: 1.05rem;
-    font-weight: 600;
+.dim-n {
+    font-size: 2rem;
+    font-weight: 650;
+    font-stretch: var(--stretch-wide);
+    line-height: 1;
+    letter-spacing: -0.01em;
     color: var(--text-primary);
-    margin-top: 1px;
 }
 
-.dim-value span {
-    font-size: 0.7rem;
+.dim-axis {
+    margin-top: 5px;
+    font-size: 0.78rem;
     color: var(--text-muted);
-    font-weight: 400;
-    margin-left: 2px;
 }
+
+.dim-x {
+    font-size: 1.3rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.dim-unit {
+    align-self: flex-start;
+    font-size: 1rem;
+    line-height: 2;
+    color: var(--text-secondary);
+}
+
+.dims-fit {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.dims-fit::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.dims-fit-ok { color: var(--success); }
+.dims-fit-no { color: var(--danger); }
 
 /* ---- Disclosures: a heavy section becomes one row until asked for ---- */
 .disclosure {
